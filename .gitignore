@@ -1,0 +1,64 @@
+# ===================================================================
+# Arquivos de Log e Diagnóstico
+# ===================================================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# ===================================================================
+# Dependências de Pacotes
+# ===================================================================
+# A pasta node_modules contém as dependências do projeto e é reinstalada via 'npm install'.
+/node_modules
+
+# ===================================================================
+# Diretórios Específicos da Aplicação
+# ===================================================================
+# Dependências de backend (Composer), uploads de usuários e arquivos de armazenamento.
+/brs-api/vendor
+/brs-api/storage
+/brs-api/upload
+
+
+# ===================================================================
+# Diretórios de Build e Produção
+# ===================================================================
+# Arquivos gerados pelo processo de build que não devem ser versionados.
+/dist
+/build
+
+# ===================================================================
+# Arquivos de Ambiente
+# ===================================================================
+# Estes arquivos contêm segredos e configurações específicas do ambiente.
+# Um arquivo .env.example DEVE ser comitado no lugar.
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ===================================================================
+# Relatórios de Teste
+# ===================================================================
+/coverage
+
+# ===================================================================
+# Arquivos de IDEs e Editores
+# ===================================================================
+# Configurações específicas do ambiente de desenvolvimento local.
+.vscode/
+.idea/
+
+# ===================================================================
+# Arquivos de Sistema Operacional
+# ===================================================================
+.DS_Store
+Thumbs.db
+ehthumbs.db
+._*
+.Spotlight-V100
+.Trashes

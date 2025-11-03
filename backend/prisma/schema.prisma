@@ -1,0 +1,58 @@
+// This is your Prisma schema file
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Dentista {
+  id         Int           @id @default(autoincrement())
+  nome       String
+  email      String        @unique
+  senha      String
+  horarios   Horario[]
+  agendamentos Agendamento[]
+}
+
+// Horários que o dentista ATENDE (para a IA saber)
+model Horario {
+  id        Int      @id @default(autoincrement())
+  diaSemana Int      // 0 = Domingo, 1 = Segunda
+  inicio    String   // "08:00"
+  fim       String   // "18:00"
+  pausaInicio String?  // "12:00"
+  pausaFim    String?  // "14:00"
+  dentistaId  Int
+  dentista    Dentista @relation(fields: [dentistaId], references: [id])
+}
+
+model Paciente {
+  id           Int           @id @default(autoincrement())
+  nome         String
+  telefone     String        @unique // Importante para o WhatsApp
+  agendamentos Agendamento[]
+}
+
+model Servico {
+  id          Int           @id @default(autoincrement())
+  nome        String
+  descricao   String        @db.Text
+  duracaoMin  Int           // Duração em minutos
+  preco       Float
+  agendamentos Agendamento[]
+}
+
+model Agendamento {
+  id         Int       @id @default(autoincrement())
+  dataHora   DateTime
+  pacienteId Int
+  paciente   Paciente  @relation(fields: [pacienteId], references: [id])
+  dentistaId Int
+  dentista   Dentista  @relation(fields: [dentistaId], references: [id])
+  servicoId  Int
+  servico    Servico   @relation(fields: [servicoId], references: [id])
+  status     String    // "confirmado", "pendente_ia", "cancelado"
+}
