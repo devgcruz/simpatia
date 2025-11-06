@@ -43,7 +43,13 @@ class PacienteController {
             return res.status(201).json(novoPaciente);
 
         } catch (error: any) {
+
+            if (error.message.includes("telefone")) {
+                return res.status(409).json({ message: error.message });
+            }
+
             return res.status(400).json({ message: error.message });
+
         }
 
     }
@@ -70,14 +76,14 @@ class PacienteController {
     }
 
     async handleDelete(req: Request, res: Response) {
-        try{
+        try {
             const id = Number(req.params.id);
 
             await pacienteService.delete(id);
             return res.status(204).send();
 
         } catch (error: any) {
-            if (error.message === "Paciente não encontrado."){
+            if (error.message === "Paciente não encontrado.") {
                 return res.status(404).json({ message: error.message });
             }
 

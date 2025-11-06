@@ -8,7 +8,7 @@ generator client {
   provider = "prisma-client-js"
 }
 
-model Dentista {
+model Doutor {
   id         Int           @id @default(autoincrement())
   nome       String
   email      String        @unique
@@ -17,7 +17,7 @@ model Dentista {
   agendamentos Agendamento[]
 }
 
-// Horários que o dentista ATENDE (para a IA saber)
+// Horários que o doutor ATENDE (para a IA saber)
 model Horario {
   id        Int      @id @default(autoincrement())
   diaSemana Int      // 0 = Domingo, 1 = Segunda
@@ -25,8 +25,8 @@ model Horario {
   fim       String   // "18:00"
   pausaInicio String?  // "12:00"
   pausaFim    String?  // "14:00"
-  dentistaId  Int
-  dentista    Dentista @relation(fields: [dentistaId], references: [id])
+  doutorId  Int
+  doutor    Doutor @relation(fields: [doutorId], references: [id])
 }
 
 model Paciente {
@@ -50,8 +50,8 @@ model Agendamento {
   dataHora   DateTime
   pacienteId Int
   paciente   Paciente  @relation(fields: [pacienteId], references: [id])
-  dentistaId Int
-  dentista   Dentista  @relation(fields: [dentistaId], references: [id])
+  doutorId Int
+  doutor   Doutor  @relation(fields: [doutorId], references: [id])
   servicoId  Int
   servico    Servico   @relation(fields: [servicoId], references: [id])
   status     String    // "confirmado", "pendente_ia", "cancelado"
