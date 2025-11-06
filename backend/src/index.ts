@@ -7,6 +7,7 @@ import doutorRoutes from './routes/doutor.routes';
 import horarioRoutes from './routes/horario.routes';
 import agendamentoRoutes from './routes/agendamento.routes';
 import disponibilidadeRoutes from './routes/disponibilidade.routes';
+import webhookRoutes from './routes/webhook.routes';
 
 const app = express();
 const PORT = process.env.PORT || 3333;
@@ -24,6 +25,7 @@ app.use('/api/doutores', doutorRoutes);
 app.use('/api/horarios', horarioRoutes);
 app.use('/api/agendamentos', agendamentoRoutes);
 app.use('/api/disponibilidade', disponibilidadeRoutes);
+app.use('/api/webhook/whatsapp', webhookRoutes);
 
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);

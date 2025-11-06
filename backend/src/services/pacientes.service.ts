@@ -29,6 +29,14 @@ class PacienteService {
 
     }
 
+    async getByTelefone(telefone: string) {
+        const paciente = await prisma.paciente.findUnique({
+            where: { telefone },
+        });
+
+        return paciente; // Retorna null se não encontrar, em vez de lançar erro
+    }
+
     async create(data: ICreatePaciente) {
         const { nome, telefone } = data;
 
