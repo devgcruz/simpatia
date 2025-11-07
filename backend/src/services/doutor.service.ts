@@ -5,26 +5,44 @@ interface ICreateDoutor {
     nome: string;
     email: string;
     senha: string;
-    clinicaId: number;
+    especialidade?: string;
+    role?: string;
 }
 
 interface IUpdateDoutor {
     nome?: string;
     email?: string;
     senha?: string;
-    clinicaId?: number;
+    especialidade?: string;
+    role?: string;
 }
 
 class DoutorService {
 
-    async getAll() {
-        const doutores = await prisma.doutor.findMany();
+    async getAll(clinicaId: number) {
+        const doutores = await prisma.doutor.findMany({
+            where: { clinicaId },
+            select: {
+                id: true,
+                nome: true,
+                email: true,
+                especialidade: true,
+                role: true,
+            },
+        });
         return doutores;
     }
 
-    async getById(id: number) {
-        const doutor = await prisma.doutor.findUnique({
-            where: { id },
+    async getById(id: number, clinicaId: number) {
+        const doutor = await prisma.doutor.findFirst({
+            where: { id, clinicaId },
+            select: {
+                id: true,
+                nome: true,
+                email: true,
+                especialidade: true,
+                role: true,
+            },
         });
 
         if (!doutor) {
@@ -34,11 +52,11 @@ class DoutorService {
         return doutor;
     }
 
-    async create(data: ICreateDoutor) {
-        const { nome, email, senha, clinicaId } = data;
+    async create(data: ICreateDoutor, clinicaId: number) {
+        const { nome, email, senha, especialidade, role } = data;
 
-        if (!nome || !email || !senha || !clinicaId) {
-            throw new Error("Nome, email, senha e clinicaId são obrigatórios.");
+        if (!nome || !email || !senha) {
+            throw new Error("Nome, email e senha são obrigatórios.");
         }
 
         // Verificar se o email já existe
@@ -53,28 +71,34 @@ class DoutorService {
         // Fazer hash da senha
         const senhaHash = await bcrypt.hash(senha, 10);
 
-        // Nota: clinicaId é validado como obrigatório, mas não está no modelo Doutor atual
-        // Será necessário atualizar o schema.prisma para incluir clinicaId antes de usar este campo
         const novoDoutor = await prisma.doutor.create({
             data: {
                 nome,
                 email,
                 senha: senhaHash,
-                // TODO: Adicionar clinicaId quando o schema for atualizado
-                // clinicaId: clinicaId
+                especialidade,
+                role: role as any,
+                clinicaId,
+            },
+            select: {
+                id: true,
+                nome: true,
+                email: true,
+                especialidade: true,
+                role: true,
             },
         });
 
         return novoDoutor;
     }
 
-    async update(id: number, data: IUpdateDoutor) {
-        const doutorExistente = await prisma.doutor.findUnique({
-            where: { id },
+    async update(id: number, data: IUpdateDoutor, clinicaId: number) {
+        const doutorExistente = await prisma.doutor.findFirst({
+            where: { id, clinicaId },
         });
 
         if (!doutorExistente) {
-            throw new Error("Doutor não encontrado.");
+            throw new Error("Doutor não encontrado ou não pertence à esta clínica.");
         }
 
         // Se um novo email foi fornecido, verificar se já existe
@@ -102,18 +126,25 @@ class DoutorService {
         const doutorAtualizado = await prisma.doutor.update({
             where: { id },
             data: updateData,
+            select: {
+                id: true,
+                nome: true,
+                email: true,
+                especialidade: true,
+                role: true,
+            },
         });
 
         return doutorAtualizado;
     }
 
-    async delete(id: number) {
-        const doutorExistente = await prisma.doutor.findUnique({
-            where: { id },
+    async delete(id: number, clinicaId: number) {
+        const doutorExistente = await prisma.doutor.findFirst({
+            where: { id, clinicaId },
         });
 
         if (!doutorExistente) {
-            throw new Error("Doutor não encontrado.");
+            throw new Error("Doutor não encontrado ou não pertence à esta clínica.");
         }
 
         await prisma.doutor.delete({

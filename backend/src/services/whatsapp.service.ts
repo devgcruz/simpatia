@@ -1,47 +1,48 @@
+// src/services/whatsapp.service.ts
 import axios from 'axios';
 
 class WhatsAppService {
 
-    async enviarMensagem(telefone: string, mensagem: string) {
-        try {
-            const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
-            const WHATSAPP_PHONE_ID = process.env.WHATSAPP_PHONE_ID;
+  /**
+   * Envia uma mensagem de texto via API Oficial do WhatsApp.
+   * Agora recebe as credenciais da clínica como parâmetros.
+   */
+  async enviarMensagem(
+    telefone: string, 
+    mensagem: string, 
+    whatsappToken: string, 
+    whatsappPhoneId: string
+  ) {
 
-            if (!WHATSAPP_TOKEN || !WHATSAPP_PHONE_ID) {
-                throw new Error("WHATSAPP_TOKEN e WHATSAPP_PHONE_ID devem estar configurados no .env");
-            }
-
-            // Adicionar DDI do Brasil (55) ao telefone
-            const telefoneComDDI = "55" + telefone;
-
-            const url = `https://graph.facebook.com/v19.0/${WHATSAPP_PHONE_ID}/messages`;
-
-            const response = await axios.post(
-                url,
-                {
-                    messaging_product: "whatsapp",
-                    to: telefoneComDDI,
-                    type: "text",
-                    text: {
-                        body: mensagem
-                    }
-                },
-                {
-                    headers: {
-                        'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
-                        'Content-Type': 'application/json'
-                    }
-                }
-            );
-
-            console.log('Mensagem enviada com sucesso:', response.data);
-            return response.data;
-
-        } catch (error: any) {
-            console.error('Erro ao enviar mensagem via WhatsApp:', error.response?.data || error.message);
-            throw error;
-        }
+    // Se as credenciais da clínica não estiverem configuradas, não podemos enviar.
+    if (!whatsappToken || !whatsappPhoneId) {
+      console.error(`Tentativa de enviar mensagem para ${telefone} falhou: Token ou PhoneId não configurados para esta clínica.`);
+      return;
     }
+
+    const url = `https://graph.facebook.com/v19.0/${whatsappPhoneId}/messages`;
+
+    const data = {
+      messaging_product: 'whatsapp',
+      to: "55" + telefone, // Assume DDI do Brasil.
+      type: 'text',
+      text: { body: mensagem },
+    };
+
+    const config = {
+      headers: {
+        'Authorization': `Bearer ${whatsappToken}`,
+        'Content-Type': 'application/json',
+      },
+    };
+
+    try {
+      await axios.post(url, data, config);
+      console.log(`Mensagem enviada para: ${telefone}`);
+    } catch (error: any) {
+      console.error(`Erro ao enviar mensagem para ${telefone}:`, error.response?.data || error.message);
+    }
+  }
 }
 
 export default new WhatsAppService();

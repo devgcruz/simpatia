@@ -3,11 +3,12 @@ import webhookController from '../controllers/webhook.controller';
 
 const router = Router();
 
-// Rota GET para verificação do webhook (usado pela Meta durante a configuração)
-router.get('/', webhookController.handleVerifyWebhook);
+// A URL agora é dinâmica e captura o 'urlId'
+// Ex: GET /api/webhook/whatsapp/a1b2c3d4-e5f6...
+router.get('/:urlId', webhookController.handleVerifyWebhook);
 
-// Rota POST para receber mensagens do WhatsApp
-router.post('/', webhookController.handleReceiveMessage);
+// Ex: POST /api/webhook/whatsapp/a1b2c3d4-e5f6...
+router.post('/:urlId', webhookController.handleReceiveMessage);
 
 export default router;
 

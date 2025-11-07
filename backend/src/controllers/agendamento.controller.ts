@@ -5,24 +5,19 @@ class AgendamentoController {
 
     async handleGetAll(req: Request, res: Response) {
         try {
-            // Ler filtros da query string
-            const filtros: any = {};
+            const user = req.user!;
+            const filtros = {
+                doutorId: req.query.doutorId as string | undefined,
+                dataInicio: req.query.dataInicio as string | undefined,
+                dataFim: req.query.dataFim as string | undefined,
+            };
 
-            if (req.query.doutorId) {
-                filtros.doutorId = Number(req.query.doutorId);
-            }
-
-            if (req.query.dataInicio) {
-                filtros.dataInicio = new Date(req.query.dataInicio as string);
-            }
-
-            if (req.query.dataFim) {
-                filtros.dataFim = new Date(req.query.dataFim as string);
-            }
-
-            const agendamentos = await agendamentoService.getAll(filtros);
+            const agendamentos = await agendamentoService.getAll(user, filtros);
             return res.status(200).json(agendamentos);
         } catch (error: any) {
+            if (error.message === "Acesso negado.") {
+                return res.status(403).json({ message: error.message });
+            }
             return res.status(500).json({ message: error.message });
         }
     }
@@ -31,11 +26,17 @@ class AgendamentoController {
         try {
             const id = Number(req.params.id);
 
-            const agendamento = await agendamentoService.getById(id);
+            const user = req.user!;
+
+            const agendamento = await agendamentoService.getById(id, user);
             return res.status(200).json(agendamento);
         } catch (error: any) {
             if (error.message === "Agendamento não encontrado.") {
                 return res.status(404).json({ message: error.message });
+            }
+
+            if (error.message === "Acesso negado.") {
+                return res.status(403).json({ message: error.message });
             }
 
             return res.status(500).json({ message: error.message });
@@ -46,19 +47,25 @@ class AgendamentoController {
         try {
             const { dataHora, status, pacienteId, doutorId, servicoId } = req.body;
 
+            const user = req.user!;
+
             const novoAgendamento = await agendamentoService.create({
                 dataHora,
                 status,
                 pacienteId,
                 doutorId,
-                servicoId
-            });
+                servicoId,
+            }, user);
 
             return res.status(201).json(novoAgendamento);
 
         } catch (error: any) {
             if (error.message.includes("não encontrado")) {
                 return res.status(404).json({ message: error.message });
+            }
+
+            if (error.message === "Acesso negado.") {
+                return res.status(403).json({ message: error.message });
             }
 
             return res.status(400).json({ message: error.message });
@@ -70,7 +77,9 @@ class AgendamentoController {
             const id = Number(req.params.id);
             const data = req.body;
 
-            const agendamentoAtualizado = await agendamentoService.update(id, data);
+            const user = req.user!;
+
+            const agendamentoAtualizado = await agendamentoService.update(id, data, user);
             return res.status(200).json(agendamentoAtualizado);
 
         } catch (error: any) {
@@ -82,6 +91,10 @@ class AgendamentoController {
                 return res.status(404).json({ message: error.message });
             }
 
+            if (error.message === "Acesso negado.") {
+                return res.status(403).json({ message: error.message });
+            }
+
             return res.status(400).json({ message: error.message });
         }
     }
@@ -90,12 +103,18 @@ class AgendamentoController {
         try {
             const id = Number(req.params.id);
 
-            await agendamentoService.delete(id);
+            const user = req.user!;
+
+            await agendamentoService.delete(id, user);
             return res.status(204).send();
 
         } catch (error: any) {
             if (error.message === "Agendamento não encontrado.") {
                 return res.status(404).json({ message: error.message });
+            }
+
+            if (error.message === "Acesso negado.") {
+                return res.status(403).json({ message: error.message });
             }
 
             return res.status(500).json({ message: error.message });

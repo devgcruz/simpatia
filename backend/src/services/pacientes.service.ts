@@ -11,14 +11,16 @@ interface IUpdatePaciente {
 }
 class PacienteService {
 
-    async getAll() {
-        const paciente = await prisma.paciente.findMany();
+    async getAll(clinicaId: number) {
+        const paciente = await prisma.paciente.findMany({
+            where: { clinicaId },
+        });
         return paciente;
     }
 
-    async getById(id: number) {
-        const paciente = await prisma.paciente.findUnique({
-            where: { id },
+    async getById(id: number, clinicaId: number) {
+        const paciente = await prisma.paciente.findFirst({
+            where: { id, clinicaId },
         });
 
         if (!paciente) {
@@ -29,23 +31,23 @@ class PacienteService {
 
     }
 
-    async getByTelefone(telefone: string) {
-        const paciente = await prisma.paciente.findUnique({
-            where: { telefone },
+    async getByTelefone(telefone: string, clinicaId: number) {
+        const paciente = await prisma.paciente.findFirst({
+            where: { telefone, clinicaId },
         });
 
         return paciente; // Retorna null se não encontrar, em vez de lançar erro
     }
 
-    async create(data: ICreatePaciente) {
+    async create(data: ICreatePaciente, clinicaId: number) {
         const { nome, telefone } = data;
 
         if (!nome || !telefone) {
             throw new Error("Nome, Telefone são obrigatórios.");
         }
 
-        const telefoneExistente = await prisma.paciente.findUnique({
-            where: { telefone },
+        const telefoneExistente = await prisma.paciente.findFirst({
+            where: { telefone, clinicaId },
         });
 
         if(telefoneExistente){
@@ -56,6 +58,7 @@ class PacienteService {
             data: {
                 nome,
                 telefone,
+                clinicaId,
             },
         });
 
@@ -64,13 +67,13 @@ class PacienteService {
 
     }
 
-    async update(id: number, data: IUpdatePaciente){
-        const pacienteExistente = await prisma.paciente.findUnique({
-            where: { id },
+    async update(id: number, data: IUpdatePaciente, clinicaId: number){
+        const pacienteExistente = await prisma.paciente.findFirst({
+            where: { id, clinicaId },
         });
 
         if (!pacienteExistente){
-            throw new Error("Paciente não encontrado.");
+            throw new Error("Paciente não encontrado ou não pertence à esta clínica.");
         }
 
         const pacienteAtualizado = await prisma.paciente.update({
@@ -82,14 +85,14 @@ class PacienteService {
 
     }
 
-    async delete(id: number) {
+    async delete(id: number, clinicaId: number) {
 
-        const pacienteExistente = await prisma.paciente.findUnique({
-            where: {id},
+        const pacienteExistente = await prisma.paciente.findFirst({
+            where: { id, clinicaId },
         });
 
         if (!pacienteExistente) {
-            throw new Error("Paciente não encontrado.");
+            throw new Error("Paciente não encontrado ou não pertence à esta clínica.");
         }
 
         await prisma.paciente.delete({

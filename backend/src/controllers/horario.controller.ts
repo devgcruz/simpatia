@@ -5,7 +5,8 @@ class HorarioController {
 
     async handleGetAll(req: Request, res: Response) {
         try {
-            const horarios = await horarioService.getAll();
+            const user = req.user!;
+            const horarios = await horarioService.getAll(user);
             return res.status(200).json(horarios);
         } catch (error: any) {
             return res.status(500).json({ message: error.message });
@@ -16,11 +17,17 @@ class HorarioController {
         try {
             const id = Number(req.params.id);
 
-            const horario = await horarioService.getById(id);
+            const user = req.user!;
+
+            const horario = await horarioService.getById(id, user);
             return res.status(200).json(horario);
         } catch (error: any) {
             if (error.message === "Horário não encontrado.") {
                 return res.status(404).json({ message: error.message });
+            }
+
+            if (error.message === "Acesso negado.") {
+                return res.status(403).json({ message: error.message });
             }
 
             return res.status(500).json({ message: error.message });
@@ -31,9 +38,19 @@ class HorarioController {
         try {
             const doutorId = Number(req.params.doutorId);
 
-            const horarios = await horarioService.getByDoutorId(doutorId);
+            const user = req.user!;
+
+            const horarios = await horarioService.getByDoutorId(doutorId, user);
             return res.status(200).json(horarios);
         } catch (error: any) {
+            if (error.message === "Doutor não encontrado ou não pertence à esta clínica.") {
+                return res.status(404).json({ message: error.message });
+            }
+
+            if (error.message === "Acesso negado.") {
+                return res.status(403).json({ message: error.message });
+            }
+
             return res.status(500).json({ message: error.message });
         }
     }
@@ -42,6 +59,8 @@ class HorarioController {
         try {
             const { diaSemana, inicio, fim, pausaInicio, pausaFim, doutorId } = req.body;
 
+            const user = req.user!;
+
             const novoHorario = await horarioService.create({
                 diaSemana,
                 inicio,
@@ -49,13 +68,17 @@ class HorarioController {
                 pausaInicio,
                 pausaFim,
                 doutorId
-            });
+            }, user);
 
             return res.status(201).json(novoHorario);
 
         } catch (error: any) {
             if (error.message.includes("Doutor não encontrado")) {
                 return res.status(404).json({ message: error.message });
+            }
+
+            if (error.message === "Acesso negado.") {
+                return res.status(403).json({ message: error.message });
             }
 
             return res.status(400).json({ message: error.message });
@@ -67,7 +90,9 @@ class HorarioController {
             const id = Number(req.params.id);
             const data = req.body;
 
-            const horarioAtualizado = await horarioService.update(id, data);
+            const user = req.user!;
+
+            const horarioAtualizado = await horarioService.update(id, data, user);
             return res.status(200).json(horarioAtualizado);
 
         } catch (error: any) {
@@ -79,6 +104,10 @@ class HorarioController {
                 return res.status(404).json({ message: error.message });
             }
 
+            if (error.message === "Acesso negado.") {
+                return res.status(403).json({ message: error.message });
+            }
+
             return res.status(400).json({ message: error.message });
         }
     }
@@ -87,12 +116,18 @@ class HorarioController {
         try {
             const id = Number(req.params.id);
 
-            await horarioService.delete(id);
+            const user = req.user!;
+
+            await horarioService.delete(id, user);
             return res.status(204).send();
 
         } catch (error: any) {
             if (error.message === "Horário não encontrado.") {
                 return res.status(404).json({ message: error.message });
+            }
+
+            if (error.message === "Acesso negado.") {
+                return res.status(403).json({ message: error.message });
             }
 
             return res.status(500).json({ message: error.message });

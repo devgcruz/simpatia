@@ -5,7 +5,11 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "ts-node-dev --respawn --transpile-only src/index.ts"
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "create-admin": "ts-node-dev --transpile-only scripts/create-admin.ts",
+    "update-admin-email": "ts-node-dev --transpile-only scripts/update-admin-email.ts",
+    "test-login": "ts-node-dev --transpile-only scripts/test-login.ts",
+    "test-api-login": "ts-node-dev --transpile-only scripts/test-api-login.ts"
   },
   "keywords": [],
   "author": "",
@@ -13,8 +17,12 @@
   "devDependencies": {
     "@types/axios": "^0.14.4",
     "@types/bcryptjs": "^3.0.0",
+    "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.5",
+    "@types/express-rate-limit": "^6.0.2",
+    "@types/helmet": "^4.0.0",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^24.9.2",
     "express": "^5.1.0",
     "prisma": "^6.18.0",
@@ -28,8 +36,12 @@
     "@prisma/client": "^6.18.0",
     "axios": "^1.13.2",
     "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
     "langchain": "^1.0.2"
   }
 }

@@ -5,7 +5,8 @@ class PacienteController {
 
     async handleGetAll(req: Request, res: Response) {
         try {
-            const paciente = await pacienteService.getAll();
+            const { clinicaId } = req.user!;
+            const paciente = await pacienteService.getAll(clinicaId);
             return res.status(200).json(paciente);
         } catch (error: any) {
             return res.status(500).json({ message: error.message })
@@ -17,11 +18,13 @@ class PacienteController {
         try {
             const id = Number(req.params.id);
 
-            const paciente = await pacienteService.getById(id);
+            const { clinicaId } = req.user!;
+
+            const paciente = await pacienteService.getById(id, clinicaId);
             return res.status(200).json(paciente);
         } catch (error: any) {
 
-            if (error.message === "Paciente não encontrado.") {
+            if (error.message === "Paciente não encontrado." || error.message === "Paciente não encontrado ou não pertence à esta clínica.") {
                 return res.status(404).json({ message: error.message });
             }
 
@@ -35,10 +38,12 @@ class PacienteController {
         try {
             const { nome, telefone } = req.body;
 
+            const { clinicaId } = req.user!;
+
             const novoPaciente = await pacienteService.create({
                 nome,
-                telefone
-            });
+                telefone,
+            }, clinicaId);
 
             return res.status(201).json(novoPaciente);
 
@@ -60,12 +65,14 @@ class PacienteController {
             const id = Number(req.params.id);
             const data = req.body;
 
-            const pacienteAtualizado = await pacienteService.update(id, data);
+            const { clinicaId } = req.user!;
+
+            const pacienteAtualizado = await pacienteService.update(id, data, clinicaId);
             return res.status(200).json(pacienteAtualizado);
 
         } catch (error: any) {
 
-            if (error.message === "Paciente não encontrado.") {
+            if (error.message === "Paciente não encontrado." || error.message === "Paciente não encontrado ou não pertence à esta clínica.") {
                 return res.status(404).json({ message: error.message });
             }
 
@@ -79,11 +86,13 @@ class PacienteController {
         try {
             const id = Number(req.params.id);
 
-            await pacienteService.delete(id);
+            const { clinicaId } = req.user!;
+
+            await pacienteService.delete(id, clinicaId);
             return res.status(204).send();
 
         } catch (error: any) {
-            if (error.message === "Paciente não encontrado.") {
+            if (error.message === "Paciente não encontrado." || error.message === "Paciente não encontrado ou não pertence à esta clínica.") {
                 return res.status(404).json({ message: error.message });
             }
 

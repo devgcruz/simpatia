@@ -16,15 +16,16 @@ interface IUpdateServico {
 
 
 class ServicoService {
-
-  async getAll() {
-    const servicos = await prisma.servico.findMany();
+  async getAll(clinicaId: number) {
+    const servicos = await prisma.servico.findMany({
+      where: { clinicaId },
+    });
     return servicos;
   }
 
-  async getById(id: number) {
-    const servico = await prisma.servico.findUnique({
-      where: { id },
+  async getById(id: number, clinicaId: number) {
+    const servico = await prisma.servico.findFirst({
+      where: { id, clinicaId },
     });
 
     if (!servico) {
@@ -35,7 +36,7 @@ class ServicoService {
 
   }
 
-  async create(data: ICreateServico) {
+  async create(data: ICreateServico, clinicaId: number) {
     const { nome, descricao, duracaoMin, preco } = data;
 
     if (!nome || !duracaoMin || !preco) {
@@ -47,20 +48,21 @@ class ServicoService {
         nome,
         descricao,
         duracaoMin,
-        preco
-      }
+        preco,
+        clinicaId,
+      },
     });
 
     return novoServico;
   }
 
-  async update(id: number, data: IUpdateServico) {
-    const servicoExistente = await prisma.servico.findUnique({
-      where: { id },
+  async update(id: number, data: IUpdateServico, clinicaId: number) {
+    const servicoExistente = await prisma.servico.findFirst({
+      where: { id, clinicaId },
     });
 
     if (!servicoExistente) {
-      throw new Error("Serviço não encontrado.");
+      throw new Error("Serviço não encontrado ou não pertence à esta clínica.");
     }
 
     const servicoAtualizado = await prisma.servico.update({
@@ -72,14 +74,13 @@ class ServicoService {
 
   }
 
-  async delete(id: number) {
-
-    const servicoExistente = await prisma.servico.findUnique({
-      where: { id },
+  async delete(id: number, clinicaId: number) {
+    const servicoExistente = await prisma.servico.findFirst({
+      where: { id, clinicaId },
     });
 
     if (!servicoExistente) {
-      throw new Error("Serviço não encontrado.");
+      throw new Error("Serviço não encontrado ou não pertence à esta clínica.");
     }
 
     await prisma.servico.delete({

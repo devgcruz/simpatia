@@ -18,14 +18,39 @@ interface IUpdateHorario {
     doutorId?: number;
 }
 
+interface AuthUser {
+    id: number;
+    role: string;
+    clinicaId: number;
+}
+
 class HorarioService {
 
-    async getAll() {
-        const horarios = await prisma.horario.findMany();
-        return horarios;
+    async getAll(user: AuthUser) {
+        if (user.role === 'DOUTOR') {
+            return prisma.horario.findMany({
+                where: { doutorId: user.id },
+            });
+        }
+
+        if (user.role === 'CLINICA_ADMIN') {
+            return prisma.horario.findMany({
+                where: {
+                    doutor: {
+                        clinicaId: user.clinicaId,
+                    },
+                },
+            });
+        }
+
+        if (user.role === 'SUPER_ADMIN') {
+            return prisma.horario.findMany();
+        }
+
+        return [];
     }
 
-    async getById(id: number) {
+    async getById(id: number, user: AuthUser) {
         const horario = await prisma.horario.findUnique({
             where: { id },
         });
@@ -34,27 +59,78 @@ class HorarioService {
             throw new Error("Horário não encontrado.");
         }
 
+        await this.ensureAccessToHorario(horario, user);
+
         return horario;
     }
 
-    async getByDoutorId(doutorId: number) {
-        const horarios = await prisma.horario.findMany({
-            where: { doutorId: doutorId },
-        });
+    async getByDoutorId(doutorId: number, user: AuthUser) {
+        if (user.role === 'DOUTOR') {
+            if (doutorId !== user.id) {
+                throw new Error("Acesso negado.");
+            }
 
-        return horarios;
-    }
-
-    async create(data: ICreateHorario) {
-        const { diaSemana, inicio, fim, pausaInicio, pausaFim, doutorId } = data;
-
-        if (diaSemana === undefined || !inicio || !fim || !doutorId) {
-            throw new Error("diaSemana, inicio, fim e doutorId são obrigatórios.");
+            return prisma.horario.findMany({
+                where: { doutorId: user.id },
+            });
         }
 
-        // Verificar se o doutor existe
+        if (user.role === 'CLINICA_ADMIN') {
+            const doutor = await prisma.doutor.findFirst({
+                where: { id: doutorId, clinicaId: user.clinicaId },
+            });
+
+            if (!doutor) {
+                throw new Error("Doutor não encontrado ou não pertence à esta clínica.");
+            }
+
+            return prisma.horario.findMany({
+                where: { doutorId },
+            });
+        }
+
+        if (user.role === 'SUPER_ADMIN') {
+            return prisma.horario.findMany({
+                where: { doutorId },
+            });
+        }
+
+        return [];
+    }
+
+    async create(data: ICreateHorario, user: AuthUser) {
+        const { diaSemana, inicio, fim, pausaInicio, pausaFim } = data;
+
+        if (diaSemana === undefined || !inicio || !fim) {
+            throw new Error("diaSemana, inicio e fim são obrigatórios.");
+        }
+
+        let targetDoutorId = data.doutorId;
+
+        if (user.role === 'DOUTOR') {
+            targetDoutorId = user.id;
+        } else if (user.role === 'CLINICA_ADMIN') {
+            if (!targetDoutorId) {
+                throw new Error("doutorId é obrigatório.");
+            }
+
+            const doutor = await prisma.doutor.findFirst({
+                where: { id: targetDoutorId, clinicaId: user.clinicaId },
+            });
+
+            if (!doutor) {
+                throw new Error("Doutor não encontrado ou não pertence à esta clínica.");
+            }
+        } else if (user.role === 'SUPER_ADMIN') {
+            if (!targetDoutorId) {
+                throw new Error("doutorId é obrigatório.");
+            }
+        } else {
+            throw new Error("Acesso negado.");
+        }
+
         const doutorExistente = await prisma.doutor.findUnique({
-            where: { id: doutorId },
+            where: { id: targetDoutorId },
         });
 
         if (!doutorExistente) {
@@ -68,14 +144,14 @@ class HorarioService {
                 fim,
                 pausaInicio: pausaInicio || null,
                 pausaFim: pausaFim || null,
-                doutorId,
+                doutorId: targetDoutorId,
             },
         });
 
         return novoHorario;
     }
 
-    async update(id: number, data: IUpdateHorario) {
+    async update(id: number, data: IUpdateHorario, user: AuthUser) {
         const horarioExistente = await prisma.horario.findUnique({
             where: { id },
         });
@@ -84,8 +160,23 @@ class HorarioService {
             throw new Error("Horário não encontrado.");
         }
 
-        // Se um novo doutorId foi fornecido, verificar se existe
+        await this.ensureAccessToHorario(horarioExistente, user);
+
         if (data.doutorId && data.doutorId !== horarioExistente.doutorId) {
+            if (user.role === 'DOUTOR') {
+                throw new Error("Acesso negado.");
+            }
+
+            if (user.role === 'CLINICA_ADMIN') {
+                const doutor = await prisma.doutor.findFirst({
+                    where: { id: data.doutorId, clinicaId: user.clinicaId },
+                });
+
+                if (!doutor) {
+                    throw new Error("Doutor não encontrado ou não pertence à esta clínica.");
+                }
+            }
+
             const doutorExistente = await prisma.doutor.findUnique({
                 where: { id: data.doutorId },
             });
@@ -95,15 +186,13 @@ class HorarioService {
             }
         }
 
-        // Construir objeto de atualização explicitamente
         const updateData: any = {};
-        
+
         if (data.diaSemana !== undefined) updateData.diaSemana = data.diaSemana;
         if (data.inicio !== undefined) updateData.inicio = data.inicio;
         if (data.fim !== undefined) updateData.fim = data.fim;
         if (data.doutorId !== undefined) updateData.doutorId = data.doutorId;
-        
-        // Tratar pausaInicio e pausaFim: se for string vazia, definir como null, senão manter o valor ou undefined
+
         if ('pausaInicio' in data) {
             updateData.pausaInicio = data.pausaInicio === '' ? null : data.pausaInicio;
         }
@@ -119,7 +208,7 @@ class HorarioService {
         return horarioAtualizado;
     }
 
-    async delete(id: number) {
+    async delete(id: number, user: AuthUser) {
         const horarioExistente = await prisma.horario.findUnique({
             where: { id },
         });
@@ -128,11 +217,32 @@ class HorarioService {
             throw new Error("Horário não encontrado.");
         }
 
+        await this.ensureAccessToHorario(horarioExistente, user);
+
         await prisma.horario.delete({
             where: { id },
         });
 
         return { message: "Horário deletado com sucesso." };
+    }
+
+    private async ensureAccessToHorario(horario: { doutorId: number }, user: AuthUser) {
+        if (user.role === 'DOUTOR') {
+            if (horario.doutorId !== user.id) {
+                throw new Error("Acesso negado.");
+            }
+            return;
+        }
+
+        if (user.role === 'CLINICA_ADMIN') {
+            const doutor = await prisma.doutor.findFirst({
+                where: { id: horario.doutorId, clinicaId: user.clinicaId },
+            });
+
+            if (!doutor) {
+                throw new Error("Acesso negado.");
+            }
+        }
     }
 }
 

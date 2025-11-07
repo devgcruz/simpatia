@@ -5,6 +5,7 @@ class DisponibilidadeController {
 
     async handleGetDisponibilidade(req: Request, res: Response) {
         try {
+            const user = req.user!;
             const doutorId = Number(req.query.doutorId);
             const servicoId = Number(req.query.servicoId);
             const data = req.query.data as string;
@@ -16,6 +17,7 @@ class DisponibilidadeController {
             }
 
             const horariosDisponiveis = await disponibilidadeService.getDisponibilidade(
+                user,
                 doutorId,
                 servicoId,
                 data

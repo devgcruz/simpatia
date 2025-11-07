@@ -4,7 +4,8 @@ import servicoService from '../services/servicos.service';
 class ServicosController {
     async handleGetAll(req: Request, res: Response) {
         try {
-            const servicos = await servicoService.getAll();
+            const { clinicaId } = req.user!;
+            const servicos = await servicoService.getAll(clinicaId);
             return res.status(200).json(servicos);
         } catch (error: any) {
             return res.status(500).json({ message: error.message });
@@ -16,12 +17,13 @@ class ServicosController {
         try {
             const id = Number(req.params.id);
 
-            const servico = await servicoService.getById(id);
+            const { clinicaId } = req.user!;
+            const servico = await servicoService.getById(id, clinicaId);
             return res.status(200).json(servico);
 
         } catch (error: any) {
 
-            if (error.message === "Serviço não encontrado.") {
+            if (error.message === "Serviço não encontrado." || error.message === "Serviço não encontrado ou não pertence à esta clínica.") {
                 return res.status(404).json({ message: error.message });
             }
             return res.status(500).json({ message: error.message });
@@ -32,12 +34,14 @@ class ServicosController {
         try {
             const { nome, descricao, duracaoMin, preco } = req.body;
 
+            const { clinicaId } = req.user!;
+
             const novoServico = await servicoService.create({
                 nome,
                 descricao,
                 duracaoMin,
-                preco
-            });
+                preco,
+            }, clinicaId);
 
             return res.status(201).json(novoServico);
 
@@ -52,10 +56,12 @@ class ServicosController {
 
             const data = req.body;
 
-            const servicoAtualizado = await servicoService.update(id, data);
+            const { clinicaId } = req.user!;
+
+            const servicoAtualizado = await servicoService.update(id, data, clinicaId);
             return res.status(200).json(servicoAtualizado);
         } catch (error: any) {
-            if (error.message === "Serviço não encontrado.") {
+            if (error.message === "Serviço não encontrado." || error.message === "Serviço não encontrado ou não pertence à esta clínica.") {
                 return res.status(404).json({ message: error.message });
             }
 
@@ -67,11 +73,13 @@ class ServicosController {
         try {
             const id = Number(req.params.id);
 
-            await servicoService.delete(id);
+            const { clinicaId } = req.user!;
+
+            await servicoService.delete(id, clinicaId);
 
             return res.status(204).send();
         } catch (error: any) {
-            if (error.message === "Serviço não encontrado.") {
+            if (error.message === "Serviço não encontrado." || error.message === "Serviço não encontrado ou não pertence à esta clínica.") {
                 return res.status(404).json({ message: error.message });
             }
 

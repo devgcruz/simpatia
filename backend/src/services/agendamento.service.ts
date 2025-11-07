@@ -1,9 +1,9 @@
 import { prisma } from '../lib/prisma';
 
 interface IFiltrosAgendamento {
-    doutorId?: number;
-    dataInicio?: Date;
-    dataFim?: Date;
+    doutorId?: string;
+    dataInicio?: string;
+    dataFim?: string;
 }
 
 interface ICreateAgendamento {
@@ -22,107 +22,130 @@ interface IUpdateAgendamento {
     servicoId?: number;
 }
 
+interface AuthUser {
+    id: number;
+    role: string;
+    clinicaId: number;
+}
+
+const agendamentoInclude = {
+    paciente: true,
+    doutor: {
+        select: {
+            id: true,
+            nome: true,
+            email: true,
+            clinicaId: true,
+        },
+    },
+    servico: true,
+};
+
 class AgendamentoService {
 
-    async getAll(filtros: IFiltrosAgendamento = {}) {
-        const { doutorId, dataInicio, dataFim } = filtros;
-
-        // Construir a cláusula where dinamicamente
+    async getAll(user: AuthUser, filtros: IFiltrosAgendamento = {}) {
         const where: any = {};
 
-        if (doutorId !== undefined) {
-            where.doutorId = doutorId;
+        if (filtros.dataInicio && filtros.dataFim) {
+            where.dataHora = {
+                gte: new Date(filtros.dataInicio),
+                lte: new Date(filtros.dataFim),
+            };
+        } else if (filtros.dataInicio) {
+            where.dataHora = { gte: new Date(filtros.dataInicio) };
+        } else if (filtros.dataFim) {
+            where.dataHora = { lte: new Date(filtros.dataFim) };
         }
 
-        if (dataInicio || dataFim) {
-            where.dataHora = {};
-            if (dataInicio) {
-                where.dataHora.gte = new Date(dataInicio);
+        if (user.role === 'DOUTOR') {
+            where.doutorId = user.id;
+        } else if (user.role === 'CLINICA_ADMIN') {
+            where.doutor = { clinicaId: user.clinicaId };
+
+            if (filtros.doutorId) {
+                where.doutorId = Number(filtros.doutorId);
             }
-            if (dataFim) {
-                where.dataHora.lte = new Date(dataFim);
+        } else if (user.role === 'SUPER_ADMIN') {
+            if (filtros.doutorId) {
+                where.doutorId = Number(filtros.doutorId);
             }
+        } else {
+            return [];
         }
 
         const agendamentos = await prisma.agendamento.findMany({
             where,
-            include: {
-                paciente: true,
-                doutor: {
-                    select: {
-                        id: true,
-                        nome: true,
-                        email: true
-                    }
-                },
-                servico: true
-            },
-            orderBy: {
-                dataHora: 'asc'
-            }
+            include: agendamentoInclude,
+            orderBy: { dataHora: 'asc' },
         });
 
-        return agendamentos;
+        return agendamentos.map(({ doutor, ...rest }) => ({
+            ...rest,
+            doutor: {
+                id: doutor.id,
+                nome: doutor.nome,
+                email: doutor.email,
+            },
+        }));
     }
 
-    async getById(id: number) {
+    async getById(id: number, user: AuthUser) {
         const agendamento = await prisma.agendamento.findUnique({
             where: { id },
-            include: {
-                paciente: true,
-                doutor: {
-                    select: {
-                        id: true,
-                        nome: true,
-                        email: true
-                    }
-                },
-                servico: true
-            }
+            include: agendamentoInclude,
         });
 
         if (!agendamento) {
             throw new Error("Agendamento não encontrado.");
         }
 
-        return agendamento;
+        await this.ensureAccessToAgendamento(agendamento, user);
+
+        const { doutor, ...rest } = agendamento;
+        return {
+            ...rest,
+            doutor: {
+                id: doutor.id,
+                nome: doutor.nome,
+                email: doutor.email,
+            },
+        };
     }
 
-    async create(data: ICreateAgendamento) {
-        const { dataHora, status, pacienteId, doutorId, servicoId } = data;
+    async create(data: ICreateAgendamento, user: AuthUser) {
+        const { dataHora, status, pacienteId, servicoId } = data;
 
-        if (!dataHora || !status || !pacienteId || !doutorId || !servicoId) {
-            throw new Error("dataHora, status, pacienteId, doutorId e servicoId são obrigatórios.");
+        if (!dataHora || !status || !pacienteId || !servicoId) {
+            throw new Error("dataHora, status, pacienteId e servicoId são obrigatórios.");
         }
 
-        // Verificar se o paciente existe
-        const pacienteExistente = await prisma.paciente.findUnique({
-            where: { id: pacienteId },
-        });
+        let targetDoutorId = data.doutorId;
 
-        if (!pacienteExistente) {
-            throw new Error("Paciente não encontrado.");
+        if (user.role === 'DOUTOR') {
+            targetDoutorId = user.id;
+        } else if (user.role === 'CLINICA_ADMIN') {
+            if (!targetDoutorId) {
+                throw new Error("doutorId é obrigatório.");
+            }
+        } else if (user.role !== 'SUPER_ADMIN') {
+            throw new Error("Acesso negado.");
         }
 
-        // Verificar se o doutor existe
-        const doutorExistente = await prisma.doutor.findUnique({
-            where: { id: doutorId },
-        });
-
-        if (!doutorExistente) {
-            throw new Error("Doutor não encontrado.");
+        if (user.role !== 'SUPER_ADMIN') {
+            await this.ensureEntitiesBelongToClinica({
+                doutorId: targetDoutorId,
+                pacienteId,
+                servicoId,
+                clinicaId: user.clinicaId,
+            });
+        } else {
+            await this.ensureEntitiesExist({
+                doutorId: targetDoutorId,
+                pacienteId,
+                servicoId,
+            });
         }
 
-        // Verificar se o serviço existe
-        const servicoExistente = await prisma.servico.findUnique({
-            where: { id: servicoId },
-        });
-
-        if (!servicoExistente) {
-            throw new Error("Serviço não encontrado.");
-        }
-
-        // Converter dataHora para Date se for string
         const dataHoraDate = typeof dataHora === 'string' ? new Date(dataHora) : dataHora;
 
         const novoAgendamento = await prisma.agendamento.create({
@@ -130,69 +153,61 @@ class AgendamentoService {
                 dataHora: dataHoraDate,
                 status,
                 pacienteId,
-                doutorId,
-                servicoId
+                doutorId: targetDoutorId,
+                servicoId,
             },
-            include: {
-                paciente: true,
-                doutor: {
-                    select: {
-                        id: true,
-                        nome: true,
-                        email: true
-                    }
-                },
-                servico: true
-            }
+            include: agendamentoInclude,
         });
 
-        return novoAgendamento;
+        const { doutor, ...rest } = novoAgendamento;
+        return {
+            ...rest,
+            doutor: {
+                id: doutor.id,
+                nome: doutor.nome,
+                email: doutor.email,
+            },
+        };
     }
 
-    async update(id: number, data: IUpdateAgendamento) {
+    async update(id: number, data: IUpdateAgendamento, user: AuthUser) {
         const agendamentoExistente = await prisma.agendamento.findUnique({
             where: { id },
+            include: agendamentoInclude,
         });
 
         if (!agendamentoExistente) {
             throw new Error("Agendamento não encontrado.");
         }
 
-        // Verificar se os IDs relacionados existem (se foram fornecidos)
-        if (data.pacienteId && data.pacienteId !== agendamentoExistente.pacienteId) {
-            const pacienteExistente = await prisma.paciente.findUnique({
-                where: { id: data.pacienteId },
-            });
-
-            if (!pacienteExistente) {
-                throw new Error("Paciente não encontrado.");
-            }
-        }
+        await this.ensureAccessToAgendamento(agendamentoExistente, user);
 
         if (data.doutorId && data.doutorId !== agendamentoExistente.doutorId) {
-            const doutorExistente = await prisma.doutor.findUnique({
-                where: { id: data.doutorId },
-            });
-
-            if (!doutorExistente) {
-                throw new Error("Doutor não encontrado.");
+            if (user.role === 'DOUTOR') {
+                throw new Error("Acesso negado.");
             }
         }
 
-        if (data.servicoId && data.servicoId !== agendamentoExistente.servicoId) {
-            const servicoExistente = await prisma.servico.findUnique({
-                where: { id: data.servicoId },
-            });
+        const targetDoutorId = data.doutorId ?? agendamentoExistente.doutorId;
+        const targetPacienteId = data.pacienteId ?? agendamentoExistente.pacienteId;
+        const targetServicoId = data.servicoId ?? agendamentoExistente.servicoId;
 
-            if (!servicoExistente) {
-                throw new Error("Serviço não encontrado.");
-            }
+        if (user.role !== 'SUPER_ADMIN') {
+            await this.ensureEntitiesBelongToClinica({
+                doutorId: targetDoutorId,
+                pacienteId: targetPacienteId,
+                servicoId: targetServicoId,
+                clinicaId: user.clinicaId,
+            });
+        } else {
+            await this.ensureEntitiesExist({
+                doutorId: targetDoutorId,
+                pacienteId: targetPacienteId,
+                servicoId: targetServicoId,
+            });
         }
 
-        // Preparar dados para atualização
         const updateData: any = { ...data };
-
-        // Converter dataHora para Date se for string
         if (data.dataHora) {
             updateData.dataHora = typeof data.dataHora === 'string' ? new Date(data.dataHora) : data.dataHora;
         }
@@ -200,36 +215,83 @@ class AgendamentoService {
         const agendamentoAtualizado = await prisma.agendamento.update({
             where: { id },
             data: updateData,
-            include: {
-                paciente: true,
-                doutor: {
-                    select: {
-                        id: true,
-                        nome: true,
-                        email: true
-                    }
-                },
-                servico: true
-            }
+            include: agendamentoInclude,
         });
 
-        return agendamentoAtualizado;
+        const { doutor, ...rest } = agendamentoAtualizado;
+        return {
+            ...rest,
+            doutor: {
+                id: doutor.id,
+                nome: doutor.nome,
+                email: doutor.email,
+            },
+        };
     }
 
-    async delete(id: number) {
+    async delete(id: number, user: AuthUser) {
         const agendamentoExistente = await prisma.agendamento.findUnique({
             where: { id },
+            include: agendamentoInclude,
         });
 
         if (!agendamentoExistente) {
             throw new Error("Agendamento não encontrado.");
         }
 
+        await this.ensureAccessToAgendamento(agendamentoExistente, user);
+
         await prisma.agendamento.delete({
             where: { id },
         });
 
         return { message: "Agendamento deletado com sucesso." };
+    }
+
+    private async ensureAccessToAgendamento(agendamento: any, user: AuthUser) {
+        if (user.role === 'DOUTOR') {
+            if (agendamento.doutorId !== user.id) {
+                throw new Error("Acesso negado.");
+            }
+        } else if (user.role === 'CLINICA_ADMIN') {
+            if (agendamento.doutor.clinicaId !== user.clinicaId) {
+                throw new Error("Acesso negado.");
+            }
+        }
+    }
+
+    private async ensureEntitiesBelongToClinica(params: { doutorId: number; pacienteId: number; servicoId: number; clinicaId: number; }) {
+        const { doutorId, pacienteId, servicoId, clinicaId } = params;
+
+        const [doutor, paciente, servico] = await Promise.all([
+            prisma.doutor.findFirst({ where: { id: doutorId, clinicaId } }),
+            prisma.paciente.findFirst({ where: { id: pacienteId, clinicaId } }),
+            prisma.servico.findFirst({ where: { id: servicoId, clinicaId } }),
+        ]);
+
+        if (!doutor || !paciente || !servico) {
+            throw new Error("Doutor, Paciente ou Serviço não encontrado ou não pertence à esta clínica.");
+        }
+    }
+
+    private async ensureEntitiesExist(params: { doutorId: number; pacienteId: number; servicoId: number; }) {
+        const { doutorId, pacienteId, servicoId } = params;
+
+        const [doutor, paciente, servico] = await Promise.all([
+            prisma.doutor.findUnique({ where: { id: doutorId } }),
+            prisma.paciente.findUnique({ where: { id: pacienteId } }),
+            prisma.servico.findUnique({ where: { id: servicoId } }),
+        ]);
+
+        if (!doutor) {
+            throw new Error("Doutor não encontrado.");
+        }
+        if (!paciente) {
+            throw new Error("Paciente não encontrado.");
+        }
+        if (!servico) {
+            throw new Error("Serviço não encontrado.");
+        }
     }
 }
 

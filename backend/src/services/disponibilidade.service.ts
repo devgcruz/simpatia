@@ -38,19 +38,27 @@ class DisponibilidadeService {
         return this.intervalsOverlap(slotStart, slotEnd, pauseStart, pauseEnd);
     }
 
-    async getDisponibilidade(doutorId: number, servicoId: number, data: string): Promise<string[]> {
+    async getDisponibilidade(
+        user: { id: number; role: string; clinicaId: number },
+        doutorId: number,
+        servicoId: number,
+        data: string
+    ): Promise<string[]> {
+        const servico = await prisma.servico.findFirst({
+            where: { id: servicoId, clinicaId: user.clinicaId },
+        });
+
+        const doutor = await prisma.doutor.findFirst({
+            where: { id: doutorId, clinicaId: user.clinicaId },
+        });
+
+        if (!servico || !doutor) {
+            throw new Error("Serviço ou Doutor não encontrado ou não pertence à esta clínica.");
+        }
+
         // Converter string de data para Date
         const dataObj = new Date(data);
         const diaSemana = dataObj.getDay(); // 0 = Domingo, 1 = Segunda, etc.
-
-        // Buscar duração do serviço
-        const servico = await prisma.servico.findUnique({
-            where: { id: servicoId },
-        });
-
-        if (!servico) {
-            throw new Error("Serviço não encontrado.");
-        }
 
         const duracaoMin = servico.duracaoMin;
 
@@ -140,6 +148,111 @@ class DisponibilidadeService {
             }
 
             // Avançar para o próximo slot (usar duração do serviço como intervalo)
+            currentMin += duracaoMin;
+        }
+
+        return slots;
+    }
+
+    async getDisponibilidadeParaIA(
+        clinicaId: number,
+        doutorId: number,
+        servicoId: number,
+        data: string
+    ): Promise<string[]> {
+        const servico = await prisma.servico.findFirst({
+            where: { id: servicoId, clinicaId },
+        });
+
+        const doutor = await prisma.doutor.findFirst({
+            where: { id: doutorId, clinicaId },
+        });
+
+        if (!servico || !doutor) {
+            throw new Error("Serviço ou Doutor não encontrado ou não pertence à esta clínica.");
+        }
+
+        const dataObj = new Date(data);
+        const diaSemana = dataObj.getDay();
+
+        const duracaoMin = servico.duracaoMin;
+
+        const horario = await prisma.horario.findFirst({
+            where: {
+                doutorId,
+                diaSemana,
+            },
+        });
+
+        if (!horario) {
+            return [];
+        }
+
+        const inicioMin = this.timeToMinutes(horario.inicio);
+        const fimMin = this.timeToMinutes(horario.fim);
+        const pausaInicioMin = horario.pausaInicio ? this.timeToMinutes(horario.pausaInicio) : null;
+        const pausaFimMin = horario.pausaFim ? this.timeToMinutes(horario.pausaFim) : null;
+
+        const inicioDia = new Date(dataObj);
+        inicioDia.setHours(0, 0, 0, 0);
+
+        const fimDia = new Date(dataObj);
+        fimDia.setHours(23, 59, 59, 999);
+
+        const agendamentos = await prisma.agendamento.findMany({
+            where: {
+                doutorId,
+                dataHora: {
+                    gte: inicioDia,
+                    lte: fimDia,
+                },
+                status: {
+                    not: 'cancelado',
+                },
+            },
+            include: {
+                servico: true,
+            },
+        });
+
+        const slots: string[] = [];
+        let currentMin = inicioMin;
+
+        while (currentMin + duracaoMin <= fimMin) {
+            const slotEndMin = currentMin + duracaoMin;
+            const slotTime = this.minutesToTime(currentMin);
+
+            if (this.isInPauseTime(currentMin, slotEndMin, pausaInicioMin, pausaFimMin)) {
+                if (pausaFimMin) {
+                    currentMin = pausaFimMin;
+                    continue;
+                }
+            }
+
+            let disponivel = true;
+            for (const agendamento of agendamentos) {
+                const agendamentoDataHora = new Date(agendamento.dataHora);
+                const agendamentoHora = agendamentoDataHora.getHours();
+                const agendamentoMin = agendamentoDataHora.getMinutes();
+                const agendamentoStartMin = agendamentoHora * 60 + agendamentoMin;
+                const agendamentoDuracao = agendamento.servico.duracaoMin;
+                const agendamentoEndMin = agendamentoStartMin + agendamentoDuracao;
+
+                if (this.intervalsOverlap(
+                    currentMin,
+                    slotEndMin,
+                    agendamentoStartMin,
+                    agendamentoEndMin
+                )) {
+                    disponivel = false;
+                    break;
+                }
+            }
+
+            if (disponivel) {
+                slots.push(slotTime);
+            }
+
             currentMin += duracaoMin;
         }
 

@@ -8,51 +8,94 @@ generator client {
   provider = "prisma-client-js"
 }
 
+enum Role {
+  DOUTOR
+  CLINICA_ADMIN
+  SUPER_ADMIN
+}
+
+model Clinica {
+  id       Int     @id @default(autoincrement())
+  nome     String
+  cnpj     String? @unique
+  endereco String?
+  telefone String?
+
+  // --- Campos para o Multi-Tenant (WhatsApp Opção 2) ---
+  // 1. Chaves da API do WhatsApp (que o admin da clínica vai preencher no painel)
+  whatsappToken   String?
+  whatsappPhoneId String?
+
+  // 2. Chaves do Webhook Dinâmico (que o NOSSO sistema gera)
+  webhookUrlId       String @unique @default(uuid())
+  webhookVerifyToken String @default(uuid())
+
+  // --- Relacionamentos (Quais dados pertencem a esta clínica) ---
+  doutores  Doutor[]
+  pacientes Paciente[]
+  servicos  Servico[]
+}
+
 model Doutor {
-  id         Int           @id @default(autoincrement())
-  nome       String
-  email      String        @unique
-  senha      String
-  horarios   Horario[]
+  id            Int     @id @default(autoincrement())
+  nome          String
+  email         String  @unique
+  senha         String
+  especialidade String?
+
+  role Role @default(DOUTOR)
+
+  clinicaId Int
+  clinica   Clinica @relation(fields: [clinicaId], references: [id], onDelete: Cascade)
+
+  horarios     Horario[]
   agendamentos Agendamento[]
 }
 
 // Horários que o doutor ATENDE (para a IA saber)
 model Horario {
-  id        Int      @id @default(autoincrement())
-  diaSemana Int      // 0 = Domingo, 1 = Segunda
-  inicio    String   // "08:00"
-  fim       String   // "18:00"
-  pausaInicio String?  // "12:00"
-  pausaFim    String?  // "14:00"
-  doutorId  Int
-  doutor    Doutor @relation(fields: [doutorId], references: [id])
+  id          Int     @id @default(autoincrement())
+  diaSemana   Int // 0 = Domingo, 1 = Segunda
+  inicio      String // "08:00"
+  fim         String // "18:00"
+  pausaInicio String? // "12:00"
+  pausaFim    String? // "14:00"
+  doutorId    Int
+  doutor      Doutor  @relation(fields: [doutorId], references: [id])
 }
 
 model Paciente {
   id           Int           @id @default(autoincrement())
   nome         String
-  telefone     String        @unique // Importante para o WhatsApp
+  telefone     String
   agendamentos Agendamento[]
+
+  clinicaId Int
+  clinica   Clinica @relation(fields: [clinicaId], references: [id], onDelete: Cascade)
+
+  @@unique([telefone, clinicaId])
 }
 
 model Servico {
-  id          Int           @id @default(autoincrement())
-  nome        String
-  descricao   String        @db.Text
-  duracaoMin  Int           // Duração em minutos
-  preco       Float
+  id           Int           @id @default(autoincrement())
+  nome         String
+  descricao    String        @db.Text
+  duracaoMin   Int
+  preco        Float
   agendamentos Agendamento[]
+
+  clinicaId Int
+  clinica   Clinica @relation(fields: [clinicaId], references: [id], onDelete: Cascade)
 }
 
 model Agendamento {
-  id         Int       @id @default(autoincrement())
+  id         Int      @id @default(autoincrement())
   dataHora   DateTime
   pacienteId Int
-  paciente   Paciente  @relation(fields: [pacienteId], references: [id])
-  doutorId Int
-  doutor   Doutor  @relation(fields: [doutorId], references: [id])
+  paciente   Paciente @relation(fields: [pacienteId], references: [id])
+  doutorId   Int
+  doutor     Doutor   @relation(fields: [doutorId], references: [id])
   servicoId  Int
-  servico    Servico   @relation(fields: [servicoId], references: [id])
-  status     String    // "confirmado", "pendente_ia", "cancelado"
+  servico    Servico  @relation(fields: [servicoId], references: [id])
+  status     String // "confirmado", "pendente_ia", "cancelado"
 }
