@@ -23,15 +23,10 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import PeopleIcon from '@mui/icons-material/People';
 import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
+import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import { useAuth } from '../hooks/useAuth';
 
 const drawerWidth = 240;
-
-const menuItems = [
-  { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
-  { text: 'Pacientes', icon: <PeopleIcon />, path: '/pacientes' },
-  { text: 'Serviços', icon: <MedicalServicesIcon />, path: '/servicos' },
-];
 
 const openedMixin = (theme: Theme): CSSObject => ({
   width: drawerWidth,
@@ -109,6 +104,17 @@ export const DashboardLayout: React.FC = () => {
   const [open, setOpen] = useState(true);
   const { user, logout } = useAuth();
 
+  const menuItems = [
+    { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'] },
+    { text: 'Pacientes', icon: <PeopleIcon />, path: '/pacientes', role: ['CLINICA_ADMIN', 'SUPER_ADMIN'] },
+    { text: 'Serviços', icon: <MedicalServicesIcon />, path: '/servicos', role: ['CLINICA_ADMIN', 'SUPER_ADMIN'] },
+    { text: 'Doutores', icon: <AccountCircleIcon />, path: '/doutores', role: ['CLINICA_ADMIN', 'SUPER_ADMIN'] },
+  ];
+
+  const permittedMenuItems = menuItems.filter(
+    (item) => user && item.role.includes(user.role),
+  );
+
   const handleDrawerOpen = () => {
     setOpen(true);
   };
@@ -156,7 +162,7 @@ export const DashboardLayout: React.FC = () => {
         </DrawerHeader>
         <Divider />
         <List>
-          {menuItems.map((item) => (
+          {permittedMenuItems.map((item) => (
             <ListItem key={item.text} disablePadding sx={{ display: 'block' }}>
               <ListItemButton
                 component={RouterLink}
