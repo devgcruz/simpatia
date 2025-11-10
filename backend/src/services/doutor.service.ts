@@ -55,7 +55,12 @@ class DoutorService {
                 throw new Error("CLINICA_ADMIN logado não possui clínica associada.");
             }
             return prisma.doutor.findMany({
-                where: { clinicaId: user.clinicaId },
+                where: {
+                    clinicaId: user.clinicaId,
+                    role: {
+                        not: 'SUPER_ADMIN',
+                    },
+                },
                 select: adminSelect,
             });
         }
