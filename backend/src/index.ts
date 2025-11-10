@@ -11,8 +11,9 @@ import doutorRoutes from './routes/doutor.routes';
 import horarioRoutes from './routes/horario.routes';
 import agendamentoRoutes from './routes/agendamento.routes';
 import disponibilidadeRoutes from './routes/disponibilidade.routes';
+import clinicaRoutes from './routes/clinica.routes';
 import webhookRoutes from './routes/webhook.routes';
-import { authMiddleware } from './middleware/auth.middleware';
+import { authMiddleware, isSuperAdmin } from './middleware/auth.middleware';
 
 const app = express();
 const PORT = process.env.PORT || 3333;
@@ -53,9 +54,11 @@ app.use('/api/webhook/whatsapp', webhookRoutes);
 // agora exigirão um token JWT válido.
 app.use(authMiddleware);
 
+// --- Rotas de SUPER ADMIN ---
+app.use('/api/clinicas', isSuperAdmin, clinicaRoutes);
+
 // --- Rotas Protegidas ---
 // (O middleware acima será executado antes de cada uma destas)
-// app.use('/api/clinicas', clinicaRoutes); // (Vamos criar em breve)
 app.use('/api/doutores', doutorRoutes);
 app.use('/api/pacientes', pacienteRoutes);
 app.use('/api/servicos', servicoRoutes);
