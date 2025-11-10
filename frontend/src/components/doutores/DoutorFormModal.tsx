@@ -13,17 +13,19 @@ import {
   FormControl,
 } from '@mui/material';
 import { IDoutor, DoutorRole } from '../../types/models';
+import { IUser } from '../../context/types';
 
 interface Props {
   open: boolean;
   onClose: () => void;
   onSubmit: (data: Partial<IDoutor> & { senha?: string }) => void;
   initialData?: IDoutor | null;
+  user: IUser | null;
 }
 
 const roles: DoutorRole[] = ['DOUTOR', 'CLINICA_ADMIN'];
 
-export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, initialData }) => {
+export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, initialData, user }) => {
   const [form, setForm] = useState({
     nome: '',
     email: '',
@@ -102,6 +104,19 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
             fullWidth
             margin="normal"
           />
+          {isEditing && user?.role === 'SUPER_ADMIN' && (
+            <TextField
+              name="clinica"
+              label="Clínica (Apenas Leitura)"
+              value={initialData?.clinica?.nome || 'N/A'}
+              fullWidth
+              margin="normal"
+              disabled
+              InputProps={{
+                readOnly: true,
+              }}
+            />
+          )}
           <FormControl fullWidth margin="normal">
             <InputLabel id="role-label">Permissão</InputLabel>
             <Select

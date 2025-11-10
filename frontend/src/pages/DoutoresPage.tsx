@@ -111,6 +111,15 @@ export const DoutoresPage: React.FC = () => {
     },
   ];
 
+  if (user?.role === 'SUPER_ADMIN') {
+    columns.splice(1, 0, {
+      field: 'clinica',
+      headerName: 'Clínica',
+      flex: 1,
+      valueGetter: (params) => params.row.clinica?.nome || 'N/A',
+    });
+  }
+
   if (loading) {
     return <CircularProgress />;
   }
@@ -153,6 +162,7 @@ export const DoutoresPage: React.FC = () => {
         onClose={handleCloseModal}
         onSubmit={handleSubmitForm}
         initialData={editingDoutor}
+        user={user}
       />
 
       <ConfirmationModal
