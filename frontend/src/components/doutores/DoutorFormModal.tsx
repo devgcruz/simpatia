@@ -33,12 +33,12 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
   });
 
   const isEditing = !!initialData;
-  const baseRoles: DoutorRole[] = ['DOUTOR', 'CLINICA_ADMIN'];
-  const roleOptions: DoutorRole[] = [...baseRoles];
-
-  if (user?.role === 'SUPER_ADMIN' && !roleOptions.includes('SUPER_ADMIN')) {
-    roleOptions.push('SUPER_ADMIN');
+  let roles: DoutorRole[] = ['DOUTOR', 'CLINICA_ADMIN'];
+  if (user?.role === 'SUPER_ADMIN') {
+    roles = ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'];
   }
+
+  const roleOptions: DoutorRole[] = [...roles];
   if (initialData?.role && !roleOptions.includes(initialData.role)) {
     roleOptions.push(initialData.role);
   }
@@ -67,9 +67,8 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
     }
   }, [initialData, open]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | { name?: string; value: unknown }>) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name as string]: value }));
+  const handleChange = (field: string, value: unknown) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -88,29 +87,26 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
       <Box component="form" onSubmit={handleSubmit}>
         <DialogContent>
           <TextField
-            name="nome"
             label="Nome Completo"
             value={form.nome}
-            onChange={handleChange}
+            onChange={(e) => handleChange('nome', e.target.value)}
             fullWidth
             required
             margin="normal"
           />
           <TextField
-            name="email"
             label="Email"
             type="email"
             value={form.email}
-            onChange={handleChange}
+            onChange={(e) => handleChange('email', e.target.value)}
             fullWidth
             required
             margin="normal"
           />
           <TextField
-            name="especialidade"
             label="Especialidade"
             value={form.especialidade}
-            onChange={handleChange}
+            onChange={(e) => handleChange('especialidade', e.target.value)}
             fullWidth
             margin="normal"
           />
@@ -130,11 +126,10 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
           <FormControl fullWidth margin="normal">
             <InputLabel id="role-label">Permissão</InputLabel>
             <Select
-              name="role"
               labelId="role-label"
               value={form.role}
               label="Permissão"
-              onChange={handleChange}
+              onChange={(event) => handleChange('role', event.target.value)}
             >
               {roleOptions.map((role) => (
                 <MenuItem key={role} value={role}>
@@ -144,11 +139,10 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
             </Select>
           </FormControl>
           <TextField
-            name="senha"
             label={isEditing ? 'Nova Senha (deixe em branco para manter a atual)' : 'Senha'}
             type="password"
             value={form.senha}
-            onChange={handleChange}
+            onChange={(e) => handleChange('senha', e.target.value)}
             fullWidth
             margin="normal"
             required={!isEditing}
