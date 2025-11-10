@@ -36,3 +36,10 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction) 
   }
 };
 
+export const isSuperAdmin = (req: Request, res: Response, next: NextFunction) => {
+  if (req.user?.role !== 'SUPER_ADMIN') {
+    return res.status(403).json({ message: 'Acesso negado. Apenas Super Admins podem executar esta ação.' });
+  }
+
+  next();
+};
