@@ -8,12 +8,14 @@ import { DashboardPage } from './pages/DashboardPage';
 import { ServicosPage } from './pages/ServicosPage';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
+import { Toaster } from 'sonner';
 
 const theme = createTheme();
 
 function App() {
   return (
     <ThemeProvider theme={theme}>
+      <Toaster position="top-center" duration={1000} richColors />
       <CssBaseline />
       <BrowserRouter>
         <Routes>
