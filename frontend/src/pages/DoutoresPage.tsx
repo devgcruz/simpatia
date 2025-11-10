@@ -116,7 +116,7 @@ export const DoutoresPage: React.FC = () => {
       field: 'clinica',
       headerName: 'Clínica',
       flex: 1,
-      valueGetter: (params) => params.row.clinica?.nome || 'N/A',
+      valueGetter: (params) => params.row?.clinica?.nome || 'N/A',
     });
   }
 
