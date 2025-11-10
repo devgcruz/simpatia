@@ -23,3 +23,12 @@ export interface IDoutor {
   especialidade?: string;
   role: DoutorRole;
 }
+
+export interface IAgendamento {
+  id: number;
+  dataHora: string;
+  status: string;
+  paciente: IPaciente;
+  doutor: IDoutor;
+  servico: IServico;
+}
