@@ -39,25 +39,17 @@ class DoutorController {
         try {
             const user = req.user!;
 
-            if (user.role !== 'CLINICA_ADMIN' && user.role !== 'SUPER_ADMIN') {
-                return res.status(403).json({ message: 'Acesso negado. Permissão insuficiente.' });
-            }
-
-            const { nome, email, senha, especialidade, role: novoRole } = req.body;
-
-            const novoDoutor = await doutorService.create({
-                nome,
-                email,
-                senha,
-                especialidade,
-                role: novoRole,
-            }, user);
+            const novoDoutor = await doutorService.create(req.body, user);
 
             return res.status(201).json(novoDoutor);
 
         } catch (error: any) {
             if (error.message.includes("email")) {
                 return res.status(409).json({ message: error.message });
+            }
+
+            if (error.message.includes("Acesso negado")) {
+                return res.status(403).json({ message: error.message });
             }
 
             return res.status(400).json({ message: error.message });

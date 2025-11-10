@@ -7,6 +7,7 @@ export interface DoutorCreateInput {
   senha: string;
   especialidade?: string;
   role: DoutorRole;
+  clinicaId?: number;
 }
 
 export interface DoutorUpdateInput {

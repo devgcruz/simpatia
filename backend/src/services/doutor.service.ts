@@ -8,6 +8,7 @@ interface ICreateDoutor {
     senha: string;
     especialidade?: string;
     role?: string;
+    clinicaId?: number;
 }
 
 interface IUpdateDoutor {
@@ -20,33 +21,33 @@ interface IUpdateDoutor {
 
 class DoutorService {
 
-    async getAll(user: { id: number, role: string, clinicaId: number | null }) {
-        const adminSelect = {
-            id: true,
-            nome: true,
-            email: true,
-            especialidade: true,
-            role: true,
-            clinicaId: true,
-        };
+    private adminSelect = {
+        id: true,
+        nome: true,
+        email: true,
+        especialidade: true,
+        role: true,
+        clinicaId: true,
+    };
 
-        const superAdminSelect = {
-            id: true,
-            nome: true,
-            email: true,
-            especialidade: true,
-            role: true,
-            clinicaId: true,
-            clinica: {
-                select: {
-                    nome: true,
-                },
+    private superAdminSelect = {
+        id: true,
+        nome: true,
+        email: true,
+        especialidade: true,
+        role: true,
+        clinicaId: true,
+        clinica: {
+            select: {
+                nome: true,
             },
-        };
+        },
+    };
 
+    async getAll(user: { id: number, role: string, clinicaId: number | null }) {
         if (user.role === 'SUPER_ADMIN') {
             return prisma.doutor.findMany({
-                select: superAdminSelect,
+                select: this.superAdminSelect,
             });
         }
 
@@ -61,7 +62,7 @@ class DoutorService {
                         not: 'SUPER_ADMIN',
                     },
                 },
-                select: adminSelect,
+                select: this.adminSelect,
             });
         }
 
@@ -69,31 +70,10 @@ class DoutorService {
     }
 
     async getById(id: number, user: { id: number, role: string, clinicaId: number | null }) {
-        const selectComClinica = {
-            id: true,
-            nome: true,
-            email: true,
-            especialidade: true,
-            role: true,
-            clinicaId: true,
-            clinica: {
-                select: { nome: true },
-            },
-        };
-
-        const selectSimples = {
-            id: true,
-            nome: true,
-            email: true,
-            especialidade: true,
-            role: true,
-            clinicaId: true,
-        };
-
         if (user.role === 'SUPER_ADMIN') {
             return prisma.doutor.findUnique({
                 where: { id },
-                select: selectComClinica,
+                select: this.superAdminSelect,
             });
         }
 
@@ -103,7 +83,7 @@ class DoutorService {
             }
             return prisma.doutor.findFirst({
                 where: { id, clinicaId: user.clinicaId },
-                select: selectSimples,
+                select: this.adminSelect,
             });
         }
 
@@ -117,7 +97,6 @@ class DoutorService {
             throw new Error("Nome, email e senha são obrigatórios.");
         }
 
-        // Verificar se o email já existe
         const emailExistente = await prisma.doutor.findUnique({
             where: { email },
         });
@@ -126,12 +105,20 @@ class DoutorService {
             throw new Error("Esse email já está cadastrado.");
         }
 
-        let targetClinicaId: number | null = null;
-        if (user.role === 'CLINICA_ADMIN') {
+        let targetClinicaId: number;
+
+        if (user.role === 'SUPER_ADMIN') {
+            if (!data.clinicaId) {
+                throw new Error("Super Admin deve especificar um clinicaId para o novo doutor.");
+            }
+            targetClinicaId = data.clinicaId;
+        } else if (user.role === 'CLINICA_ADMIN') {
             if (!user.clinicaId) {
                 throw new Error("CLINICA_ADMIN logado não possui clínica associada.");
             }
             targetClinicaId = user.clinicaId;
+        } else {
+            throw new Error("Acesso negado. Permissão insuficiente.");
         }
 
         const senhaHash = await bcrypt.hash(senha, 10);
@@ -145,27 +132,14 @@ class DoutorService {
                 role: role as any,
                 clinicaId: targetClinicaId,
             },
-            select: {
-                id: true,
-                nome: true,
-                email: true,
-                especialidade: true,
-                role: true,
-                clinicaId: true,
-            },
+            select: user.role === 'SUPER_ADMIN' ? this.superAdminSelect : this.adminSelect,
         });
 
         return novoDoutor;
     }
 
     async update(id: number, data: any, user: { id: number, role: string, clinicaId: number | null }) {
-        const selectFields = {
-            id: true,
-            nome: true,
-            email: true,
-            especialidade: true,
-            role: true,
-        };
+        const selectFields = user.role === 'SUPER_ADMIN' ? this.superAdminSelect : this.adminSelect;
 
         let doutorExistente = null;
 

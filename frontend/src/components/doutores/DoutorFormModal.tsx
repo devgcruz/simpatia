@@ -11,9 +11,11 @@ import {
   MenuItem,
   InputLabel,
   FormControl,
+  FormHelperText,
 } from '@mui/material';
-import { IDoutor, DoutorRole } from '../../types/models';
+import { IDoutor, DoutorRole, IClinica } from '../../types/models';
 import { IUser } from '../../context/types';
+import { getClinicas } from '../../services/clinica.service';
 
 interface Props {
   open: boolean;
@@ -30,9 +32,11 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
     senha: '',
     especialidade: '',
     role: 'DOUTOR' as DoutorRole,
+    clinicaId: '',
   });
 
   const isEditing = !!initialData;
+  const [clinicas, setClinicas] = useState<IClinica[]>([]);
   let roles: DoutorRole[] = ['DOUTOR', 'CLINICA_ADMIN'];
   if (user?.role === 'SUPER_ADMIN') {
     roles = ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'];
@@ -48,13 +52,14 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
 
   useEffect(() => {
     if (initialData) {
-      const { nome, email, especialidade = '', role } = initialData;
+      const { nome, email, especialidade = '', role, clinicaId } = initialData;
       setForm({
         nome,
         email,
         senha: '',
         especialidade,
         role,
+        clinicaId: clinicaId != null ? String(clinicaId) : '',
       });
     } else {
       setForm({
@@ -63,9 +68,24 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
         senha: '',
         especialidade: '',
         role: 'DOUTOR',
+        clinicaId: '',
       });
     }
   }, [initialData, open]);
+
+  useEffect(() => {
+    if (open && !isEditing && user?.role === 'SUPER_ADMIN') {
+      const fetchClinicasParaSelect = async () => {
+        try {
+          const data = await getClinicas();
+          setClinicas(data);
+        } catch (error) {
+          console.error("Erro ao buscar clínicas para o select:", error);
+        }
+      };
+      fetchClinicasParaSelect();
+    }
+  }, [open, isEditing, user]);
 
   const handleChange = (field: string, value: unknown) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -73,11 +93,16 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isEditing && form.senha === '') {
-      const { senha, ...dataToSend } = form;
+    const formData = {
+      ...form,
+      clinicaId: form.clinicaId ? Number(form.clinicaId) : undefined,
+    };
+
+    if (isEditing && formData.senha === '') {
+      const { senha, ...dataToSend } = formData;
       onSubmit(dataToSend);
     } else {
-      onSubmit(form);
+      onSubmit(formData);
     }
   };
 
@@ -110,6 +135,27 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
             fullWidth
             margin="normal"
           />
+          {!isEditing && user?.role === 'SUPER_ADMIN' && (
+            <FormControl fullWidth margin="normal" required>
+              <InputLabel id="clinica-select-label">Clínica</InputLabel>
+              <Select
+                labelId="clinica-select-label"
+                value={form.clinicaId}
+                label="Clínica"
+                onChange={(event) => handleChange('clinicaId', event.target.value)}
+              >
+                <MenuItem value="" disabled>
+                  <em>Selecione a clínica...</em>
+                </MenuItem>
+                {clinicas.map((clinica) => (
+                  <MenuItem key={clinica.id} value={clinica.id}>
+                    {clinica.nome}
+                  </MenuItem>
+                ))}
+              </Select>
+              <FormHelperText>O Doutor será associado a esta clínica.</FormHelperText>
+            </FormControl>
+          )}
           {isEditing && user?.role === 'SUPER_ADMIN' && (
             <TextField
               name="clinica"
