@@ -23,8 +23,6 @@ interface Props {
   user: IUser | null;
 }
 
-const roles: DoutorRole[] = ['DOUTOR', 'CLINICA_ADMIN'];
-
 export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, initialData, user }) => {
   const [form, setForm] = useState({
     nome: '',
@@ -35,6 +33,18 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
   });
 
   const isEditing = !!initialData;
+  const baseRoles: DoutorRole[] = ['DOUTOR', 'CLINICA_ADMIN'];
+  const roleOptions: DoutorRole[] = [...baseRoles];
+
+  if (user?.role === 'SUPER_ADMIN' && !roleOptions.includes('SUPER_ADMIN')) {
+    roleOptions.push('SUPER_ADMIN');
+  }
+  if (initialData?.role && !roleOptions.includes(initialData.role)) {
+    roleOptions.push(initialData.role);
+  }
+  if (!roleOptions.includes(form.role)) {
+    roleOptions.push(form.role);
+  }
 
   useEffect(() => {
     if (initialData) {
@@ -126,7 +136,7 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
               label="Permissão"
               onChange={handleChange}
             >
-              {roles.map((role) => (
+              {roleOptions.map((role) => (
                 <MenuItem key={role} value={role}>
                   {role}
                 </MenuItem>

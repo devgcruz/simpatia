@@ -116,9 +116,8 @@ export const DoutoresPage: React.FC = () => {
       field: 'clinica',
       headerName: 'Clínica',
       flex: 1,
-      valueGetter: (params: GridValueGetterParams<IDoutor>) => {
-        return params.row?.clinica?.nome || 'N/A';
-      },
+      valueGetter: (params: GridValueGetterParams<IDoutor>) =>
+        params?.row?.clinica?.nome ?? 'N/A',
     });
   }
 

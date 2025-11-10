@@ -29,6 +29,7 @@ async function createAdmin() {
         nome,
         email,
         senha: senhaHash,
+        role: 'SUPER_ADMIN',
       },
     });
 

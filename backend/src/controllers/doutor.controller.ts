@@ -37,9 +37,9 @@ class DoutorController {
 
     async handleCreate(req: Request, res: Response) {
         try {
-            const { role, clinicaId } = req.user!;
+            const user = req.user!;
 
-            if (role !== 'CLINICA_ADMIN' && role !== 'SUPER_ADMIN') {
+            if (user.role !== 'CLINICA_ADMIN' && user.role !== 'SUPER_ADMIN') {
                 return res.status(403).json({ message: 'Acesso negado. Permissão insuficiente.' });
             }
 
@@ -51,7 +51,7 @@ class DoutorController {
                 senha,
                 especialidade,
                 role: novoRole,
-            }, clinicaId);
+            }, user);
 
             return res.status(201).json(novoDoutor);
 

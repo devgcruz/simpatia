@@ -45,8 +45,8 @@ model Doutor {
 
   role Role @default(DOUTOR)
 
-  clinicaId Int
-  clinica   Clinica @relation(fields: [clinicaId], references: [id], onDelete: Cascade)
+  clinicaId Int?
+  clinica   Clinica? @relation(fields: [clinicaId], references: [id], onDelete: Cascade)
 
   horarios     Horario[]
   agendamentos Agendamento[]
@@ -70,8 +70,8 @@ model Paciente {
   telefone     String
   agendamentos Agendamento[]
 
-  clinicaId Int
-  clinica   Clinica @relation(fields: [clinicaId], references: [id], onDelete: Cascade)
+  clinicaId Int?
+  clinica   Clinica? @relation(fields: [clinicaId], references: [id], onDelete: Cascade)
 
   @@unique([telefone, clinicaId])
 }

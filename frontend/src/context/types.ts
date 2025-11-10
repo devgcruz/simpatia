@@ -5,7 +5,7 @@ export interface IUser {
   id: number;
   email: string;
   role: 'SUPER_ADMIN' | 'CLINICA_ADMIN' | 'DOUTOR';
-  clinicaId: number;
+  clinicaId: number | null;
 }
 
 // O que o nosso contexto de autenticação vai fornecer

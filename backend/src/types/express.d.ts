@@ -13,7 +13,7 @@ declare namespace Express {
     user?: {
       id: number;
       role: string; // Estamos usando string aqui para simplificar
-      clinicaId: number;
+      clinicaId: number | null;
     };
   }
 }
