@@ -6,6 +6,7 @@ import { PublicRoute } from './components/common/PublicRoute';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ServicosPage } from './pages/ServicosPage';
+import { PacientesPage } from './pages/PacientesPage';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
 import { Toaster } from 'sonner';
@@ -29,6 +30,7 @@ function App() {
             <Route element={<DashboardLayout />}>
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/servicos" element={<ServicosPage />} />
+              <Route path="/pacientes" element={<PacientesPage />} />
             </Route>
           </Route>
 

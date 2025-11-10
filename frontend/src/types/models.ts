@@ -6,3 +6,10 @@ export interface IServico {
   preco: number;
   clinicaId: number;
 }
+
+export interface IPaciente {
+  id: number;
+  nome: string;
+  telefone: string;
+  clinicaId: number;
+}
