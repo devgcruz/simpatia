@@ -5,7 +5,6 @@ import {
   Button,
   Paper,
   CircularProgress,
-  Alert,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -20,11 +19,11 @@ import { IServico } from '../types/models';
 import { getServicos, createServico, updateServico, deleteServico } from '../services/servico.service';
 import { ServicoFormModal } from '../components/servicos/ServicoFormModal';
 import { ConfirmationModal } from '../components/common/ConfirmationModal';
+import { toast } from 'sonner';
 
 export const ServicosPage: React.FC = () => {
   const [servicos, setServicos] = useState<IServico[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingServico, setEditingServico] = useState<IServico | null>(null);
@@ -33,7 +32,6 @@ export const ServicosPage: React.FC = () => {
   const fetchServicos = async () => {
     try {
       setLoading(true);
-      setError(null);
       const data = await getServicos();
       console.log('[ServicosPage] Dados brutos recebidos da API:', data);
       const normalized = data.map((servico) => ({
@@ -46,7 +44,7 @@ export const ServicosPage: React.FC = () => {
       console.log('[ServicosPage] Dados normalizados para a grid:', normalized);
       setServicos(normalized);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erro ao buscar serviços');
+      toast.error(err.response?.data?.message || 'Erro ao buscar serviços');
     } finally {
       setLoading(false);
     }
@@ -75,8 +73,9 @@ export const ServicosPage: React.FC = () => {
       }
       await fetchServicos();
       handleCloseModal();
+      toast.success(editingServico ? 'Serviço atualizado com sucesso!' : 'Serviço criado com sucesso!');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erro ao salvar serviço');
+      toast.error(err.response?.data?.message || 'Erro ao salvar serviço');
     }
   };
 
@@ -91,8 +90,9 @@ export const ServicosPage: React.FC = () => {
       await deleteServico(itemToDeleteId);
       await fetchServicos();
       setItemToDeleteId(null);
+      toast.success('Serviço excluído com sucesso!');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erro ao apagar serviço');
+      toast.error(err.response?.data?.message || 'Erro ao apagar serviço');
       setItemToDeleteId(null);
     }
   };
@@ -165,12 +165,6 @@ export const ServicosPage: React.FC = () => {
           Novo Serviço
         </Button>
       </Box>
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
 
       <Paper
         sx={{
