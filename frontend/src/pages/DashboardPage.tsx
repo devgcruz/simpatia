@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Calendar, momentLocalizer } from 'react-big-calendar';
 import moment from 'moment';
-import 'moment/locale/pt-br';
+import 'moment/dist/locale/pt-br';
 import { Box, Typography, CircularProgress } from '@mui/material';
 import { toast } from 'sonner';
 import { getAgendamentos } from '../services/agendamento.service';
@@ -79,6 +79,7 @@ export const DashboardPage: React.FC = () => {
           events={eventos}
           startAccessor="start"
           endAccessor="end"
+          culture="pt-br"
           style={{ minHeight: 600 }}
           messages={messages}
           defaultView="week"
