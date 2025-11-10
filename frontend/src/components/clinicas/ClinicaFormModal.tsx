@@ -1,14 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Button,
-  Box,
-  Typography,
-  Divider,
+  Dialog, DialogTitle, DialogContent, DialogActions,
+  TextField, Button, Box, Typography, Divider
 } from '@mui/material';
 import { IClinica } from '../../types/models';
 
@@ -19,16 +12,27 @@ interface Props {
   initialData?: IClinica | null;
 }
 
+const initialStateCriacao = {
+  nome: '',
+  cnpj: '',
+  endereco: '',
+  telefone: '',
+  adminNome: '',
+  adminEmail: '',
+  adminSenha: '',
+};
+
+const initialStateEdicao = {
+  nome: '',
+  cnpj: '',
+  endereco: '',
+  telefone: '',
+  whatsappToken: '',
+  whatsappPhoneId: '',
+};
+
 export const ClinicaFormModal: React.FC<Props> = ({ open, onClose, onSubmit, initialData }) => {
-  const [form, setForm] = useState<any>({
-    nome: '',
-    cnpj: '',
-    endereco: '',
-    telefone: '',
-    adminNome: '',
-    adminEmail: '',
-    adminSenha: '',
-  });
+  const [form, setForm] = useState<any>(initialStateCriacao);
   const isEditing = !!initialData;
 
   useEffect(() => {
@@ -38,23 +42,16 @@ export const ClinicaFormModal: React.FC<Props> = ({ open, onClose, onSubmit, ini
         cnpj: initialData.cnpj || '',
         endereco: initialData.endereco || '',
         telefone: initialData.telefone || '',
+        whatsappToken: initialData.whatsappToken || '',
+        whatsappPhoneId: initialData.whatsappPhoneId || '',
       });
     } else {
-      setForm({
-        nome: '',
-        cnpj: '',
-        endereco: '',
-        telefone: '',
-        adminNome: '',
-        adminEmail: '',
-        adminSenha: '',
-      });
+      setForm(initialStateCriacao);
     }
   }, [initialData, open]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setForm((prev: any) => ({ ...prev, [name]: value }));
+  const handleChange = (e: React.ChangeEvent<any>) => {
+    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -73,7 +70,32 @@ export const ClinicaFormModal: React.FC<Props> = ({ open, onClose, onSubmit, ini
           <TextField name="endereco" label="Endereço" value={form.endereco} onChange={handleChange} fullWidth margin="normal" />
           <TextField name="telefone" label="Telefone" value={form.telefone} onChange={handleChange} fullWidth margin="normal" />
 
-          {!isEditing && (
+          {isEditing ? (
+            <>
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="h6">Integração WhatsApp</Typography>
+              <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+                (Estes dados são fornecidos pelo painel da Meta/Facebook da clínica)
+              </Typography>
+              <TextField
+                name="whatsappToken"
+                label="Token do WhatsApp"
+                value={form.whatsappToken}
+                onChange={handleChange}
+                fullWidth
+                margin="normal"
+                type="password"
+              />
+              <TextField
+                name="whatsappPhoneId"
+                label="Phone ID do WhatsApp"
+                value={form.whatsappPhoneId}
+                onChange={handleChange}
+                fullWidth
+                margin="normal"
+              />
+            </>
+          ) : (
             <>
               <Divider sx={{ my: 2 }} />
               <Typography variant="h6">Dados do Admin da Clínica</Typography>
@@ -85,9 +107,7 @@ export const ClinicaFormModal: React.FC<Props> = ({ open, onClose, onSubmit, ini
         </DialogContent>
         <DialogActions>
           <Button onClick={onClose}>Cancelar</Button>
-          <Button type="submit" variant="contained">
-            Salvar
-          </Button>
+          <Button type="submit" variant="contained">Salvar</Button>
         </DialogActions>
       </Box>
     </Dialog>

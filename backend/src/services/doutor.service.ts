@@ -19,37 +19,83 @@ interface IUpdateDoutor {
 
 class DoutorService {
 
-    async getAll(clinicaId: number) {
-        const doutores = await prisma.doutor.findMany({
-            where: { clinicaId },
-            select: {
-                id: true,
-                nome: true,
-                email: true,
-                especialidade: true,
-                role: true,
-            },
-        });
-        return doutores;
-    }
+    async getAll(user: { id: number, role: string, clinicaId: number }) {
+        const adminSelect = {
+            id: true,
+            nome: true,
+            email: true,
+            especialidade: true,
+            role: true,
+            clinicaId: true,
+        };
 
-    async getById(id: number, clinicaId: number) {
-        const doutor = await prisma.doutor.findFirst({
-            where: { id, clinicaId },
-            select: {
-                id: true,
-                nome: true,
-                email: true,
-                especialidade: true,
-                role: true,
+        const superAdminSelect = {
+            id: true,
+            nome: true,
+            email: true,
+            especialidade: true,
+            role: true,
+            clinicaId: true,
+            clinica: {
+                select: {
+                    nome: true,
+                },
             },
-        });
+        };
 
-        if (!doutor) {
-            throw new Error("Doutor não encontrado.");
+        if (user.role === 'SUPER_ADMIN') {
+            return prisma.doutor.findMany({
+                select: superAdminSelect,
+            });
         }
 
-        return doutor;
+        if (user.role === 'CLINICA_ADMIN') {
+            return prisma.doutor.findMany({
+                where: { clinicaId: user.clinicaId },
+                select: adminSelect,
+            });
+        }
+
+        return [];
+    }
+
+    async getById(id: number, user: { id: number, role: string, clinicaId: number }) {
+        const selectComClinica = {
+            id: true,
+            nome: true,
+            email: true,
+            especialidade: true,
+            role: true,
+            clinicaId: true,
+            clinica: {
+                select: { nome: true },
+            },
+        };
+
+        const selectSimples = {
+            id: true,
+            nome: true,
+            email: true,
+            especialidade: true,
+            role: true,
+            clinicaId: true,
+        };
+
+        if (user.role === 'SUPER_ADMIN') {
+            return prisma.doutor.findUnique({
+                where: { id },
+                select: selectComClinica,
+            });
+        }
+
+        if (user.role === 'CLINICA_ADMIN') {
+            return prisma.doutor.findFirst({
+                where: { id, clinicaId: user.clinicaId },
+                select: selectSimples,
+            });
+        }
+
+        return null;
     }
 
     async create(data: ICreateDoutor, clinicaId: number) {
@@ -92,66 +138,84 @@ class DoutorService {
         return novoDoutor;
     }
 
-    async update(id: number, data: IUpdateDoutor, clinicaId: number) {
-        const doutorExistente = await prisma.doutor.findFirst({
-            where: { id, clinicaId },
-        });
+    async update(id: number, data: any, user: { id: number, role: string, clinicaId: number }) {
+        const selectFields = {
+            id: true,
+            nome: true,
+            email: true,
+            especialidade: true,
+            role: true,
+        };
 
-        if (!doutorExistente) {
-            throw new Error("Doutor não encontrado ou não pertence à esta clínica.");
+        if (user.role === 'SUPER_ADMIN') {
+            await prisma.doutor.findUniqueOrThrow({ where: { id } });
+        } else if (user.role === 'CLINICA_ADMIN') {
+            const doutorExistente = await prisma.doutor.findFirst({
+                where: { id, clinicaId: user.clinicaId },
+            });
+
+            if (!doutorExistente) {
+                throw new Error("Doutor não encontrado ou não pertence à esta clínica.");
+            }
+
+            if (data.email && data.email !== doutorExistente.email) {
+                const emailExistente = await prisma.doutor.findUnique({
+                    where: { email: data.email },
+                });
+
+                if (emailExistente) {
+                    throw new Error("Esse email já está cadastrado.");
+                }
+            }
+        } else {
+            throw new Error("Acesso negado.");
         }
 
-        // Se um novo email foi fornecido, verificar se já existe
-        if (data.email && data.email !== doutorExistente.email) {
+        if (data.email) {
             const emailExistente = await prisma.doutor.findUnique({
                 where: { email: data.email },
             });
-
-            if (emailExistente) {
+            if (emailExistente && emailExistente.id !== id) {
                 throw new Error("Esse email já está cadastrado.");
             }
         }
 
-        // Se uma nova senha foi fornecida, fazer hash
-        const updateData: any = { ...data };
         if (data.senha) {
-            updateData.senha = await bcrypt.hash(data.senha, 10);
+            const salt = await bcrypt.genSalt(10);
+            data.senha = await bcrypt.hash(data.senha, salt);
+        } else {
+            delete data.senha;
         }
 
-        // Remover senha do objeto se não foi fornecida
-        if (!data.senha) {
-            delete updateData.senha;
-        }
-
-        const doutorAtualizado = await prisma.doutor.update({
+        return prisma.doutor.update({
             where: { id },
-            data: updateData,
-            select: {
-                id: true,
-                nome: true,
-                email: true,
-                especialidade: true,
-                role: true,
-            },
+            data,
+            select: selectFields,
         });
-
-        return doutorAtualizado;
     }
 
-    async delete(id: number, clinicaId: number) {
-        const doutorExistente = await prisma.doutor.findFirst({
-            where: { id, clinicaId },
-        });
+    async delete(id: number, user: { id: number, role: string, clinicaId: number }) {
+        if (user.role === 'SUPER_ADMIN') {
+            await prisma.doutor.findUniqueOrThrow({ where: { id } });
+        } else if (user.role === 'CLINICA_ADMIN') {
+            const doutorExistente = await prisma.doutor.findFirst({
+                where: { id, clinicaId: user.clinicaId },
+            });
 
-        if (!doutorExistente) {
-            throw new Error("Doutor não encontrado ou não pertence à esta clínica.");
+            if (!doutorExistente) {
+                throw new Error("Doutor não encontrado ou não pertence à esta clínica.");
+            }
+        } else {
+            throw new Error("Acesso negado.");
         }
 
         await prisma.doutor.delete({
             where: { id },
         });
 
-        return { message: "Doutor deletado com sucesso." };
+        return prisma.doutor.delete({
+            where: { id },
+        });
     }
 }
 

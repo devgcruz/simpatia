@@ -11,13 +11,8 @@ class DoutorController {
 
     async handleGetAll(req: Request, res: Response) {
         try {
-            const { role, clinicaId } = req.user!;
-
-            if (role !== 'CLINICA_ADMIN' && role !== 'SUPER_ADMIN') {
-                return res.status(403).json({ message: 'Acesso negado. Permissão insuficiente.' });
-            }
-
-            const doutores = await doutorService.getAll(clinicaId);
+            const user = req.user!;
+            const doutores = await doutorService.getAll(user);
             return res.status(200).json(doutores);
         } catch (error: any) {
             return res.status(500).json({ message: error.message });
@@ -26,21 +21,16 @@ class DoutorController {
 
     async handleGetById(req: Request, res: Response) {
         try {
+            const user = req.user!;
             const id = Number(req.params.id);
+            const doutor = await doutorService.getById(id, user);
 
-            const { role, clinicaId } = req.user!;
-
-            if (role !== 'CLINICA_ADMIN' && role !== 'SUPER_ADMIN') {
-                return res.status(403).json({ message: 'Acesso negado. Permissão insuficiente.' });
+            if (!doutor) {
+                return res.status(404).json({ message: "Doutor não encontrado." });
             }
 
-            const doutor = await doutorService.getById(id, clinicaId);
             return res.status(200).json(doutor);
         } catch (error: any) {
-            if (error.message === "Doutor não encontrado." || error.message === "Doutor não encontrado ou não pertence à esta clínica.") {
-                return res.status(404).json({ message: error.message });
-            }
-
             return res.status(500).json({ message: error.message });
         }
     }
@@ -79,18 +69,18 @@ class DoutorController {
             const id = Number(req.params.id);
             const data = req.body;
 
-            const { role, clinicaId } = req.user!;
+            const user = req.user!;
 
-            if (role !== 'CLINICA_ADMIN' && role !== 'SUPER_ADMIN') {
-                return res.status(403).json({ message: 'Acesso negado. Permissão insuficiente.' });
-            }
-
-            const doutorAtualizado = await doutorService.update(id, data, clinicaId);
+            const doutorAtualizado = await doutorService.update(id, data, user);
             return res.status(200).json(doutorAtualizado);
 
         } catch (error: any) {
             if (error.message === "Doutor não encontrado." || error.message === "Doutor não encontrado ou não pertence à esta clínica.") {
                 return res.status(404).json({ message: error.message });
+            }
+
+            if (error.message === "Acesso negado.") {
+                return res.status(403).json({ message: error.message });
             }
 
             if (error.message.includes("email")) {
@@ -105,18 +95,18 @@ class DoutorController {
         try {
             const id = Number(req.params.id);
 
-            const { role, clinicaId } = req.user!;
+            const user = req.user!;
 
-            if (role !== 'CLINICA_ADMIN' && role !== 'SUPER_ADMIN') {
-                return res.status(403).json({ message: 'Acesso negado. Permissão insuficiente.' });
-            }
-
-            await doutorService.delete(id, clinicaId);
+            await doutorService.delete(id, user);
             return res.status(204).send();
 
         } catch (error: any) {
             if (error.message === "Doutor não encontrado." || error.message === "Doutor não encontrado ou não pertence à esta clínica.") {
                 return res.status(404).json({ message: error.message });
+            }
+
+            if (error.message === "Acesso negado.") {
+                return res.status(403).json({ message: error.message });
             }
 
             return res.status(500).json({ message: error.message });
