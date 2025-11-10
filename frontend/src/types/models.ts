@@ -22,6 +22,10 @@ export interface IDoutor {
   email: string;
   especialidade?: string;
   role: DoutorRole;
+  clinicaId?: number;
+  clinica?: {
+    nome: string;
+  };
 }
 
 export interface IAgendamento {
