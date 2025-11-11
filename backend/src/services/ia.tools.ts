@@ -222,3 +222,36 @@ export function createListarMeusAgendamentosTool(clinicaId: number, telefonePaci
   });
 }
 
+/**
+ * Cria a ferramenta para o paciente cancelar um agendamento.
+ * @param clinicaId O ID da clínica específica.
+ * @param telefonePaciente O número do WhatsApp do paciente.
+ */
+export function createCancelarAgendamentoTool(clinicaId: number, telefonePaciente: string) {
+  return new DynamicStructuredTool({
+    name: 'cancelar_agendamento',
+    description:
+      'Útil para cancelar um agendamento existente. Esta ferramenta precisa do ID (número) do agendamento. Se o paciente não fornecer o ID, use a ferramenta "listar_meus_agendamentos" primeiro para que ele possa identificar qual agendamento deseja cancelar.',
+    schema: z.object({
+      agendamentoId: z.number().describe('O ID do agendamento a ser cancelado'),
+    }),
+    func: async ({ agendamentoId }) => {
+      try {
+        const paciente = await pacienteService.getByTelefone(telefonePaciente, clinicaId);
+
+        if (!paciente) {
+          return 'Não encontrei nenhum cadastro para o seu número de telefone.';
+        }
+
+        const cancelado = await agendamentoService.cancelarParaPaciente(agendamentoId, paciente.id, clinicaId);
+        const data = new Date(cancelado.dataHora).toLocaleString('pt-BR');
+
+        return `Agendamento (ID: ${agendamentoId}) do dia ${data} foi cancelado com sucesso.`;
+      } catch (error: any) {
+        console.error('Erro em CancelarAgendamentoTool:', error);
+        return `Erro ao cancelar: ${error.message}`;
+      }
+    },
+  });
+}
+

@@ -4,15 +4,14 @@ import whatsappService from './whatsapp.service';
 // import disponibilidadeService from './disponibilidade.service';
 // import pacienteService from './paciente.service'; // (Vamos usar em breve)
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import { ChatPromptTemplate, MessagesPlaceholder } from '@langchain/core/prompts';
-import { AIMessage, BaseMessage, HumanMessage } from '@langchain/core/messages';
-import { AgentExecutor, createToolCallingAgent } from 'langchain/agents';
+import { AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage } from '@langchain/core/messages';
 import {
   createListarServicosTool,
   createVerificarDisponibilidadeTool,
   createMarcarAgendamentoTool,
   createAtualizarNomePacienteTool,
   createListarMeusAgendamentosTool,
+  createCancelarAgendamentoTool,
 } from './ia.tools'; // Importar as factories que criámos
 import servicosService from './servicos.service';
 import doutorService from './doutor.service';
@@ -37,14 +36,23 @@ Contexto da Clínica:
 --- FIM CATÁLOGO DE SERVIÇOS ---
 
 Suas Tarefas:
-1.  **Saudar e Ajudar:** Seja sempre cordial.
-2.  **Usar Ferramentas:** Você DEVE usar as ferramentas fornecidas para responder a perguntas sobre serviços, verificar horários e marcar agendamentos.
-3.  **Encontrar IDs:** Antes de usar 'verificar_disponibilidade_horarios' ou 'marcar_agendamento_paciente', consulte os catálogos acima para encontrar o 'doutorId' e 'servicoId' correspondentes ao que o paciente pediu.
-4.  **Recolher Informação:** Se o paciente quiser marcar uma consulta mas não fornecer data, serviço ou doutor, você deve perguntar-lhe antes de usar as ferramentas.
-5.  **Seja Proativa:** Se o paciente perguntar "Quais serviços vocês têm?", use a ferramenta 'listar_servicos_clinica' em vez de recitar o catálogo (o catálogo acima é apenas para seu contexto interno).
-6.  **Não Agir sem Ferramenta:** Se o pedido for algo que você não pode fazer (ex: "dar diagnóstico médico"), informe educadamente que não pode realizar essa ação.
-7.  **Capturar Nome do Paciente:** O paciente pode ter um nome genérico no sistema (ex: "Paciente 1234"). Após marcar uma consulta com sucesso, pergunte o nome completo do paciente e use a ferramenta 'atualizar_nome_paciente' para salvar.
-8.  **Listar Agendamentos:** Se o paciente perguntar "quais são minhas consultas?" ou "quando é meu agendamento?", use a ferramenta 'listar_meus_agendamentos'.
+Saudar e Ajudar: Seja sempre cordial.
+
+Usar Ferramentas: Você DEVE usar as ferramentas fornecidas para responder a perguntas sobre serviços, verificar horários e marcar agendamentos.
+
+Encontrar IDs: Antes de usar 'verificar_disponibilidade_horarios' ou 'marcar_agendamento_paciente', consulte os catálogos acima para encontrar o 'doutorId' e 'servicoId' correspondentes ao que o paciente pediu.
+
+Recolher Informação: Se o paciente quiser marcar uma consulta mas não fornecer data, serviço ou doutor, você deve perguntar-lhe antes de usar as ferramentas.
+
+Seja Proativa (Serviços): Se o paciente perguntar "Quais serviços vocês têm?", use a ferramenta 'listar_servicos_clinica' em vez de recitar o catálogo (o catálogo acima é apenas para seu contexto interno).
+
+Não Agir sem Ferramenta: Se o pedido for algo que você não pode fazer (ex: "dar diagnóstico médico"), informe educadamente que não pode realizar essa ação.
+
+Capturar Nome do Paciente: O paciente pode ter um nome genérico no sistema (ex: "Paciente 1234"). Após marcar uma consulta com sucesso, pergunte o nome completo do paciente e use a ferramenta 'atualizar_nome_paciente' para salvar.
+
+Listar Agendamentos: Se o paciente perguntar "quais são minhas consultas?" ou "quando é meu agendamento?", use a ferramenta 'listar_meus_agendamentos'.
+
+Cancelar Agendamento: Se o paciente pedir para cancelar uma consulta, você DEVE primeiro usar a ferramenta 'listar_meus_agendamentos' para que o paciente informe o ID exato da consulta. Em seguida, use a ferramenta 'cancelar_agendamento' com esse ID.
 
 Instruções Importantes:
 - Responda sempre em Português do Brasil.
@@ -68,14 +76,6 @@ class IaService {
       // 2. Obter histórico da sessão
       const history = chatHistories.get(telefone) || [];
 
-      // 3. Criar o Prompt do Agente
-      const prompt = ChatPromptTemplate.fromMessages([
-        ['system', SYSTEM_PROMPT],
-        new MessagesPlaceholder('chat_history'),
-        ['human', '{input}'],
-        new MessagesPlaceholder('agent_scratchpad'),
-      ]);
-
       // 4. Inicializar o Modelo (Gemini)
       // Certifique-se que GOOGLE_API_KEY está no .env
       const apiKey = process.env.GOOGLE_API_KEY;
@@ -96,17 +96,8 @@ class IaService {
         createMarcarAgendamentoTool(clinicaId, telefone),
         createAtualizarNomePacienteTool(clinicaId, telefone),
         createListarMeusAgendamentosTool(clinicaId, telefone),
+        createCancelarAgendamentoTool(clinicaId, telefone),
       ];
-
-      // 6. Criar o Agente
-      const agent = await createToolCallingAgent({ llm, tools, prompt });
-
-      // 7. Criar o Executor do Agente (que lida com a lógica de chamar as ferramentas)
-      const agentExecutor = new AgentExecutor({
-        agent,
-        tools,
-        verbose: process.env.NODE_ENV === 'development', // Mostra logs detalhados em dev
-      });
 
       // 7.5. Carregar contexto da clínica (Doutores e Serviços)
       const [doutores, servicos] = await Promise.all([
@@ -124,29 +115,92 @@ class IaService {
           ? servicos.map((s) => `- ${s.nome} (ID: ${s.id}, Duração: ${s.duracaoMin} min)`).join('\n')
           : 'Nenhum serviço cadastrado.';
 
-      // 8. Invocar o Agente
-      const result = await agentExecutor.invoke({
-        input: texto,
-        chat_history: history,
-        // Passa as variáveis de contexto para o SYSTEM_PROMPT
-        clinicaId: clinicaId,
-        telefonePaciente: telefone,
-        listaDoutores: formatarDoutores,
-        listaServicos: formatarServicos,
-      });
+      const systemPromptFilled = SYSTEM_PROMPT.replaceAll('{clinicaId}', String(clinicaId))
+        .replaceAll('{telefonePaciente}', telefone)
+        .replaceAll('{listaDoutores}', formatarDoutores)
+        .replaceAll('{listaServicos}', formatarServicos);
 
-      // A resposta final da IA
-      const resposta = result.output;
+      const modelWithTools = llm.bindTools(tools);
+
+      const conversation: BaseMessage[] = [new SystemMessage(systemPromptFilled), ...history];
+      const newHistoryMessages: BaseMessage[] = [];
+
+      const humanMessage = new HumanMessage(texto);
+      conversation.push(humanMessage);
+      newHistoryMessages.push(humanMessage);
+
+      const maxIterations = 6;
+      let respostaFinal = 'Desculpe, não consegui processar sua solicitação.';
+      let finalAiMessage: AIMessage | null = null;
+
+      for (let iteration = 0; iteration < maxIterations; iteration++) {
+        const aiResponse = (await modelWithTools.invoke(conversation)) as AIMessage;
+        finalAiMessage = aiResponse;
+        conversation.push(aiResponse);
+        newHistoryMessages.push(aiResponse);
+
+        const toolCalls = aiResponse.tool_calls ?? [];
+
+        if (!toolCalls.length) {
+          const content = aiResponse.content;
+          if (typeof content === 'string') {
+            respostaFinal = content;
+          } else if (Array.isArray(content)) {
+            respostaFinal = content
+              .map((part) => (typeof part === 'string' ? part : (part as any).text || ''))
+              .join('\n')
+              .trim();
+          }
+          break;
+        }
+
+        for (const call of toolCalls) {
+          const tool = tools.find((t) => t.name === call.name);
+          const toolCallId = call.id ?? `${call.name}_${Date.now()}`;
+
+          if (!tool) {
+            const toolErrorMessage = `Ferramenta ${call.name} não disponível no momento.`;
+            const toolMessage = new ToolMessage({ content: toolErrorMessage, tool_call_id: toolCallId, status: 'error' });
+            conversation.push(toolMessage);
+            newHistoryMessages.push(toolMessage);
+            continue;
+          }
+
+          try {
+            const toolInput = (call.args as Record<string, unknown>) ?? {};
+            // DynamicStructuredTool espera input conforme schema
+            const result = await (tool as unknown as { invoke: (input: unknown) => Promise<unknown> }).invoke(toolInput);
+            const resultString =
+              typeof result === 'string' ? result : typeof result === 'object' ? JSON.stringify(result) : String(result);
+
+            const toolMessage = new ToolMessage({ content: resultString, tool_call_id: toolCallId });
+            conversation.push(toolMessage);
+            newHistoryMessages.push(toolMessage);
+          } catch (err: any) {
+            const errorMessage = err?.message ?? 'Erro desconhecido ao executar a ferramenta.';
+            const toolMessage = new ToolMessage({
+              content: `Erro ao executar a ferramenta ${call.name}: ${errorMessage}`,
+              tool_call_id: toolCallId,
+              status: 'error',
+            });
+            conversation.push(toolMessage);
+            newHistoryMessages.push(toolMessage);
+          }
+        }
+      }
+
+      if (!finalAiMessage) {
+        throw new Error('O modelo não retornou uma resposta.');
+      }
 
       // 9. Atualizar o histórico
-      history.push(new HumanMessage(texto));
-      history.push(new AIMessage(resposta));
+      history.push(...newHistoryMessages);
       chatHistories.set(telefone, history);
 
       // 10. Responder ao usuário via WhatsApp
       await whatsappService.enviarMensagem(
         telefone,
-        resposta,
+        respostaFinal,
         whatsappToken as string,
         whatsappPhoneId as string,
       );

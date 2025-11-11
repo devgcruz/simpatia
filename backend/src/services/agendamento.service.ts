@@ -259,6 +259,51 @@ class AgendamentoService {
         }));
     }
 
+    /**
+     * Cancela um agendamento a pedido do paciente (via IA).
+     * Verifica a posse do agendamento antes de cancelar.
+     */
+    async cancelarParaPaciente(agendamentoId: number, pacienteId: number, clinicaId: number) {
+        const paciente = await prisma.paciente.findFirst({
+            where: { id: pacienteId, clinicaId: clinicaId }
+        });
+
+        if (!paciente) {
+            throw new Error("Paciente não encontrado ou não pertence a esta clínica.");
+        }
+
+        const agendamento = await prisma.agendamento.findFirst({
+            where: {
+                id: agendamentoId,
+                pacienteId: pacienteId,
+            }
+        });
+
+        if (!agendamento) {
+            throw new Error("Agendamento não encontrado ou não pertence a este paciente.");
+        }
+
+        if (agendamento.status === 'cancelado' || agendamento.status === 'finalizado') {
+            throw new Error(`Este agendamento já está ${agendamento.status} e não pode ser cancelado.`);
+        }
+
+        const agendamentoCancelado = await prisma.agendamento.update({
+            where: { id: agendamentoId },
+            data: { status: 'cancelado' },
+            include: agendamentoInclude,
+        });
+
+        const { doutor, ...rest } = agendamentoCancelado;
+        return {
+            ...rest,
+            doutor: {
+                id: doutor.id,
+                nome: doutor.nome,
+                email: doutor.email,
+            },
+        };
+    }
+
     async update(id: number, data: IUpdateAgendamento, user: AuthUser) {
         const agendamentoExistente = await prisma.agendamento.findUnique({
             where: { id },
