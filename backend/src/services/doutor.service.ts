@@ -69,6 +69,21 @@ class DoutorService {
         return [];
     }
 
+    /**
+     * Retorna uma lista simplificada de doutores para a IA.
+     * Não requer autenticação, apenas o ID da clínica.
+     */
+    async getAllParaIA(clinicaId: number) {
+        return prisma.doutor.findMany({
+            where: { clinicaId: clinicaId },
+            select: {
+                id: true,
+                nome: true,
+                especialidade: true,
+            }
+        });
+    }
+
     async getById(id: number, user: { id: number, role: string, clinicaId: number | null }) {
         if (user.role === 'SUPER_ADMIN') {
             return prisma.doutor.findUnique({

@@ -12,6 +12,8 @@ import {
   createVerificarDisponibilidadeTool,
   createMarcarAgendamentoTool,
 } from './ia.tools'; // Importar as factories que criámos
+import servicosService from './servicos.service';
+import doutorService from './doutor.service';
 
 // Armazenamento de histórico em memória (simples para este exemplo)
 // Em produção, isto seria um Redis ou um banco de dados
@@ -24,12 +26,21 @@ Contexto da Clínica:
 - Você está a atender a clínica de ID: {clinicaId}
 - O paciente com quem está a falar tem o número de WhatsApp: {telefonePaciente}
 
+--- CATÁLOGO DE DOUTORES (Use para encontrar doutorId) ---
+{listaDoutores}
+--- FIM CATÁLOGO DE DOUTORES ---
+
+--- CATÁLOGO DE SERVIÇOS (Use para encontrar servicoId) ---
+{listaServicos}
+--- FIM CATÁLOGO DE SERVIÇOS ---
+
 Suas Tarefas:
 1.  **Saudar e Ajudar:** Seja sempre cordial.
 2.  **Usar Ferramentas:** Você DEVE usar as ferramentas fornecidas para responder a perguntas sobre serviços, verificar horários e marcar agendamentos.
-3.  **Recolher Informação:** Se o paciente quiser marcar uma consulta mas não fornecer data, serviço ou doutor, você deve perguntar-lhe *antes* de usar as ferramentas.
-4.  **Confirmar IDs:** O paciente não saberá os IDs (doutorId, servicoId). Se a intenção for marcar, primeiro use a ferramenta "listar_servicos_clinica" para que o paciente possa escolher. (NOTA: Se a IA precisar dos IDs para as outras ferramentas, ela deve pedi-los).
-5.  **Não Agir sem Ferramenta:** Se o pedido for algo que você não pode fazer (ex: "dar diagnóstico médico", "cancelar consulta"), informe educadamente que não pode realizar essa ação.
+3.  **Encontrar IDs:** Antes de usar 'verificar_disponibilidade_horarios' ou 'marcar_agendamento_paciente', consulte os catálogos acima para encontrar o 'doutorId' e 'servicoId' correspondentes ao que o paciente pediu.
+4.  **Recolher Informação:** Se o paciente quiser marcar uma consulta mas não fornecer data, serviço ou doutor, você deve perguntar-lhe antes de usar as ferramentas.
+5.  **Seja Proativa:** Se o paciente perguntar "Quais serviços vocês têm?", use a ferramenta 'listar_servicos_clinica' em vez de recitar o catálogo (o catálogo acima é apenas para seu contexto interno).
+6.  **Não Agir sem Ferramenta:** Se o pedido for algo que você não pode fazer (ex: "dar diagnóstico médico"), informe educadamente que não pode realizar essa ação.
 
 Instruções Importantes:
 - Responda sempre em Português do Brasil.
@@ -91,6 +102,22 @@ class IaService {
         verbose: process.env.NODE_ENV === 'development', // Mostra logs detalhados em dev
       });
 
+      // 7.5. Carregar contexto da clínica (Doutores e Serviços)
+      const [doutores, servicos] = await Promise.all([
+        doutorService.getAllParaIA(clinicaId), // O novo método
+        servicosService.getAll(clinicaId), // O serviço existente
+      ]);
+
+      const formatarDoutores =
+        doutores.length > 0
+          ? doutores.map((d) => `- ${d.nome} (ID: ${d.id}, Especialidade: ${d.especialidade || 'N/A'})`).join('\n')
+          : 'Nenhum doutor cadastrado.';
+
+      const formatarServicos =
+        servicos.length > 0
+          ? servicos.map((s) => `- ${s.nome} (ID: ${s.id}, Duração: ${s.duracaoMin} min)`).join('\n')
+          : 'Nenhum serviço cadastrado.';
+
       // 8. Invocar o Agente
       const result = await agentExecutor.invoke({
         input: texto,
@@ -98,6 +125,8 @@ class IaService {
         // Passa as variáveis de contexto para o SYSTEM_PROMPT
         clinicaId: clinicaId,
         telefonePaciente: telefone,
+        listaDoutores: formatarDoutores,
+        listaServicos: formatarServicos,
       });
 
       // A resposta final da IA
