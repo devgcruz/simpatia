@@ -145,7 +145,6 @@ export const DashboardPage: React.FC = () => {
       opacity: 0.8,
       color: 'white',
       border: '0px',
-      display: 'block',
     };
     return { style };
   };
