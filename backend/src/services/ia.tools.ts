@@ -149,3 +149,76 @@ export function createMarcarAgendamentoTool(clinicaId: number, telefonePaciente:
   });
 }
 
+/**
+ * Cria a ferramenta para atualizar o nome do paciente.
+ * @param clinicaId O ID da clínica específica.
+ * @param telefonePaciente O número do WhatsApp do paciente.
+ */
+export function createAtualizarNomePacienteTool(clinicaId: number, telefonePaciente: string) {
+  return new DynamicStructuredTool({
+    name: 'atualizar_nome_paciente',
+    description:
+      'Útil para atualizar o nome de um paciente no sistema. Use isto depois de perguntar o nome completo do paciente.',
+    schema: z.object({
+      nome: z.string().describe('O nome completo do paciente'),
+    }),
+    func: async ({ nome }) => {
+      try {
+        // Reutiliza a lógica para encontrar o paciente
+        const paciente = await getOrCreatePaciente(telefonePaciente, clinicaId);
+
+        // Chama o serviço de atualização
+        await pacienteService.update(paciente.id, { nome: nome }, clinicaId);
+
+        return `O nome do paciente foi atualizado para ${nome} com sucesso.`;
+      } catch (error: any) {
+        console.error('Erro em AtualizarNomePacienteTool:', error);
+        return `Erro ao atualizar o nome do paciente.`;
+      }
+    },
+  });
+}
+
+/**
+ * Cria a ferramenta para o paciente listar seus agendamentos futuros.
+ * @param clinicaId O ID da clínica específica.
+ * @param telefonePaciente O número do WhatsApp do paciente.
+ */
+export function createListarMeusAgendamentosTool(clinicaId: number, telefonePaciente: string) {
+  return new DynamicStructuredTool({
+    name: 'listar_meus_agendamentos',
+    description:
+      'Útil para quando o paciente perguntar sobre seus agendamentos futuros ou "minhas consultas". Retorna uma lista das próximas consultas marcadas para este paciente.',
+    schema: z.object({}),
+    func: async () => {
+      try {
+        // Encontra o paciente pelo telefone
+        const paciente = await pacienteService.getByTelefone(telefonePaciente, clinicaId);
+
+        if (!paciente) {
+          return 'Não encontrei nenhum cadastro para o seu número de telefone nesta clínica. Você já é nosso paciente?';
+        }
+
+        // Chama o novo método de serviço
+        const agendamentos = await agendamentoService.getFuturosByPacienteId(paciente.id);
+
+        if (agendamentos.length === 0) {
+          return `Você não possui nenhum agendamento futuro connosco, ${paciente.nome}.`;
+        }
+
+        const listaFormatada = agendamentos
+          .map((ag) => {
+            const data = new Date(ag.dataHora).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+            return `- ${ag.servico.nome} com ${ag.doutor.nome} no dia ${data} (Status: ${ag.status})`;
+          })
+          .join('\n');
+
+        return `Encontrei os seguintes agendamentos futuros para você, ${paciente.nome}:\n${listaFormatada}`;
+      } catch (error: any) {
+        console.error('Erro em ListarMeusAgendamentosTool:', error);
+        return `Erro ao consultar seus agendamentos.`;
+      }
+    },
+  });
+}
+

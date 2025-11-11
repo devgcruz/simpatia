@@ -225,6 +225,40 @@ class AgendamentoService {
         };
     }
 
+    /**
+     * Busca agendamentos futuros de um paciente específico.
+     */
+    async getFuturosByPacienteId(pacienteId: number) {
+        const agendamentos = await prisma.agendamento.findMany({
+            where: {
+                pacienteId: pacienteId,
+                dataHora: {
+                    gte: new Date(),
+                },
+                status: {
+                    notIn: ['cancelado', 'finalizado'],
+                },
+            },
+            include: agendamentoInclude,
+            orderBy: {
+                dataHora: 'asc',
+            },
+            take: 5,
+        });
+
+        return agendamentos.map(({ doutor, servico, ...rest }) => ({
+            ...rest,
+            doutor: {
+                id: doutor.id,
+                nome: doutor.nome,
+            },
+            servico: {
+                id: servico.id,
+                nome: servico.nome,
+            },
+        }));
+    }
+
     async update(id: number, data: IUpdateAgendamento, user: AuthUser) {
         const agendamentoExistente = await prisma.agendamento.findUnique({
             where: { id },

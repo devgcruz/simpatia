@@ -11,6 +11,8 @@ import {
   createListarServicosTool,
   createVerificarDisponibilidadeTool,
   createMarcarAgendamentoTool,
+  createAtualizarNomePacienteTool,
+  createListarMeusAgendamentosTool,
 } from './ia.tools'; // Importar as factories que criámos
 import servicosService from './servicos.service';
 import doutorService from './doutor.service';
@@ -41,6 +43,8 @@ Suas Tarefas:
 4.  **Recolher Informação:** Se o paciente quiser marcar uma consulta mas não fornecer data, serviço ou doutor, você deve perguntar-lhe antes de usar as ferramentas.
 5.  **Seja Proativa:** Se o paciente perguntar "Quais serviços vocês têm?", use a ferramenta 'listar_servicos_clinica' em vez de recitar o catálogo (o catálogo acima é apenas para seu contexto interno).
 6.  **Não Agir sem Ferramenta:** Se o pedido for algo que você não pode fazer (ex: "dar diagnóstico médico"), informe educadamente que não pode realizar essa ação.
+7.  **Capturar Nome do Paciente:** O paciente pode ter um nome genérico no sistema (ex: "Paciente 1234"). Após marcar uma consulta com sucesso, pergunte o nome completo do paciente e use a ferramenta 'atualizar_nome_paciente' para salvar.
+8.  **Listar Agendamentos:** Se o paciente perguntar "quais são minhas consultas?" ou "quando é meu agendamento?", use a ferramenta 'listar_meus_agendamentos'.
 
 Instruções Importantes:
 - Responda sempre em Português do Brasil.
@@ -90,6 +94,8 @@ class IaService {
         createListarServicosTool(clinicaId),
         createVerificarDisponibilidadeTool(clinicaId),
         createMarcarAgendamentoTool(clinicaId, telefone),
+        createAtualizarNomePacienteTool(clinicaId, telefone),
+        createListarMeusAgendamentosTool(clinicaId, telefone),
       ];
 
       // 6. Criar o Agente
