@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Box, Typography, Button, Paper, CircularProgress } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { DataGrid, GridColDef, GridToolbar, GridActionsCellItem, GridValueGetterParams } from '@mui/x-data-grid';
+import { DataGrid, GridColDef, GridToolbar, GridActionsCellItem } from '@mui/x-data-grid';
 import { ptBR } from '@mui/x-data-grid/locales';
 import { toast } from 'sonner';
 import { IDoutor } from '../types/models';
@@ -88,6 +88,7 @@ export const DoutoresPage: React.FC = () => {
     { field: 'email', headerName: 'Email', flex: 1 },
     { field: 'especialidade', headerName: 'Especialidade', width: 200 },
     { field: 'role', headerName: 'Permissão', width: 150 },
+    
     {
       field: 'actions',
       type: 'actions',
@@ -116,8 +117,13 @@ export const DoutoresPage: React.FC = () => {
       field: 'clinica',
       headerName: 'Clínica',
       flex: 1,
-      valueGetter: (params: GridValueGetterParams<IDoutor>) =>
-        params?.row?.clinica?.nome ?? 'N/A',
+      valueGetter: ({ row }) => {
+        const doutor = row as IDoutor | undefined;
+        if (!doutor) return 'N/A';
+        if (doutor.clinica?.nome) return doutor.clinica.nome;
+        if (doutor.clinicaId != null) return `Clínica #${doutor.clinicaId}`;
+        return 'N/A';
+      },
     });
   }
 

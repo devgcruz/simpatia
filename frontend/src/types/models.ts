@@ -25,7 +25,7 @@ export interface IDoutor {
   clinicaId?: number;
   clinica?: {
     nome: string;
-  };
+  }
 }
 
 export interface IAgendamento {
