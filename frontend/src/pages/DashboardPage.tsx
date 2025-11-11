@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Calendar, momentLocalizer } from 'react-big-calendar';
 import moment from 'moment';
-import 'moment/dist/locale/pt-br';
+import 'moment/locale/pt-br';
 import { Box, Typography, CircularProgress } from '@mui/material';
 import { toast } from 'sonner';
 
