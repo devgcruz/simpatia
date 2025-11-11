@@ -14,6 +14,18 @@ enum Role {
   SUPER_ADMIN
 }
 
+enum ChatStatus {
+  BOT
+  HANDOFF
+  CLOSED
+}
+
+enum SenderType {
+  IA
+  PACIENTE
+  DOUTOR
+}
+
 model Clinica {
   id       Int     @id @default(autoincrement())
   nome     String
@@ -70,6 +82,8 @@ model Paciente {
   telefone     String
   agendamentos Agendamento[]
   historicos   HistoricoPaciente[]
+  chatStatus   ChatStatus @default(BOT)
+  chatMessages ChatMessage[]
 
   clinicaId Int?
   clinica   Clinica? @relation(fields: [clinicaId], references: [id], onDelete: Cascade)
@@ -114,4 +128,15 @@ model HistoricoPaciente {
   agendamento Agendamento? @relation(fields: [agendamentoId], references: [id], onDelete: SetNull)
 
   @@index([pacienteId, realizadoEm])
+}
+
+model ChatMessage {
+  id         Int        @id @default(autoincrement())
+  content    String     @db.Text
+  senderType SenderType
+  createdAt  DateTime   @default(now())
+  pacienteId Int
+  paciente   Paciente   @relation(fields: [pacienteId], references: [id], onDelete: Cascade)
+
+  @@index([pacienteId, createdAt])
 }
