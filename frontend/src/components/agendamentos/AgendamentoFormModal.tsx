@@ -3,7 +3,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
- DialogActions,
+  DialogActions,
   TextField,
   Button,
   Box,
@@ -11,13 +11,12 @@ import {
   MenuItem,
   InputLabel,
   FormControl,
-  Typography,
   CircularProgress,
   Grid,
 } from '@mui/material';
 import { toast } from 'sonner';
 import { AgendamentoCreateInput } from '../../services/agendamento.service';
-import { IDoutor, IPaciente, IServico } from '../../types/models';
+import { IDoutor, IPaciente, IServico, IAgendamento } from '../../types/models';
 import { getDoutores } from '../../services/doutor.service';
 import { getPacientes } from '../../services/paciente.service';
 import { getServicos } from '../../services/servico.service';
@@ -29,6 +28,8 @@ interface Props {
   onClose: () => void;
   onSubmit: (data: AgendamentoCreateInput) => void;
   initialData?: { dataHora: Date } | null;
+  agendamento?: IAgendamento | null;
+  onRequestDelete?: () => void;
 }
 
 const initialState = {
@@ -39,9 +40,18 @@ const initialState = {
   servicoId: '',
 };
 
-export const AgendamentoFormModal: React.FC<Props> = ({ open, onClose, onSubmit, initialData }) => {
+type FormState = typeof initialState;
+
+export const AgendamentoFormModal: React.FC<Props> = ({
+  open,
+  onClose,
+  onSubmit,
+  initialData,
+  agendamento,
+  onRequestDelete,
+}) => {
   const { user } = useAuth();
-  const [form, setForm] = useState<any>(initialState);
+  const [form, setForm] = useState<FormState>(initialState);
   const [loading, setLoading] = useState(false);
 
   const [doutores, setDoutores] = useState<IDoutor[]>([]);
@@ -49,43 +59,61 @@ export const AgendamentoFormModal: React.FC<Props> = ({ open, onClose, onSubmit,
   const [servicos, setServicos] = useState<IServico[]>([]);
 
   useEffect(() => {
-    if (open) {
-      const fetchData = async () => {
-        try {
-          setLoading(true);
-          const [doutoresData, pacientesData, servicosData] = await Promise.all([
-            getDoutores(),
-            getPacientes(),
-            getServicos(),
-          ]);
-          setDoutores(doutoresData);
-          setPacientes(pacientesData);
-          setServicos(servicosData);
-        } catch (error) {
-          toast.error('Erro ao carregar dados do formulário.');
-        } finally {
-          setLoading(false);
-        }
-      };
-      fetchData();
-    }
+    if (!open) return;
+
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const [doutoresData, pacientesData, servicosData] = await Promise.all([
+          getDoutores(),
+          getPacientes(),
+          getServicos(),
+        ]);
+        setDoutores(doutoresData);
+        setPacientes(pacientesData);
+        setServicos(servicosData);
+      } catch (error) {
+        toast.error('Erro ao carregar dados do formulário.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
   }, [open]);
 
   useEffect(() => {
+    if (!open) return;
+
+    if (agendamento) {
+      setForm({
+        dataHora: moment(agendamento.dataHora).format('YYYY-MM-DDTHH:mm'),
+        status: agendamento.status,
+        pacienteId: String(agendamento.paciente.id),
+        doutorId: String(agendamento.doutor.id),
+        servicoId: String(agendamento.servico.id),
+      });
+      return;
+    }
+
     if (initialData?.dataHora) {
       setForm({
         ...initialState,
         dataHora: moment(initialData.dataHora).format('YYYY-MM-DDTHH:mm'),
-        doutorId: user?.role === 'DOUTOR' ? user.id : '',
+        doutorId: user?.role === 'DOUTOR' ? String(user.id) : '',
       });
     } else {
-      setForm(initialState);
+      setForm({
+        ...initialState,
+        doutorId: user?.role === 'DOUTOR' ? String(user.id) : '',
+      });
     }
-  }, [initialData, user, open]);
+  }, [agendamento, initialData, user, open]);
 
-  const handleChange = (e: React.ChangeEvent<any>) => {
+  const handleChange = (e: React.ChangeEvent<{ name?: string; value: unknown }>) => {
     const { name, value } = e.target;
-    setForm((prev: any) => ({ ...prev, [name]: value }));
+    if (!name) return;
+    setForm((prev) => ({ ...prev, [name]: value as string }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -94,7 +122,7 @@ export const AgendamentoFormModal: React.FC<Props> = ({ open, onClose, onSubmit,
     const dataToSend: AgendamentoCreateInput = {
       ...form,
       pacienteId: Number(form.pacienteId),
-      doutorId: Number(form.doutorId),
+      doutorId: Number(form.doutorId || user?.id || 0),
       servicoId: Number(form.servicoId),
       dataHora: new Date(form.dataHora).toISOString(),
     };
@@ -103,7 +131,7 @@ export const AgendamentoFormModal: React.FC<Props> = ({ open, onClose, onSubmit,
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Novo Agendamento Manual</DialogTitle>
+      <DialogTitle>{agendamento ? 'Editar Agendamento' : 'Novo Agendamento Manual'}</DialogTitle>
       <Box component="form" onSubmit={handleSubmit}>
         <DialogContent>
           {loading ? (
@@ -203,8 +231,13 @@ export const AgendamentoFormModal: React.FC<Props> = ({ open, onClose, onSubmit,
         </DialogContent>
         <DialogActions>
           <Button onClick={onClose}>Cancelar</Button>
+          {agendamento && (
+            <Button onClick={onRequestDelete} color="error" disabled={loading}>
+              Excluir
+            </Button>
+          )}
           <Button type="submit" variant="contained" disabled={loading}>
-            Salvar
+            {agendamento ? 'Atualizar' : 'Salvar'}
           </Button>
         </DialogActions>
       </Box>
