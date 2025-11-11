@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { Box, Typography, Button, Paper, CircularProgress } from '@mui/material';
+import React, { useEffect, useState, useMemo } from 'react';
+import { Box, Typography, Button, Paper, CircularProgress, TextField, InputAdornment } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import { DataGrid, GridColDef, GridToolbar, GridActionsCellItem } from '@mui/x-data-grid';
 import { ptBR } from '@mui/x-data-grid/locales';
 import { toast } from 'sonner';
@@ -15,6 +16,7 @@ type ClinicaFormData = ClinicaCreateInput | Partial<IClinica>;
 export const ClinicasPage: React.FC = () => {
   const [clinicas, setClinicas] = useState<IClinica[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingClinica, setEditingClinica] = useState<IClinica | null>(null);
@@ -108,6 +110,23 @@ export const ClinicasPage: React.FC = () => {
     },
   ];
 
+  const filteredClinicas = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return clinicas;
+    return clinicas.filter((clinica) => {
+      const nome = clinica.nome?.toLowerCase() ?? '';
+      const cnpj = clinica.cnpj?.toLowerCase() ?? '';
+      const telefone = clinica.telefone?.toLowerCase() ?? '';
+      const webhookId = clinica.webhookUrlId?.toLowerCase() ?? '';
+      return (
+        nome.includes(term) ||
+        cnpj.includes(term) ||
+        telefone.includes(term) ||
+        webhookId.includes(term)
+      );
+    });
+  }, [clinicas, searchTerm]);
+
   if (loading) {
     return <CircularProgress />;
   }
@@ -121,9 +140,25 @@ export const ClinicasPage: React.FC = () => {
         </Button>
       </Box>
 
+      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+        <TextField
+          value={searchTerm}
+          onChange={(event) => setSearchTerm(event.target.value)}
+          placeholder="Pesquisar clínica"
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchRoundedIcon fontSize="small" />
+              </InputAdornment>
+            ),
+          }}
+          sx={{ minWidth: 260 }}
+        />
+      </Box>
+
       <Paper sx={{ height: 600, width: '100%', p: 2, borderRadius: 3 }}>
         <DataGrid
-          rows={clinicas}
+          rows={filteredClinicas}
           columns={columns}
           localeText={ptBR.components.MuiDataGrid.defaultProps.localeText}
           loading={loading}
@@ -132,11 +167,6 @@ export const ClinicasPage: React.FC = () => {
           }}
           pageSizeOptions={[5, 10, 25]}
           slots={{ toolbar: GridToolbar }}
-          slotProps={{
-            toolbar: { showQuickFilter: true, quickFilterProps: { debounceMs: 300 } },
-          }}
-          disableRowSelectionOnClick
-          sx={{ border: 0 }}
         />
       </Paper>
 

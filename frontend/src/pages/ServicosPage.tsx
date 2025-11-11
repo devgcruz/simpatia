@@ -1,13 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Typography,
   Button,
   Paper,
   CircularProgress,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import {
   DataGrid,
   GridColDef,
@@ -24,6 +27,7 @@ import { toast } from 'sonner';
 export const ServicosPage: React.FC = () => {
   const [servicos, setServicos] = useState<IServico[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingServico, setEditingServico] = useState<IServico | null>(null);
@@ -153,6 +157,23 @@ export const ServicosPage: React.FC = () => {
     },
   ];
 
+  const filteredServicos = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return servicos;
+    return servicos.filter((servico) => {
+      const nome = servico.nome?.toLowerCase() ?? '';
+      const descricao = servico.descricao?.toLowerCase() ?? '';
+      const preco = typeof servico.preco === 'number' ? servico.preco.toString() : `${servico.preco}`;
+      const duracao = servico.duracaoMin?.toString() ?? '';
+      return (
+        nome.includes(term) ||
+        descricao.includes(term) ||
+        preco.includes(term) ||
+        duracao.includes(term)
+      );
+    });
+  }, [servicos, searchTerm]);
+
   if (loading) {
     return <CircularProgress />;
   }
@@ -166,6 +187,22 @@ export const ServicosPage: React.FC = () => {
         </Button>
       </Box>
 
+      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+        <TextField
+          value={searchTerm}
+          onChange={(event) => setSearchTerm(event.target.value)}
+          placeholder="Pesquisar serviço"
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchRoundedIcon fontSize="small" />
+              </InputAdornment>
+            ),
+          }}
+          sx={{ minWidth: 260 }}
+        />
+      </Box>
+
       <Paper
         sx={{
           height: 600,
@@ -177,7 +214,7 @@ export const ServicosPage: React.FC = () => {
         }}
       >
         <DataGrid
-          rows={servicos}
+          rows={filteredServicos}
           columns={columns}
           localeText={ptBR.components.MuiDataGrid.defaultProps.localeText}
           loading={loading}

@@ -1,18 +1,20 @@
-import React, { useEffect, useState } from 'react';
-import { Box, Typography, Button, Paper, CircularProgress } from '@mui/material';
+import React, { useEffect, useState, useMemo } from 'react';
+import { Box, Typography, Button, Paper, CircularProgress, TextField, InputAdornment } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { DataGrid, GridColDef, GridToolbar, GridActionsCellItem } from '@mui/x-data-grid';
+import { DataGrid, GridColDef, GridActionsCellItem, GridToolbar } from '@mui/x-data-grid';
 import { ptBR } from '@mui/x-data-grid/locales';
 import { toast } from 'sonner';
 import { IPaciente } from '../types/models';
 import { getPacientes, createPaciente, updatePaciente, deletePaciente } from '../services/paciente.service';
 import { PacienteFormModal } from '../components/pacientes/PacienteFormModal';
 import { ConfirmationModal } from '../components/common/ConfirmationModal';
+import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 
 export const PacientesPage: React.FC = () => {
   const [pacientes, setPacientes] = useState<IPaciente[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPaciente, setEditingPaciente] = useState<IPaciente | null>(null);
@@ -103,6 +105,16 @@ export const PacientesPage: React.FC = () => {
     },
   ];
 
+  const filteredPacientes = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return pacientes;
+    return pacientes.filter((paciente) => {
+      const nome = paciente.nome?.toLowerCase() ?? '';
+      const telefone = paciente.telefone?.toLowerCase() ?? '';
+      return nome.includes(term) || telefone.includes(term);
+    });
+  }, [pacientes, searchTerm]);
+
   if (loading) {
     return <CircularProgress />;
   }
@@ -116,9 +128,25 @@ export const PacientesPage: React.FC = () => {
         </Button>
       </Box>
 
+      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+        <TextField
+          value={searchTerm}
+          onChange={(event) => setSearchTerm(event.target.value)}
+          placeholder="Pesquisar paciente"
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchRoundedIcon fontSize="small" />
+              </InputAdornment>
+            ),
+          }}
+          sx={{ minWidth: 260 }}
+        />
+      </Box>
+
       <Paper sx={{ height: 600, width: '100%', p: 2, borderRadius: 3 }}>
         <DataGrid
-          rows={pacientes}
+          rows={filteredPacientes}
           columns={columns}
           localeText={ptBR.components.MuiDataGrid.defaultProps.localeText}
           loading={loading}
@@ -129,12 +157,6 @@ export const PacientesPage: React.FC = () => {
           }}
           pageSizeOptions={[5, 10, 25]}
           slots={{ toolbar: GridToolbar }}
-          slotProps={{
-            toolbar: {
-              showQuickFilter: true,
-              quickFilterProps: { debounceMs: 300 },
-            },
-          }}
           disableRowSelectionOnClick
           sx={{ border: 0 }}
         />

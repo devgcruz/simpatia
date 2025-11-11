@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { Box, Typography, Button, Paper, CircularProgress } from '@mui/material';
+import React, { useEffect, useState, useMemo } from 'react';
+import { Box, Typography, Button, Paper, CircularProgress, TextField, InputAdornment } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import { DataGrid, GridColDef, GridToolbar, GridActionsCellItem } from '@mui/x-data-grid';
 import { ptBR } from '@mui/x-data-grid/locales';
 import { toast } from 'sonner';
@@ -15,6 +16,7 @@ export const DoutoresPage: React.FC = () => {
   const { user } = useAuth();
   const [doutores, setDoutores] = useState<IDoutor[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDoutor, setEditingDoutor] = useState<IDoutor | null>(null);
@@ -127,6 +129,25 @@ export const DoutoresPage: React.FC = () => {
     });
   }
 
+  const filteredDoutores = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return doutores;
+    return doutores.filter((doutor) => {
+      const nome = doutor.nome?.toLowerCase() ?? '';
+      const email = doutor.email?.toLowerCase() ?? '';
+      const especialidade = doutor.especialidade?.toLowerCase() ?? '';
+      const clinicaNome = doutor.clinica?.nome?.toLowerCase() ?? '';
+      const role = doutor.role?.toLowerCase() ?? '';
+      return (
+        nome.includes(term) ||
+        email.includes(term) ||
+        especialidade.includes(term) ||
+        clinicaNome.includes(term) ||
+        role.includes(term)
+      );
+    });
+  }, [doutores, searchTerm]);
+
   if (loading) {
     return <CircularProgress />;
   }
@@ -140,9 +161,25 @@ export const DoutoresPage: React.FC = () => {
         </Button>
       </Box>
 
+      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+        <TextField
+          value={searchTerm}
+          onChange={(event) => setSearchTerm(event.target.value)}
+          placeholder="Pesquisar doutor"
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchRoundedIcon fontSize="small" />
+              </InputAdornment>
+            ),
+          }}
+          sx={{ minWidth: 260 }}
+        />
+      </Box>
+
       <Paper sx={{ height: 600, width: '100%', p: 2, borderRadius: 3 }}>
         <DataGrid
-          rows={doutores}
+          rows={filteredDoutores}
           columns={columns}
           localeText={ptBR.components.MuiDataGrid.defaultProps.localeText}
           loading={loading}
@@ -153,12 +190,6 @@ export const DoutoresPage: React.FC = () => {
           }}
           pageSizeOptions={[5, 10, 25]}
           slots={{ toolbar: GridToolbar }}
-          slotProps={{
-            toolbar: {
-              showQuickFilter: true,
-              quickFilterProps: { debounceMs: 300 },
-            },
-          }}
           disableRowSelectionOnClick
           sx={{ border: 0 }}
         />
