@@ -1,8 +1,6 @@
 // src/services/ia.service.ts
 import { Clinica } from '@prisma/client';
 import whatsappService from './whatsapp.service';
-// import disponibilidadeService from './disponibilidade.service';
-// import pacienteService from './paciente.service'; // (Vamos usar em breve)
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage } from '@langchain/core/messages';
 import {
@@ -15,10 +13,39 @@ import {
 } from './ia.tools'; // Importar as factories que criámos
 import servicosService from './servicos.service';
 import doutorService from './doutor.service';
+import pacienteService from './pacientes.service';
+import { prisma } from '../lib/prisma';
 
-// Armazenamento de histórico em memória (simples para este exemplo)
-// Em produção, isto seria um Redis ou um banco de dados
-const chatHistories = new Map<string, BaseMessage[]>();
+type SenderTypeValue = 'IA' | 'PACIENTE' | 'DOUTOR';
+
+type StoredChatMessage = {
+  content: string;
+  senderType: SenderTypeValue;
+};
+
+// Função para mapear histórico do DB para formato LangChain
+function mapDbMessagesToLangChain(messages: StoredChatMessage[]): BaseMessage[] {
+  return messages.map((msg) => {
+    if (msg.senderType === 'PACIENTE') {
+      return new HumanMessage(msg.content);
+    }
+    if (msg.senderType === 'IA') {
+      try {
+        const parsed = JSON.parse(msg.content);
+        if (parsed.tool_calls) {
+          return new AIMessage({
+            content: parsed.content || '',
+            tool_calls: parsed.tool_calls,
+          });
+        }
+      } catch (e) {
+        // Conteúdo não é JSON válido ou não representa tool calls
+      }
+      return new AIMessage(msg.content);
+    }
+    return new AIMessage(msg.content);
+  });
+}
 
 const SYSTEM_PROMPT = `Você é "Simpatia", uma assistente de IA profissional e amigável.
 Sua principal função é ajudar pacientes a marcar consultas numa clínica.
@@ -73,8 +100,14 @@ class IaService {
 
       console.log(`IA: Processando msg de ${telefone} para Clínica ${clinicaId}: ${texto}`);
 
-      // 2. Obter histórico da sessão
-      const history = chatHistories.get(telefone) || [];
+      const paciente = await pacienteService.getOrCreateByTelefone(telefone, clinicaId);
+
+      const dbHistory = (await (prisma as any).chatMessage.findMany({
+        where: { pacienteId: paciente.id },
+        orderBy: { createdAt: 'asc' },
+        take: 20,
+      })) as StoredChatMessage[];
+      const history = mapDbMessagesToLangChain(dbHistory);
 
       // 4. Inicializar o Modelo (Gemini)
       // Certifique-se que GOOGLE_API_KEY está no .env
@@ -123,11 +156,16 @@ class IaService {
       const modelWithTools = llm.bindTools(tools);
 
       const conversation: BaseMessage[] = [new SystemMessage(systemPromptFilled), ...history];
-      const newHistoryMessages: BaseMessage[] = [];
 
       const humanMessage = new HumanMessage(texto);
       conversation.push(humanMessage);
-      newHistoryMessages.push(humanMessage);
+      await (prisma as any).chatMessage.create({
+        data: {
+          content: texto,
+          senderType: 'PACIENTE',
+          pacienteId: paciente.id,
+        },
+      });
 
       const maxIterations = 6;
       let respostaFinal = 'Desculpe, não consegui processar sua solicitação.';
@@ -137,7 +175,14 @@ class IaService {
         const aiResponse = (await modelWithTools.invoke(conversation)) as AIMessage;
         finalAiMessage = aiResponse;
         conversation.push(aiResponse);
-        newHistoryMessages.push(aiResponse);
+
+        await (prisma as any).chatMessage.create({
+          data: {
+            content: aiResponse.tool_calls ? JSON.stringify(aiResponse) : (aiResponse.content as string),
+            senderType: 'IA',
+            pacienteId: paciente.id,
+          },
+        });
 
         const toolCalls = aiResponse.tool_calls ?? [];
 
@@ -162,7 +207,13 @@ class IaService {
             const toolErrorMessage = `Ferramenta ${call.name} não disponível no momento.`;
             const toolMessage = new ToolMessage({ content: toolErrorMessage, tool_call_id: toolCallId, status: 'error' });
             conversation.push(toolMessage);
-            newHistoryMessages.push(toolMessage);
+            await (prisma as any).chatMessage.create({
+              data: {
+                content: toolErrorMessage,
+                senderType: 'IA',
+                pacienteId: paciente.id,
+              },
+            });
             continue;
           }
 
@@ -175,7 +226,13 @@ class IaService {
 
             const toolMessage = new ToolMessage({ content: resultString, tool_call_id: toolCallId });
             conversation.push(toolMessage);
-            newHistoryMessages.push(toolMessage);
+            await (prisma as any).chatMessage.create({
+              data: {
+                content: resultString,
+                senderType: 'IA',
+                pacienteId: paciente.id,
+              },
+            });
           } catch (err: any) {
             const errorMessage = err?.message ?? 'Erro desconhecido ao executar a ferramenta.';
             const toolMessage = new ToolMessage({
@@ -184,7 +241,13 @@ class IaService {
               status: 'error',
             });
             conversation.push(toolMessage);
-            newHistoryMessages.push(toolMessage);
+            await (prisma as any).chatMessage.create({
+              data: {
+                content: `Erro na ferramenta ${call.name}: ${errorMessage}`,
+                senderType: 'IA',
+                pacienteId: paciente.id,
+              },
+            });
           }
         }
       }
@@ -193,13 +256,11 @@ class IaService {
         throw new Error('O modelo não retornou uma resposta.');
       }
 
-      // 9. Atualizar o histórico
-      history.push(...newHistoryMessages);
-      chatHistories.set(telefone, history);
+      // Histórico agora persistido no banco de dados
 
       // 10. Responder ao usuário via WhatsApp
       await whatsappService.enviarMensagem(
-        telefone,
+        telefone, 
         respostaFinal,
         whatsappToken as string,
         whatsappPhoneId as string,

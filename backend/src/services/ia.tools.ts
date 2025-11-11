@@ -11,28 +11,6 @@ function formatPrice(price: number): string {
   return `R$ ${price.toFixed(2).replace('.', ',')}`;
 }
 
-/**
- * Encontra um paciente pelo telefone. Se não existir, cria um novo.
- * Esta função é crucial para a IA saber quem está a pedir o agendamento.
- */
-async function getOrCreatePaciente(telefone: string, clinicaId: number) {
-  // Tenta encontrar o paciente
-  let paciente = await pacienteService.getByTelefone(telefone, clinicaId);
-  if (paciente) {
-    return paciente;
-  }
-
-  // Se não existir, cria um paciente novo com um nome placeholder
-  // A IA pode (e deve) perguntar o nome do paciente depois para atualizar o cadastro.
-  return pacienteService.create(
-    {
-      nome: `Paciente ${telefone.slice(-4)}`, // ex: "Paciente 9999"
-      telefone: telefone,
-    },
-    clinicaId,
-  );
-}
-
 // --- Funções Factory para as Ferramentas ---
 
 /**
@@ -121,7 +99,7 @@ export function createMarcarAgendamentoTool(clinicaId: number, telefonePaciente:
     func: async ({ doutorId, servicoId, dataHora }) => {
       try {
         // Passo 1: Garantir que o paciente existe no sistema
-        const paciente = await getOrCreatePaciente(telefonePaciente, clinicaId);
+        const paciente = await pacienteService.getOrCreateByTelefone(telefonePaciente, clinicaId);
 
         // Passo 2: Chamar o novo método de serviço
         const novoAgendamento = await agendamentoService.createParaIA({
@@ -165,7 +143,7 @@ export function createAtualizarNomePacienteTool(clinicaId: number, telefonePacie
     func: async ({ nome }) => {
       try {
         // Reutiliza a lógica para encontrar o paciente
-        const paciente = await getOrCreatePaciente(telefonePaciente, clinicaId);
+        const paciente = await pacienteService.getOrCreateByTelefone(telefonePaciente, clinicaId);
 
         // Chama o serviço de atualização
         await pacienteService.update(paciente.id, { nome: nome }, clinicaId);

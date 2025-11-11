@@ -97,6 +97,23 @@ class PacienteService {
         return paciente; // Retorna null se não encontrar, em vez de lançar erro
     }
 
+    async getOrCreateByTelefone(telefone: string, clinicaId: number) {
+        const pacienteExistente = await this.getByTelefone(telefone, clinicaId);
+        if (pacienteExistente) {
+            return pacienteExistente;
+        }
+
+        const novoPaciente = await this.create(
+            {
+                nome: `Paciente ${telefone.slice(-4)}`,
+                telefone,
+            },
+            clinicaId,
+        );
+
+        return novoPaciente;
+    }
+
     async create(data: ICreatePaciente, clinicaId: number) {
         const { nome, telefone } = data;
 
