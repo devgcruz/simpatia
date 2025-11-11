@@ -22,6 +22,16 @@ interface IUpdateAgendamento {
     servicoId?: number;
 }
 
+// NOVA INTERFACE PARA A IA
+interface ICreateAgendamentoIA {
+    dataHora: Date | string;
+    pacienteId: number;
+    doutorId: number;
+    servicoId: number;
+    clinicaId: number;
+    status?: string;
+}
+
 interface AuthUser {
     id: number;
     role: string;
@@ -166,6 +176,51 @@ class AgendamentoService {
                 id: doutor.id,
                 nome: doutor.nome,
                 email: doutor.email,
+            },
+        };
+    }
+
+    // NOVO MÉTODO PARA A IA
+    async createParaIA(data: ICreateAgendamentoIA) {
+        const { dataHora, pacienteId, doutorId, servicoId, clinicaId, status } = data;
+
+        if (!dataHora || !pacienteId || !doutorId || !servicoId || !clinicaId) {
+            throw new Error("dataHora, pacienteId, doutorId, servicoId e clinicaId são obrigatórios.");
+        }
+
+        // Validação de segurança: Garante que todas as entidades pertencem à clínica
+        // que recebeu a mensagem do WhatsApp.
+        const [doutor, paciente, servico] = await Promise.all([
+            prisma.doutor.findFirst({ where: { id: doutorId, clinicaId } }),
+            prisma.paciente.findFirst({ where: { id: pacienteId, clinicaId } }),
+            prisma.servico.findFirst({ where: { id: servicoId, clinicaId } }),
+        ]);
+
+        if (!doutor || !paciente || !servico) {
+            throw new Error("Doutor, Paciente ou Serviço não encontrado ou não pertence à esta clínica.");
+        }
+
+        const dataHoraDate = typeof dataHora === 'string' ? new Date(dataHora) : dataHora;
+
+        const novoAgendamento = await prisma.agendamento.create({
+            data: {
+                dataHora: dataHoraDate,
+                status: status || 'pendente_ia', // Status padrão para agendamentos da IA
+                pacienteId,
+                doutorId,
+                servicoId,
+            },
+            include: agendamentoInclude,
+        });
+
+        // Formata a resposta
+        const { doutor: doutorInfo, ...rest } = novoAgendamento;
+        return {
+            ...rest,
+            doutor: {
+                id: doutorInfo.id,
+                nome: doutorInfo.nome,
+                email: doutorInfo.email,
             },
         };
     }

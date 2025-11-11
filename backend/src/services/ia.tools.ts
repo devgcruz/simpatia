@@ -123,30 +123,27 @@ export function createMarcarAgendamentoTool(clinicaId: number, telefonePaciente:
         // Passo 1: Garantir que o paciente existe no sistema
         const paciente = await getOrCreatePaciente(telefonePaciente, clinicaId);
 
-        // --- PENDENTE PASSO 3 ---
-        // O `agendamentoService.create` atual espera um objeto `user` (com `role`, `id`, `clinicaId`).
-        // A IA não tem um `user` autenticado. Ela age "em nome" do paciente.
-        // Precisamos de um método novo no `agendamento.service.ts`
-        // que possa ser chamado pela IA, recebendo apenas os dados necessários.
-
-        // Por enquanto, vamos simular a criação:
-        console.log(`[IA SIMULAÇÃO] Tentando agendar para:
-          PacienteID: ${paciente.id} (Telefone: ${telefonePaciente})
-          ClinicaID: ${clinicaId}
-          DoutorID: ${doutorId}
-          ServicoID: ${servicoId}
-          DataHora: ${dataHora}
-        `);
-
-        // const novoAgendamento = await agendamentoService.createParaIA(...)
-
-        // Retorno simulado:
-        return `Agendamento pré-reservado com sucesso para ${paciente.nome} no dia ${new Date(
+        // Passo 2: Chamar o novo método de serviço
+        const novoAgendamento = await agendamentoService.createParaIA({
           dataHora,
-        ).toLocaleString('pt-BR')}. O status atual é 'pendente_ia'.`;
+          pacienteId: paciente.id,
+          doutorId,
+          servicoId,
+          clinicaId,
+          status: 'pendente_ia', // Define o status
+        });
+
+        // Confirmação para o paciente
+        return `Agendamento marcado com sucesso para ${paciente.nome} no dia ${new Date(
+          novoAgendamento.dataHora,
+        ).toLocaleString('pt-BR')} (Status: ${novoAgendamento.status}).`;
       } catch (error: any) {
         console.error('Erro em MarcarAgendamentoTool:', error);
-        return `Erro ao marcar agendamento. Verifique se o Doutor e o Serviço existem e se a data está no formato correto.`;
+        // Resposta útil para a IA
+        if (error.message.includes('Doutor, Paciente ou Serviço')) {
+          return 'Erro: O Doutor, Paciente ou Serviço não foi encontrado para esta clínica.';
+        }
+        return `Erro ao marcar agendamento. Detalhe: ${error.message}`;
       }
     },
   });
