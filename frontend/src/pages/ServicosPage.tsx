@@ -1,13 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import {
-  Box,
-  Typography,
-  Button,
-  Paper,
-  CircularProgress,
-  TextField,
-  InputAdornment,
-} from '@mui/material';
+import { Box, Button, Paper, CircularProgress, TextField, InputAdornment } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
@@ -179,15 +171,17 @@ export const ServicosPage: React.FC = () => {
   }
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h4">Gerir Serviços</Typography>
-        <Button variant="contained" onClick={() => handleOpenModal()}>
-          Novo Serviço
-        </Button>
-      </Box>
-
-      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+    <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', md: 'row' },
+          alignItems: { xs: 'stretch', md: 'center' },
+          justifyContent: 'space-between',
+          gap: 2,
+          mb: 2,
+        }}
+      >
         <TextField
           value={searchTerm}
           onChange={(event) => setSearchTerm(event.target.value)}
@@ -199,18 +193,31 @@ export const ServicosPage: React.FC = () => {
               </InputAdornment>
             ),
           }}
-          sx={{ minWidth: 260 }}
+          sx={{
+            minWidth: { xs: '100%', md: 260 },
+            flex: { xs: '0 1 auto', md: 1 },
+          }}
         />
+        <Button
+          variant="contained"
+          onClick={() => handleOpenModal()}
+          sx={{ alignSelf: { xs: 'stretch', md: 'center' }, whiteSpace: 'nowrap' }}
+        >
+          Novo Serviço
+        </Button>
       </Box>
 
       <Paper
         sx={{
-          height: 600,
+          flex: 1,
           width: '100%',
           p: 2,
           borderRadius: 3,
           boxShadow: '0 20px 60px rgba(15, 23, 42, 0.12)',
           background: 'linear-gradient(180deg, rgba(248, 250, 252, 0.9) 0%, rgba(255,255,255,0.95) 100%)',
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
         }}
       >
         <DataGrid
@@ -234,6 +241,7 @@ export const ServicosPage: React.FC = () => {
           disableRowSelectionOnClick
           sx={{
             border: 0,
+            flex: 1,
             backgroundColor: 'rgba(255,255,255,0.85)',
             '& .MuiDataGrid-cell': {
               borderBottom: '1px solid rgba(148, 163, 184, 0.2)',

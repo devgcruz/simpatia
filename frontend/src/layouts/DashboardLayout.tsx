@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Outlet, Link as RouterLink } from 'react-router-dom';
+import { Outlet, Link as RouterLink, useLocation } from 'react-router-dom';
 import { styled, useTheme, Theme, CSSObject } from '@mui/material/styles';
 import {
   Box,
@@ -104,6 +104,7 @@ export const DashboardLayout: React.FC = () => {
   const theme = useTheme();
   const [open, setOpen] = useState(true);
   const { user, logout } = useAuth();
+  const location = useLocation();
 
   const menuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'] },
@@ -116,6 +117,10 @@ export const DashboardLayout: React.FC = () => {
   const permittedMenuItems = menuItems.filter(
     (item) => user && item.role.includes(user.role),
   );
+
+  const currentMenuItem =
+    menuItems.find((item) => location.pathname.startsWith(item.path)) ?? menuItems[0];
+  const headerTitle = currentMenuItem?.text ?? 'Dashboard';
 
   const handleDrawerOpen = () => {
     setOpen(true);
@@ -143,7 +148,7 @@ export const DashboardLayout: React.FC = () => {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            Dashboard
+            {headerTitle}
           </Typography>
           <Typography variant="body1" sx={{ mr: 2 }}>
             Olá, {user?.email}
@@ -190,9 +195,21 @@ export const DashboardLayout: React.FC = () => {
           ))}
         </List>
       </Drawer>
-      <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          p: 3,
+          height: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          overflowY: location.pathname.startsWith('/dashboard') ? 'hidden' : 'auto',
+        }}
+      >
         <DrawerHeader />
-        <Outlet />
+        <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <Outlet />
+        </Box>
       </Box>
     </Box>
   );

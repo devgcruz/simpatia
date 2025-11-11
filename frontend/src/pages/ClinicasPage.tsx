@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Box, Typography, Button, Paper, CircularProgress, TextField, InputAdornment } from '@mui/material';
+import { Box, Button, Paper, CircularProgress, TextField, InputAdornment } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
@@ -132,15 +132,17 @@ export const ClinicasPage: React.FC = () => {
   }
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h4">Gerir Clínicas (Super Admin)</Typography>
-        <Button variant="contained" onClick={() => handleOpenModal()}>
-          Nova Clínica
-        </Button>
-      </Box>
-
-      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+    <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', md: 'row' },
+          alignItems: { xs: 'stretch', md: 'center' },
+          justifyContent: 'space-between',
+          gap: 2,
+          mb: 2,
+        }}
+      >
         <TextField
           value={searchTerm}
           onChange={(event) => setSearchTerm(event.target.value)}
@@ -152,11 +154,31 @@ export const ClinicasPage: React.FC = () => {
               </InputAdornment>
             ),
           }}
-          sx={{ minWidth: 260 }}
+          sx={{
+            minWidth: { xs: '100%', md: 260 },
+            flex: { xs: '0 1 auto', md: 1 },
+          }}
         />
+        <Button
+          variant="contained"
+          onClick={() => handleOpenModal()}
+          sx={{ alignSelf: { xs: 'stretch', md: 'center' }, whiteSpace: 'nowrap' }}
+        >
+          Nova Clínica
+        </Button>
       </Box>
 
-      <Paper sx={{ height: 600, width: '100%', p: 2, borderRadius: 3 }}>
+      <Paper
+        sx={{
+          flex: 1,
+          width: '100%',
+          p: 2,
+          borderRadius: 3,
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
+        }}
+      >
         <DataGrid
           rows={filteredClinicas}
           columns={columns}
@@ -167,6 +189,7 @@ export const ClinicasPage: React.FC = () => {
           }}
           pageSizeOptions={[5, 10, 25]}
           slots={{ toolbar: GridToolbar }}
+          sx={{ flex: 1, border: 0 }}
         />
       </Paper>
 

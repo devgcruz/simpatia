@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Calendar, momentLocalizer } from 'react-big-calendar';
 import moment from 'moment';
 import 'moment/locale/pt-br';
-import { Box, Typography, CircularProgress } from '@mui/material';
+import { Box, CircularProgress, useMediaQuery, useTheme } from '@mui/material';
 import { toast } from 'sonner';
 
 import {
@@ -86,6 +86,9 @@ interface CalendarEvent {
 }
 
 export const DashboardPage: React.FC = () => {
+  const theme = useTheme();
+  const isSmallScreen = useMediaQuery(theme.breakpoints.down('md'));
+
   const [eventos, setEventos] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -224,22 +227,56 @@ export const DashboardPage: React.FC = () => {
   }
 
   return (
-    <Box>
-      <Typography variant="h4" gutterBottom>
-        Agenda da Clínica
-      </Typography>
-      <Box sx={{ p: 2, backgroundColor: 'white', borderRadius: 3, boxShadow: 1, height: '80vh' }}>
+    <Box
+      sx={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        px: { xs: 1, md: 0 },
+        minHeight: 0,
+      }}
+    >
+      <Box
+        sx={{
+          flex: 1,
+          p: { xs: 1, md: 2 },
+          pb: { xs: 2, md: 3 },
+          backgroundColor: 'white',
+          borderRadius: { xs: 2, md: 3 },
+          boxShadow: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
+          overflow: 'hidden',
+          '& .rbc-calendar': {
+            flexGrow: 1,
+            minWidth: 0,
+            height: '100%',
+            paddingBottom: theme.spacing(isSmallScreen ? 2 : 3),
+          },
+          '& .rbc-time-view': {
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+          },
+          '& .rbc-time-content': {
+            flexGrow: 1,
+            overflowY: 'auto',
+            pb: 3,
+          },
+        }}
+      >
         <Calendar
           localizer={localizer}
           events={eventos}
           startAccessor="start"
           endAccessor="end"
           culture="pt-br"
-          style={{ minHeight: 600 }}
+          style={{ minHeight: isSmallScreen ? 420 : 0, width: '100%', height: '100%', flex: 1 }}
           messages={messages}
           formats={formats}
-          defaultView="week"
-          views={['month', 'week', 'day', 'agenda']}
+          defaultView={isSmallScreen ? 'agenda' : 'week'}
+          views={isSmallScreen ? ['day', 'agenda'] : ['month', 'week', 'day', 'agenda']}
           step={30}
           timeslots={2}
           selectable
