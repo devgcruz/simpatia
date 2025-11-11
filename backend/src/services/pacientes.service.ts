@@ -31,6 +31,64 @@ class PacienteService {
 
     }
 
+    async getHistoricos(id: number, clinicaId: number) {
+        const paciente = await prisma.paciente.findFirst({
+            where: { id, clinicaId },
+        });
+
+        if (!paciente) {
+            throw new Error("Paciente não encontrado ou não pertence à esta clínica.");
+        }
+
+        const historicos = await (prisma as any).historicoPaciente.findMany({
+            where: { pacienteId: id },
+            include: {
+                agendamento: {
+                    include: {
+                        servico: true,
+                        doutor: {
+                            select: {
+                                id: true,
+                                nome: true,
+                                email: true,
+                            },
+                        },
+                    },
+                },
+            },
+            orderBy: [
+                { realizadoEm: 'desc' },
+                { createdAt: 'desc' },
+                { id: 'desc' },
+            ],
+        });
+
+        return historicos.map((historico: any) => {
+            const { agendamento, ...rest } = historico;
+            return {
+                id: rest.id,
+                descricao: rest.descricao,
+                realizadoEm: rest.realizadoEm,
+                criadoEm: rest.createdAt,
+                agendamentoId: rest.agendamentoId,
+                servico: agendamento
+                ? {
+                    id: agendamento.servico.id,
+                    nome: agendamento.servico.nome,
+                    duracaoMin: agendamento.servico.duracaoMin,
+                }
+                : null,
+                doutor: agendamento
+                ? {
+                    id: agendamento.doutor.id,
+                    nome: agendamento.doutor.nome,
+                    email: agendamento.doutor.email,
+                }
+                : null,
+            };
+        });
+    }
+
     async getByTelefone(telefone: string, clinicaId: number) {
         const paciente = await prisma.paciente.findFirst({
             where: { telefone, clinicaId },

@@ -33,6 +33,23 @@ class PacienteController {
         }
     }
 
+    async handleGetHistoricos(req: Request, res: Response) {
+        try {
+            const id = Number(req.params.id);
+
+            const { clinicaId } = req.user!;
+
+            const historicos = await pacienteService.getHistoricos(id, clinicaId);
+            return res.status(200).json(historicos);
+        } catch (error: any) {
+            if (error.message === "Paciente não encontrado ou não pertence à esta clínica.") {
+                return res.status(404).json({ message: error.message });
+            }
+
+            return res.status(500).json({ message: error.message });
+        }
+    }
+
     async handleCreate(req: Request, res: Response) {
 
         try {

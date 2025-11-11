@@ -12,14 +12,55 @@ import {
   deleteAgendamento,
   AgendamentoCreateInput,
   AgendamentoUpdateInput,
+  finalizeAgendamento,
 } from '../services/agendamento.service';
 import { IAgendamento } from '../types/models';
 
 import { AgendamentoFormModal } from '../components/agendamentos/AgendamentoFormModal';
 import { ConfirmationModal } from '../components/common/ConfirmationModal';
 
+moment.updateLocale('pt-br', {
+  week: { dow: 1, doy: 4 },
+  weekdaysShort: ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'],
+  weekdaysMin: ['do', 'sg', 'te', 'qa', 'qi', 'sx', 'sa'],
+  monthsShort: ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'],
+  months: [
+    'janeiro',
+    'fevereiro',
+    'março',
+    'abril',
+    'maio',
+    'junho',
+    'julho',
+    'agosto',
+    'setembro',
+    'outubro',
+    'novembro',
+    'dezembro',
+  ],
+});
 moment.locale('pt-br');
 const localizer = momentLocalizer(moment);
+
+const formats = {
+  weekdayFormat: (date: Date) => moment(date).locale('pt-br').format('ddd'),
+  dayFormat: (date: Date) => moment(date).locale('pt-br').format('DD ddd'),
+  dayHeaderFormat: (date: Date) => moment(date).locale('pt-br').format('DD ddd'),
+  rangeHeaderFormat: ({ start, end }: { start: Date; end: Date }, culture?: string, localizer?: any) => {
+    const startLabel = localizer
+      ? localizer.format(start, 'DD MMM', culture)
+      : moment(start).locale('pt-br').format('DD MMM');
+    const endLabel = localizer
+      ? localizer.format(end, 'DD MMM', culture)
+      : moment(end).locale('pt-br').format('DD MMM');
+    return `${startLabel} – ${endLabel}`;
+  },
+  dayRangeHeaderFormat: ({ start, end }: { start: Date; end: Date }) =>
+    `${moment(start).locale('pt-br').format('DD MMM')} – ${moment(end).locale('pt-br').format('DD MMM')}`,
+  monthHeaderFormat: (date: Date) => moment(date).locale('pt-br').format('MMMM YYYY'),
+  agendaHeaderFormat: ({ start, end }: { start: Date; end: Date }) =>
+    `${moment(start).locale('pt-br').format('DD MMM YYYY')} – ${moment(end).locale('pt-br').format('DD MMM YYYY')}`,
+};
 
 const messages = {
   allDay: 'Dia todo',
@@ -124,6 +165,18 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
+  const handleFinalizeAgendamento = async (descricao: string) => {
+    if (!selectedEvent) return;
+    try {
+      await finalizeAgendamento(selectedEvent.id, { descricao });
+      toast.success('Consulta finalizada com sucesso!');
+      await fetchAgendamentos();
+      handleCloseModals();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Erro ao finalizar consulta');
+    }
+  };
+
   const handleDelete = async () => {
     if (!selectedEvent) return;
     try {
@@ -139,12 +192,29 @@ export const DashboardPage: React.FC = () => {
   };
 
   const eventStyleGetter = (event: CalendarEvent) => {
+    const { status } = event.resource;
+    let backgroundColor = '#2563eb';
+    let color = 'white';
+    let textDecoration: 'none' | 'line-through' = 'none';
+
+    if (status === 'cancelado') {
+      backgroundColor = '#9ca3af';
+      color = '#1f2937';
+      textDecoration = 'line-through';
+    } else if (status === 'finalizado') {
+      backgroundColor = '#16a34a';
+      color = '#ffffff';
+    } else if (status !== 'confirmado') {
+      backgroundColor = '#f59e0b';
+    }
+
     const style = {
-      backgroundColor: event.resource.status === 'confirmado' ? '#2563eb' : '#f59e0b',
+      backgroundColor,
       borderRadius: '5px',
       opacity: 0.8,
-      color: 'white',
+      color,
       border: '0px',
+      textDecoration,
     };
     return { style };
   };
@@ -167,6 +237,7 @@ export const DashboardPage: React.FC = () => {
           culture="pt-br"
           style={{ minHeight: 600 }}
           messages={messages}
+          formats={formats}
           defaultView="week"
           views={['month', 'week', 'day', 'agenda']}
           step={30}
@@ -175,6 +246,7 @@ export const DashboardPage: React.FC = () => {
           onSelectEvent={handleSelectEvent}
           onSelectSlot={handleSelectSlot}
           eventPropGetter={eventStyleGetter}
+          dayLayoutAlgorithm="no-overlap"
         />
       </Box>
 
@@ -185,6 +257,7 @@ export const DashboardPage: React.FC = () => {
         initialData={selectedSlot}
         agendamento={selectedEvent}
         onRequestDelete={handleDeleteRequest}
+        onFinalize={handleFinalizeAgendamento}
       />
 
       <ConfirmationModal

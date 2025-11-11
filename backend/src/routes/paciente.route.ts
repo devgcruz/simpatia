@@ -8,6 +8,7 @@ router.get('/', pacienteController.handleGetAll);
 router.post('/', pacienteController.handleCreate);
 
 router.get('/:id', pacienteController.handleGetById);
+router.get('/:id/historicos', pacienteController.handleGetHistoricos);
 
 router.put('/:id', pacienteController.handleUpdate);
 

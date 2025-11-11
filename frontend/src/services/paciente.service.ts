@@ -1,5 +1,5 @@
 import { api } from './api';
-import { IPaciente } from '../types/models';
+import { IPaciente, IHistoricoPaciente } from '../types/models';
 
 type PacienteInput = Omit<IPaciente, 'id' | 'clinicaId'>;
 
@@ -20,5 +20,10 @@ export const updatePaciente = async (id: number, data: Partial<PacienteInput>) =
 
 export const deletePaciente = async (id: number) => {
   await api.delete(`/pacientes/${id}`);
+};
+
+export const getPacienteHistoricos = async (pacienteId: number) => {
+  const response = await api.get<IHistoricoPaciente[]>(`/pacientes/${pacienteId}/historicos`);
+  return response.data;
 };
 

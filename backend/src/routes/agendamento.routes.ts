@@ -11,6 +11,8 @@ router.get('/:id', agendamentoController.handleGetById);
 
 router.put('/:id', agendamentoController.handleUpdate);
 
+router.post('/:id/finalizar', agendamentoController.handleFinalize);
+
 router.delete('/:id', agendamentoController.handleDelete);
 
 export default router;

@@ -69,6 +69,7 @@ model Paciente {
   nome         String
   telefone     String
   agendamentos Agendamento[]
+  historicos   HistoricoPaciente[]
 
   clinicaId Int?
   clinica   Clinica? @relation(fields: [clinicaId], references: [id], onDelete: Cascade)
@@ -98,4 +99,19 @@ model Agendamento {
   servicoId  Int
   servico    Servico  @relation(fields: [servicoId], references: [id])
   status     String // "confirmado", "pendente_ia", "cancelado"
+  historicos HistoricoPaciente[]
+}
+
+model HistoricoPaciente {
+  id            Int          @id @default(autoincrement())
+  descricao     String       @db.Text
+  realizadoEm   DateTime     @default(now())
+  pacienteId    Int
+  agendamentoId Int?
+  createdAt     DateTime     @default(now())
+
+  paciente   Paciente    @relation(fields: [pacienteId], references: [id], onDelete: Cascade)
+  agendamento Agendamento? @relation(fields: [agendamentoId], references: [id], onDelete: SetNull)
+
+  @@index([pacienteId, realizadoEm])
 }

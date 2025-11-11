@@ -99,6 +99,27 @@ class AgendamentoController {
         }
     }
 
+    async handleFinalize(req: Request, res: Response) {
+        try {
+            const id = Number(req.params.id);
+            const { descricao } = req.body;
+            const user = req.user!;
+
+            const agendamentoFinalizado = await agendamentoService.finalize(id, descricao, user);
+            return res.status(200).json(agendamentoFinalizado);
+        } catch (error: any) {
+            if (error.message === "Agendamento não encontrado.") {
+                return res.status(404).json({ message: error.message });
+            }
+
+            if (error.message === "Acesso negado.") {
+                return res.status(403).json({ message: error.message });
+            }
+
+            return res.status(400).json({ message: error.message });
+        }
+    }
+
     async handleDelete(req: Request, res: Response) {
         try {
             const id = Number(req.params.id);

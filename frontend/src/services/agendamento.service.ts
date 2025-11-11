@@ -13,6 +13,10 @@ export type AgendamentoCreateInput = {
 // Tipo para Atualizar (tudo opcional)
 export type AgendamentoUpdateInput = Partial<AgendamentoCreateInput>;
 
+export type AgendamentoFinalizeInput = {
+  descricao: string;
+};
+
 // GET (Já existente)
 export const getAgendamentos = async (filtros?: Record<string, unknown>) => {
   const response = await api.get<IAgendamento[]>('/agendamentos', { params: filtros });
@@ -36,4 +40,9 @@ export const updateAgendamento = async (id: number, data: AgendamentoUpdateInput
 // Rota: DELETE /api/agendamentos/:id
 export const deleteAgendamento = async (id: number) => {
   await api.delete(`/agendamentos/${id}`);
+};
+
+export const finalizeAgendamento = async (id: number, data: AgendamentoFinalizeInput) => {
+  const response = await api.post<IAgendamento>(`/agendamentos/${id}/finalizar`, data);
+  return response.data;
 };

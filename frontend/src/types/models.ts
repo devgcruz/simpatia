@@ -37,6 +37,16 @@ export interface IAgendamento {
   servico: IServico;
 }
 
+export interface IHistoricoPaciente {
+  id: number;
+  descricao: string;
+  realizadoEm: string;
+  criadoEm: string;
+  agendamentoId?: number | null;
+  servico?: Pick<IServico, 'id' | 'nome' | 'duracaoMin'> | null;
+  doutor?: Pick<IDoutor, 'id' | 'nome' | 'email'> | null;
+}
+
 export interface IClinica {
   id: number;
   nome: string;

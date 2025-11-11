@@ -229,6 +229,53 @@ class AgendamentoService {
         };
     }
 
+    async finalize(id: number, descricao: string, user: AuthUser) {
+        if (!descricao || !descricao.trim()) {
+            throw new Error("Uma descrição do atendimento é obrigatória para finalizar a consulta.");
+        }
+
+        const agendamentoExistente = await prisma.agendamento.findUnique({
+            where: { id },
+            include: agendamentoInclude,
+        });
+
+        if (!agendamentoExistente) {
+            throw new Error("Agendamento não encontrado.");
+        }
+
+        await this.ensureAccessToAgendamento(agendamentoExistente, user);
+
+        const agendamentoFinalizado = await prisma.$transaction(async (tx) => {
+            const atualizado = await tx.agendamento.update({
+                where: { id },
+                data: { status: 'finalizado' },
+                include: agendamentoInclude,
+            });
+
+            const historicoDelegate = tx as any;
+            await historicoDelegate.historicoPaciente.create({
+                data: {
+                    pacienteId: atualizado.pacienteId,
+                    agendamentoId: atualizado.id,
+                    descricao: descricao.trim(),
+                    realizadoEm: new Date(atualizado.dataHora),
+                },
+            });
+
+            return atualizado;
+        });
+
+        const { doutor, ...rest } = agendamentoFinalizado;
+        return {
+            ...rest,
+            doutor: {
+                id: doutor.id,
+                nome: doutor.nome,
+                email: doutor.email,
+            },
+        };
+    }
+
     async delete(id: number, user: AuthUser) {
         const agendamentoExistente = await prisma.agendamento.findUnique({
             where: { id },
