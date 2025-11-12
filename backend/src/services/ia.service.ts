@@ -10,6 +10,7 @@ import {
   createAtualizarNomePacienteTool,
   createListarMeusAgendamentosTool,
   createCancelarAgendamentoTool,
+  createHandoffTool,
 } from './ia.tools'; // Importar as factories que criámos
 import servicosService from './servicos.service';
 import doutorService from './doutor.service';
@@ -81,6 +82,8 @@ Listar Agendamentos: Se o paciente perguntar "quais são minhas consultas?" ou "
 
 Cancelar Agendamento: Se o paciente pedir para cancelar uma consulta, você DEVE primeiro usar a ferramenta 'listar_meus_agendamentos' para que o paciente informe o ID exato da consulta. Em seguida, use a ferramenta 'cancelar_agendamento' com esse ID.
 
+Transferir para Humano: Se o paciente pedir para falar com um atendente humano, mencionar que quer falar com um humano/doutor, ou se você não conseguir ajudar após duas tentativas, use a ferramenta 'solicitar_atendimento_humano'.
+
 Instruções Importantes:
 - Responda sempre em Português do Brasil.
 - Mantenha as respostas curtas e diretas, adequadas para WhatsApp.
@@ -101,6 +104,18 @@ class IaService {
       console.log(`IA: Processando msg de ${telefone} para Clínica ${clinicaId}: ${texto}`);
 
       const paciente = await pacienteService.getOrCreateByTelefone(telefone, clinicaId);
+
+      if (paciente.chatStatus === 'HANDOFF') {
+        console.log(`IA: Mensagem ignorada (Handoff) de ${telefone} para Clínica ${clinicaId}`);
+        await (prisma as any).chatMessage.create({
+          data: {
+            content: texto,
+            senderType: 'PACIENTE',
+            pacienteId: paciente.id,
+          },
+        });
+        return;
+      }
 
       const dbHistory = (await (prisma as any).chatMessage.findMany({
         where: { pacienteId: paciente.id },
@@ -130,6 +145,7 @@ class IaService {
         createAtualizarNomePacienteTool(clinicaId, telefone),
         createListarMeusAgendamentosTool(clinicaId, telefone),
         createCancelarAgendamentoTool(clinicaId, telefone),
+        createHandoffTool(paciente.id),
       ];
 
       // 7.5. Carregar contexto da clínica (Doutores e Serviços)

@@ -201,6 +201,40 @@ export function createListarMeusAgendamentosTool(clinicaId: number, telefonePaci
 }
 
 /**
+ * Cria a ferramenta para transferir o chat para um humano.
+ * @param pacienteId O ID do paciente que será atualizado.
+ */
+export function createHandoffTool(pacienteId: number) {
+  return new DynamicStructuredTool({
+    name: 'solicitar_atendimento_humano',
+    description:
+      'Útil para quando o paciente explicitamente pedir para falar com um humano, atendente ou doutor, ou se a IA não conseguir ajudar com a solicitação.',
+    schema: z.object({
+      motivo: z.string().describe('O motivo pelo qual o paciente pediu para falar com um humano (opcional).').optional(),
+    }),
+    func: async ({ motivo }) => {
+      try {
+        await prisma.paciente.update({
+          where: { id: pacienteId },
+          data: { chatStatus: 'HANDOFF' },
+        });
+
+        console.log(
+          `[IA HANDOFF] Paciente ${pacienteId} transferido para atendimento humano.${
+            motivo ? ` Motivo: ${motivo}` : ''
+          }`,
+        );
+
+        return 'Por favor, aguarde um momento. Um de nossos atendentes humanos irá continuar a conversa consigo em breve.';
+      } catch (error: any) {
+        console.error('Erro em createHandoffTool:', error);
+        return 'Erro ao tentar transferir o atendimento.';
+      }
+    },
+  });
+}
+
+/**
  * Cria a ferramenta para o paciente cancelar um agendamento.
  * @param clinicaId O ID da clínica específica.
  * @param telefonePaciente O número do WhatsApp do paciente.
