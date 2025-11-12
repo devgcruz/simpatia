@@ -13,6 +13,7 @@ import agendamentoRoutes from './routes/agendamento.routes';
 import disponibilidadeRoutes from './routes/disponibilidade.routes';
 import clinicaRoutes from './routes/clinica.routes';
 import webhookRoutes from './routes/webhook.routes';
+import chatRoutes from './routes/chat.routes';
 import { authMiddleware, isSuperAdmin } from './middleware/auth.middleware';
 
 const app = express();
@@ -65,6 +66,7 @@ app.use('/api/servicos', servicoRoutes);
 app.use('/api/agendamentos', agendamentoRoutes);
 app.use('/api/horarios', horarioRoutes);
 app.use('/api/disponibilidade', disponibilidadeRoutes);
+app.use('/api/chat', chatRoutes);
 
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
