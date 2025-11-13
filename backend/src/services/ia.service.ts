@@ -97,9 +97,13 @@ class IaService {
     const { id: clinicaId, whatsappToken, whatsappPhoneId } = clinica;
 
     try {
-      // 1. Parsear a mensagem
-      const texto = mensagemBruta.entry[0].changes[0].value.messages[0].text.body;
-      const telefone = mensagemBruta.entry[0].changes[0].value.messages[0].from; // ex: 5514999998888
+      const messageObject = mensagemBruta?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+      if (!messageObject || messageObject.type !== 'text') {
+        console.log(`IA: Ignorando evento de status (não-texto) da Meta.`);
+        return;
+      }
+      const texto = messageObject.text.body;
+      const telefone = messageObject.from; // ex: 5514999998888
 
       console.log(`IA: Processando msg de ${telefone} para Clínica ${clinicaId}: ${texto}`);
 
@@ -133,7 +137,7 @@ class IaService {
 
       const llm = new ChatGoogleGenerativeAI({
         apiKey,
-        model: 'gemini-1.5-flash-latest',
+        model: 'gemini-2.5-flash-lite',
         temperature: 0,
       });
 
@@ -283,15 +287,17 @@ class IaService {
       );
     } catch (error: any) {
       console.error(`Erro no processamento da IA para a Clínica ${clinicaId}:`, error.message, error.stack);
-      // Tenta enviar uma mensagem de erro ao usuário se possível
       try {
-        const telefone = mensagemBruta.entry[0].changes[0].value.messages[0].from;
-        await whatsappService.enviarMensagem(
-          telefone,
-          'Ops! Desculpe, tive um problema técnico. Tente novamente em alguns instantes.',
-          whatsappToken as string,
-          whatsappPhoneId as string,
-        );
+        const telefone = mensagemBruta?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.from;
+
+        if (telefone && whatsappToken && whatsappPhoneId) {
+          await whatsappService.enviarMensagem(
+            telefone,
+            'Ops! Desculpe, tive um problema técnico. Tente novamente em alguns instantes.',
+            whatsappToken as string,
+            whatsappPhoneId as string,
+          );
+        }
       } catch (e) {
         console.error('Erro ao enviar mensagem de erro da IA:', e);
       }

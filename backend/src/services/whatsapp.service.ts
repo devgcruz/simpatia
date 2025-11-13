@@ -24,7 +24,7 @@ class WhatsAppService {
 
     const data = {
       messaging_product: 'whatsapp',
-      to: "55" + telefone, // Assume DDI do Brasil.
+      to: telefone, // <-- CORRIGIDO. O 'telefone' já inclui o "55"
       type: 'text',
       text: { body: mensagem },
     };
