@@ -9,6 +9,7 @@ import { ServicosPage } from './pages/ServicosPage';
 import { PacientesPage } from './pages/PacientesPage';
 import { DoutoresPage } from './pages/DoutoresPage';
 import { ClinicasPage } from './pages/ClinicasPage';
+import { ChatPage } from './pages/ChatPage';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
 import { Toaster } from 'sonner';
@@ -31,6 +32,7 @@ function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<DashboardLayout />}>
               <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/atendimento" element={<ChatPage />} />
               <Route path="/servicos" element={<ServicosPage />} />
               <Route path="/pacientes" element={<PacientesPage />} />
               <Route path="/doutores" element={<DoutoresPage />} />

@@ -25,6 +25,7 @@ import PeopleIcon from '@mui/icons-material/People';
 import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import StoreIcon from '@mui/icons-material/Store';
+import ChatIcon from '@mui/icons-material/Chat';
 import { useAuth } from '../hooks/useAuth';
 
 const drawerWidth = 240;
@@ -108,6 +109,12 @@ export const DashboardLayout: React.FC = () => {
 
   const menuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'] },
+    {
+      text: 'Atendimento',
+      icon: <ChatIcon />,
+      path: '/atendimento',
+      role: ['CLINICA_ADMIN', 'SUPER_ADMIN'],
+    },
     { text: 'Pacientes', icon: <PeopleIcon />, path: '/pacientes', role: ['CLINICA_ADMIN', 'SUPER_ADMIN'] },
     { text: 'Serviços', icon: <MedicalServicesIcon />, path: '/servicos', role: ['CLINICA_ADMIN', 'SUPER_ADMIN'] },
     { text: 'Doutores', icon: <AccountCircleIcon />, path: '/doutores', role: ['CLINICA_ADMIN', 'SUPER_ADMIN'] },
