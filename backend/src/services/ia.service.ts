@@ -89,6 +89,39 @@ Instruções Importantes:
 - Mantenha as respostas curtas e diretas, adequadas para WhatsApp.
 - O histórico da conversa (chat_history) está disponível. Use-o para manter o contexto.`;
 
+/**
+ * Desembrulha recursivamente o conteúdo de uma AIMessage que pode estar
+ * serializada como JSON dentro de outra AIMessage.
+ */
+function unwrapAiContent(content: string | any[]): string {
+  if (typeof content === 'string') {
+    try {
+      // Tenta analisar o JSON
+      const parsedContent = JSON.parse(content);
+      
+      // Verifica se é um objeto LangChain AIMessage serializado
+      if (parsedContent.lc === 1 && parsedContent.kwargs && parsedContent.kwargs.content) {
+        // Se for, mergulha mais fundo
+        return unwrapAiContent(parsedContent.kwargs.content);
+      }
+      // Se for JSON mas não o que esperamos, retorna a string original
+      return content;
+    } catch (e) {
+      // Não é JSON, é a string final que queremos!
+      return content;
+    }
+  }
+  // Lida com o caso de array (visto no seu código)
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => (typeof part === 'string' ? part : (part as any).text || ''))
+      .join('\n')
+      .trim();
+  }
+  // Fallback
+  return String(content || 'Desculpe, não entendi.');
+}
+
 class IaService {
   /**
    * Lida com uma nova mensagem de WhatsApp para uma Clínica específica.
@@ -196,28 +229,33 @@ class IaService {
         finalAiMessage = aiResponse;
         conversation.push(aiResponse);
 
+        const toolCalls = aiResponse.tool_calls ?? [];
+
+        if (!toolCalls.length) {
+          // Usa a nova função para desembrulhar
+          respostaFinal = unwrapAiContent(aiResponse.content);
+          
+          // Se for uma chamada de ferramenta, grava o objeto. Se for texto, grava SÓ o texto final.
+          const contentToSave = respostaFinal; // 'respostaFinal' já contém o texto limpo
+          await (prisma as any).chatMessage.create({
+            data: {
+              content: contentToSave,
+              senderType: 'IA',
+              pacienteId: paciente.id,
+            },
+          });
+          
+          break;
+        }
+
+        // Se for uma chamada de ferramenta, grava o objeto.
         await (prisma as any).chatMessage.create({
           data: {
-            content: aiResponse.tool_calls ? JSON.stringify(aiResponse) : (aiResponse.content as string),
+            content: JSON.stringify(aiResponse),
             senderType: 'IA',
             pacienteId: paciente.id,
           },
         });
-
-        const toolCalls = aiResponse.tool_calls ?? [];
-
-        if (!toolCalls.length) {
-          const content = aiResponse.content;
-          if (typeof content === 'string') {
-            respostaFinal = content;
-          } else if (Array.isArray(content)) {
-            respostaFinal = content
-              .map((part) => (typeof part === 'string' ? part : (part as any).text || ''))
-              .join('\n')
-              .trim();
-          }
-          break;
-        }
 
         for (const call of toolCalls) {
           const tool = tools.find((t) => t.name === call.name);

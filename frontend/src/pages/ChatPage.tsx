@@ -11,12 +11,23 @@ import {
   Badge,
 } from '@mui/material';
 import { toast } from 'sonner';
-import { getHandoffQueue, HandoffPaciente } from '../services/chat.service';
+import {
+  closeHandoffChat,
+  getHandoffQueue,
+  HandoffPaciente,
+  IChatMessage,
+  sendDoutorMessage,
+} from '../services/chat.service';
+import { ChatHistory } from '../components/chat/ChatHistory';
+import { ChatInput } from '../components/chat/ChatInput';
 
 export const ChatPage: React.FC = () => {
   const [handoffQueue, setHandoffQueue] = useState<HandoffPaciente[]>([]);
   const [loadingQueue, setLoadingQueue] = useState(true);
   const [selectedPaciente, setSelectedPaciente] = useState<HandoffPaciente | null>(null);
+  const [newMessages, setNewMessages] = useState<IChatMessage[]>([]);
+  const [isSending, setIsSending] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
 
   const fetchHandoffQueue = async () => {
     try {
@@ -36,6 +47,42 @@ export const ChatPage: React.FC = () => {
 
   const handleSelectPaciente = (paciente: HandoffPaciente) => {
     setSelectedPaciente(paciente);
+    setNewMessages([]);
+  };
+
+  const handleSendMessage = async (content: string) => {
+    if (!selectedPaciente) {
+      return;
+    }
+
+    try {
+      setIsSending(true);
+      const sentMessage = await sendDoutorMessage(selectedPaciente.id, content);
+      setNewMessages((prev) => [...prev, sentMessage]);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Erro ao enviar mensagem.');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleCloseChat = async () => {
+    if (!selectedPaciente) {
+      return;
+    }
+
+    try {
+      setIsClosing(true);
+      await closeHandoffChat(selectedPaciente.id);
+      toast.success(`Atendimento de ${selectedPaciente.nome} fechado. O BOT assumirá.`);
+      setHandoffQueue((prev) => prev.filter((paciente) => paciente.id !== selectedPaciente.id));
+      setSelectedPaciente(null);
+      setNewMessages([]);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Erro ao fechar o chat.');
+    } finally {
+      setIsClosing(false);
+    }
   };
 
   return (
@@ -90,28 +137,29 @@ export const ChatPage: React.FC = () => {
         elevation={2}
       >
         {!selectedPaciente ? (
-          <Box
-            sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}
-          >
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
             <Typography variant="h6" color="text.secondary">
               Selecione um paciente na fila para iniciar o atendimento.
             </Typography>
           </Box>
         ) : (
-          <Box sx={{ flexGrow: 1, p: 2 }}>
-            <Typography variant="h5">Conversa com: {selectedPaciente.nome}</Typography>
-            <Typography variant="body1" color="text.secondary">
-              (ID do Paciente: {selectedPaciente.id})
-            </Typography>
-
-            <Box sx={{ mt: 2, border: 1, borderColor: 'divider', height: '60vh', p: 1 }}>
-              <Typography>(O histórico da conversa aparecerá aqui no próximo passo...)</Typography>
+          <>
+            <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
+              <Typography variant="h5">{selectedPaciente.nome}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {selectedPaciente.telefone}
+              </Typography>
             </Box>
-
-            <Box sx={{ mt: 2 }}>
-              <Typography>(A caixa de envio de mensagem aparecerá aqui...)</Typography>
+            <Box sx={{ flexGrow: 1, overflow: 'hidden' }}>
+              <ChatHistory pacienteId={selectedPaciente.id} newMessages={newMessages} />
             </Box>
-          </Box>
+            <ChatInput
+              onSendMessage={handleSendMessage}
+              onCloseChat={handleCloseChat}
+              isSending={isSending}
+              isClosing={isClosing}
+            />
+          </>
         )}
       </Paper>
     </Box>
