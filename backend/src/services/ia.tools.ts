@@ -21,7 +21,7 @@ export function createListarServicosTool(clinicaId: number) {
   return new DynamicStructuredTool({
     name: 'listar_servicos_clinica',
     description:
-      'Útil para quando o paciente perguntar quais serviços ou tratamentos a clínica oferece. Retorna uma lista de nomes de serviços, seus preços e duração.',
+      'Útil para quando o paciente perguntar quais serviços, tratamentos ou especialidades a clínica oferece. Retorna uma lista de nomes de serviços, seus preços e duração.',
     schema: z.object({}),
     func: async () => {
       try {
