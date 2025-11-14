@@ -24,6 +24,7 @@ enum SenderType {
   IA
   PACIENTE
   DOUTOR
+  TOOL
 }
 
 model Clinica {
@@ -131,12 +132,13 @@ model HistoricoPaciente {
 }
 
 model ChatMessage {
-  id         Int        @id @default(autoincrement())
-  content    String     @db.Text
-  senderType SenderType
-  createdAt  DateTime   @default(now())
-  pacienteId Int
-  paciente   Paciente   @relation(fields: [pacienteId], references: [id], onDelete: Cascade)
+  id           Int        @id @default(autoincrement())
+  content      String     @db.Text
+  senderType   SenderType
+  createdAt    DateTime   @default(now())
+  tool_call_id String?
+  pacienteId   Int
+  paciente     Paciente   @relation(fields: [pacienteId], references: [id], onDelete: Cascade)
 
   @@index([pacienteId, createdAt])
 }
