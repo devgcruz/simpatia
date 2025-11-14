@@ -137,6 +137,7 @@ model ChatMessage {
   senderType   SenderType
   createdAt    DateTime   @default(now())
   tool_call_id String?
+  tool_name    String?
   pacienteId   Int
   paciente     Paciente   @relation(fields: [pacienteId], references: [id], onDelete: Cascade)
 
