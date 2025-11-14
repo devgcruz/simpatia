@@ -52,8 +52,8 @@ function unwrapAiContent(content: string | any[]): string {
 }
 // --- FIM DA CORREÇÃO ---
 
-const SYSTEM_PROMPT = `Você é "Simpatia", uma assistente de IA profissional e amigável.
-Sua principal função é ajudar pacientes a marcar consultas numa clínica.
+const SYSTEM_PROMPT = `Você é "Simpatia", uma assistente de IA profissional, cordial e muito eficiente.
+Sua principal função é ajudar pacientes a marcar consultas, simulando um atendimento humano de alta qualidade.
 
 Contexto da Clínica:
 - Você está a atender a clínica de ID: {clinicaId}
@@ -67,33 +67,25 @@ Contexto da Clínica:
 {listaServicos}
 --- FIM CATÁLOGO DE SERVIÇOS ---
 
-Suas Tarefas:
-Saudar e Ajudar: Seja sempre cordial.
-
-Usar Ferramentas: Você DEVE usar as ferramentas fornecidas.
-
-Encontrar IDs: Antes de usar 'verificar_disponibilidade_horarios' ou 'marcar_agendamento_paciente', consulte os catálogos acima para encontrar o 'doutorId' e 'servicoId' correspondentes.
-
-Recolher Informação: Se o paciente quiser marcar uma consulta mas não fornecer data, serviço ou doutor, você deve perguntar-lhe.
-
-Serviços vs Especialidades: Trate perguntas sobre "especialidades" da mesma forma que "serviços". Use a ferramenta 'listar_servicos_clinica'.
-
-Seja Proativa (Serviços): Se o paciente perguntar "Quais serviços vocês têm?" ou "Quais especialidades?", use a ferramenta 'listar_servicos_clinica'.
-
-Não Agir sem Ferramenta: Se o pedido for algo que você não pode fazer (ex: "dar diagnóstico médico"), informe educadamente que não pode realizar essa ação.
-
-Capturar Nome do Paciente: Após marcar uma consulta com sucesso, pergunte o nome completo do paciente e use a ferramenta 'atualizar_nome_paciente'.
-
-Listar Agendamentos: Se o paciente perguntar "quais são minhas consultas?", use a ferramenta 'listar_meus_agendamentos'.
-
-Cancelar Agendamento: Se o paciente pedir para cancelar, use 'listar_meus_agendamentos' para ele confirmar o ID, e depois use 'cancelar_agendamento'.
-
-Transferir para Humano: Se o paciente pedir para "falar com um atendente", use a ferramenta 'solicitar_atendimento_humano'.
+Suas Tarefas e Diretrizes de Atendimento:
+1.  **Saudar e Ajudar:** Seja sempre cordial.
+2.  **Entendimento (Ponto 2 do Briefing):** Se o paciente disser "quais especialidades", "o que vocês fazem", "quais serviços", "quais tratamentos", sua prioridade é usar a ferramenta 'listar_servicos_clinica'. Nunca diga "Não tenho acesso a essa informação" para isso.
+3.  **Classificação (Ponto 2 do Briefing):** Se o paciente disser um sintoma (ex: "dor de dente", "manchas na pele") ou nome de procedimento (ex: "botox", "limpeza"), use os catálogos acima para identificar o 'servicoId' correto.
+4.  **Coleta de Dados (Ponto 3 do Briefing):**
+    * Para agendar, você precisa de 3 coisas: \`servicoId\`, \`doutorId\`, e a \`data\`.
+    * Se você não tiver estas informações, pergunte-as UMA DE CADA VEZ.
+    * Exemplo: "Claro, para qual serviço seria?", depois "Ótimo. Para qual data?", etc.
+    * **NÃO** pergunte "Para qual serviço, doutor e data?" tudo na mesma frase.
+5.  **Verificação de Agenda (Ponto 4 do Briefing):** Após ter os 3 dados, use 'verificar_disponibilidade_horarios'.
+6.  **Agendamento (Ponto 4 do Briefing):** Após o paciente escolher um horário, use 'marcar_agendamento_paciente'.
+7.  **Captura de Nome (Ponto 3 do Briefing):** Após marcar a primeira consulta, pergunte o nome completo do paciente e use a ferramenta 'atualizar_nome_paciente' para salvar.
+8.  **Gestão de Pacientes (Ponto 9 do Briefing):** Use 'listar_meus_agendamentos' e 'cancelar_agendamento' se o paciente pedir.
+9.  **Handoff (Ponto 1 do Briefing):** Se o paciente pedir para "falar com um humano" ou "atendente", use a ferramenta 'solicitar_atendimento_humano'.
 
 Instruções Importantes:
-- Responda sempre em Português do Brasil.
-- Mantenha as respostas curtas e diretas, adequadas para WhatsApp.
-- O histórico da conversa (chat_history) está disponível.`;
+- **NÃO TENHA AMNÉSIA:** Use o 'chat_history' para se lembrar do que já foi dito (ex: se o paciente disse "butox", não pergunte o serviço novamente).
+- Responda em Português do Brasil.
+- Mantenha as respostas curtas e diretas para WhatsApp.`;
 
 class IaService {
   async handleMensagem(mensagemBruta: any, clinica: Clinica) {
@@ -226,16 +218,11 @@ class IaService {
         // Processamento das Ferramentas
         for (const call of toolCalls) {
           const tool = tools.find((t) => t.name === call.name);
-          const toolCallId = call.id ?? `${call.name}_${Date.now()}`;
+          // O ID da chamada é essencial para a memória
+          const toolCallId = call.id ?? `tool_call_${Date.now()}`;
 
           if (!tool) {
-            const toolErrorMessage = `Ferramenta ${call.name} não disponível no momento.`;
-            const toolMessage = new ToolMessage({
-              content: toolErrorMessage,
-              tool_call_id: toolCallId,
-              status: 'error',
-            });
-            conversation.push(toolMessage);
+            // ... (código de erro da ferramenta, se desejar)
             continue;
           }
 
@@ -244,34 +231,39 @@ class IaService {
             const result = await (tool as unknown as { invoke: (input: unknown) => Promise<unknown> }).invoke(
               toolInput,
             );
-            const resultString =
-              typeof result === 'string' ? result : typeof result === 'object' ? JSON.stringify(result) : String(result);
-            const toolMessage = new ToolMessage({ content: resultString, tool_call_id: toolCallId });
+            const resultString = typeof result === 'string' ? result : JSON.stringify(result);
+
+            const toolMessage = new ToolMessage({
+              content: resultString,
+              tool_call_id: toolCallId,
+            });
             conversation.push(toolMessage);
 
-            // Grava o resultado da ferramenta no DB
+            // Grava o RESULTADO da ferramenta no DB
             await prisma.chatMessage.create({
               data: {
                 content: resultString,
-                senderType: SenderType.IA, // Ou um novo SenderType.TOOL
+                senderType: SenderType.TOOL, // <-- CORRIGIDO
                 pacienteId: paciente.id,
+                tool_call_id: toolCallId, // <-- CORRIGIDO
               },
             });
           } catch (err: any) {
-            const errorMessage = err?.message ?? 'Erro desconhecido ao executar a ferramenta.';
+            // ... (código de erro da ferramenta)
+            const errorMessage = err?.message ?? 'Erro desconhecido.';
             const toolMessage = new ToolMessage({
-              content: `Erro ao executar a ferramenta ${call.name}: ${errorMessage}`,
+              content: `Erro na ferramenta ${call.name}: ${errorMessage}`,
               tool_call_id: toolCallId,
-              status: 'error',
             });
             conversation.push(toolMessage);
 
-            // Grava o erro da ferramenta no DB
+            // Grava o ERRO da ferramenta no DB
             await prisma.chatMessage.create({
               data: {
                 content: `Erro na ferramenta ${call.name}: ${errorMessage}`,
-                senderType: SenderType.IA,
+                senderType: SenderType.TOOL, // Erros de ferramenta também são 'TOOL'
                 pacienteId: paciente.id,
+                tool_call_id: toolCallId,
               },
             });
           }
@@ -311,33 +303,42 @@ class IaService {
   }
 }
 
-// Função para mapear histórico do DB para formato LangChain (Adicione se não existir)
+// Substitua a função mapDbMessagesToLangChain existente por esta:
 function mapDbMessagesToLangChain(messages: ChatMessage[]): BaseMessage[] {
-  return messages.map((msg) => {
+  const history: BaseMessage[] = [];
+  for (const msg of messages) {
     if (msg.senderType === 'PACIENTE') {
-      return new HumanMessage(msg.content);
-    }
-    if (msg.senderType === 'IA') {
+      history.push(new HumanMessage(msg.content));
+    } else if (msg.senderType === 'IA') {
+      // Tenta analisar se é uma CHAMADA de ferramenta (guardada como JSON)
       try {
         const aiMsg = JSON.parse(msg.content);
         if (aiMsg.tool_calls) {
-          return new AIMessage({
-            content: aiMsg.content || '',
-            tool_calls: aiMsg.tool_calls,
-          });
-        }
-        // Se for um resultado de ferramenta (JSON não-AIMessage)
-        if (aiMsg.tool_call_id) {
-          return new ToolMessage(aiMsg.content, aiMsg.tool_call_id);
+          history.push(
+            new AIMessage({
+              content: aiMsg.content || '',
+              tool_calls: aiMsg.tool_calls,
+            }),
+          );
+          continue; // Pula para a próxima mensagem
         }
       } catch (e) {
         // Não é JSON, é uma resposta de texto simples
       }
-      return new AIMessage(msg.content);
+      // Se não for uma chamada de ferramenta, é uma FALA normal da IA
+      history.push(new AIMessage(msg.content));
+    } else if (msg.senderType === 'TOOL') {
+      // É um RESULTADO de ferramenta, liga-o ao tool_call_id
+      history.push(
+        new ToolMessage({
+          content: msg.content,
+          tool_call_id: msg.tool_call_id || '',
+        }),
+      );
     }
-    // Fallback para DOUTOR ou outros tipos
-    return new HumanMessage(msg.content); // Trata a msg do Doutor como "humana" no histórico
-  });
+    // Ignora mensagens do DOUTOR no histórico da IA
+  }
+  return history;
 }
 
 export default new IaService();
