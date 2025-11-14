@@ -229,33 +229,26 @@ class IaService {
         finalAiMessage = aiResponse;
         conversation.push(aiResponse);
 
-        const toolCalls = aiResponse.tool_calls ?? [];
+        // Se for uma chamada de ferramenta, grava o objeto. Se for texto, grava SÓ o texto limpo.
+        const contentToSave = aiResponse.tool_calls 
+          ? JSON.stringify(aiResponse) 
+          : unwrapAiContent(aiResponse.content); // <-- USA O LIMPADOR AQUI TAMBÉM
 
-        if (!toolCalls.length) {
-          // Usa a nova função para desembrulhar
-          respostaFinal = unwrapAiContent(aiResponse.content);
-          
-          // Se for uma chamada de ferramenta, grava o objeto. Se for texto, grava SÓ o texto final.
-          const contentToSave = respostaFinal; // 'respostaFinal' já contém o texto limpo
-          await (prisma as any).chatMessage.create({
-            data: {
-              content: contentToSave,
-              senderType: 'IA',
-              pacienteId: paciente.id,
-            },
-          });
-          
-          break;
-        }
-
-        // Se for uma chamada de ferramenta, grava o objeto.
         await (prisma as any).chatMessage.create({
           data: {
-            content: JSON.stringify(aiResponse),
+            content: contentToSave,
             senderType: 'IA',
             pacienteId: paciente.id,
           },
         });
+
+        const toolCalls = aiResponse.tool_calls ?? [];
+
+        if (!toolCalls.length) {
+          // Usa a nova função para desembrulhar o JSON
+          respostaFinal = unwrapAiContent(aiResponse.content);
+          break;
+        }
 
         for (const call of toolCalls) {
           const tool = tools.find((t) => t.name === call.name);
