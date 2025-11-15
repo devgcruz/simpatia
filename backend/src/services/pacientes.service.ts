@@ -174,7 +174,7 @@ class PacienteService {
             where: { id },
         });
 
-        return { message: "Serviço deletado com sucesso."};
+        return { message: "Paciente deletado com sucesso."};
     }
 
 

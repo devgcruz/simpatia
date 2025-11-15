@@ -60,6 +60,19 @@ class ClinicaController {
       return res.status(400).json({ message: error.message });
     }
   }
+
+  async handleRenovarWebhookVerifyToken(req: Request, res: Response) {
+    try {
+      const id = Number(req.params.id);
+      const clinica = await clinicaService.renovarWebhookVerifyToken(id);
+      return res.status(200).json(clinica);
+    } catch (error: any) {
+      if (error.code === 'P2025') {
+        return res.status(404).json({ message: 'Clínica não encontrada' });
+      }
+      return res.status(400).json({ message: error.message });
+    }
+  }
 }
 
 export default new ClinicaController();

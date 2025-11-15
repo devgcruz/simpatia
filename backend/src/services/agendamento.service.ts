@@ -30,6 +30,8 @@ interface ICreateAgendamentoIA {
     servicoId: number;
     clinicaId: number;
     status?: string;
+    relatoPaciente?: string | undefined; // O que o paciente disse para realizar o agendamento
+    entendimentoIA?: string | undefined; // Resumo/análise da IA sobre o que o paciente relatou
 }
 
 interface AuthUser {
@@ -182,26 +184,48 @@ class AgendamentoService {
 
     // NOVO MÉTODO PARA A IA
     async createParaIA(data: ICreateAgendamentoIA) {
-        const { dataHora, pacienteId, doutorId, servicoId, clinicaId, status } = data;
+        const { dataHora, pacienteId, doutorId, servicoId, clinicaId, status, relatoPaciente, entendimentoIA } = data;
+
+        console.log(`[AgendamentoService.createParaIA] Iniciando criação de agendamento:`, {
+            dataHora,
+            pacienteId,
+            doutorId,
+            servicoId,
+            clinicaId,
+            status,
+        });
 
         if (!dataHora || !pacienteId || !doutorId || !servicoId || !clinicaId) {
-            throw new Error("dataHora, pacienteId, doutorId, servicoId e clinicaId são obrigatórios.");
+            const erro = "dataHora, pacienteId, doutorId, servicoId e clinicaId são obrigatórios.";
+            console.error(`[AgendamentoService.createParaIA] ❌ ${erro}`);
+            throw new Error(erro);
         }
 
         // Validação de segurança: Garante que todas as entidades pertencem à clínica
         // que recebeu a mensagem do WhatsApp.
+        console.log(`[AgendamentoService.createParaIA] Validando entidades...`);
         const [doutor, paciente, servico] = await Promise.all([
             prisma.doutor.findFirst({ where: { id: doutorId, clinicaId } }),
             prisma.paciente.findFirst({ where: { id: pacienteId, clinicaId } }),
             prisma.servico.findFirst({ where: { id: servicoId, clinicaId } }),
         ]);
 
+        console.log(`[AgendamentoService.createParaIA] Resultado da validação:`, {
+            doutor: doutor ? `ID ${doutor.id} - ${doutor.nome}` : 'NÃO ENCONTRADO',
+            paciente: paciente ? `ID ${paciente.id} - ${paciente.nome}` : 'NÃO ENCONTRADO',
+            servico: servico ? `ID ${servico.id} - ${servico.nome}` : 'NÃO ENCONTRADO',
+        });
+
         if (!doutor || !paciente || !servico) {
-            throw new Error("Doutor, Paciente ou Serviço não encontrado ou não pertence à esta clínica.");
+            const erro = "Doutor, Paciente ou Serviço não encontrado ou não pertence à esta clínica.";
+            console.error(`[AgendamentoService.createParaIA] ❌ ${erro}`);
+            throw new Error(erro);
         }
 
         const dataHoraDate = typeof dataHora === 'string' ? new Date(dataHora) : dataHora;
+        console.log(`[AgendamentoService.createParaIA] Data/hora processada:`, dataHoraDate);
 
+        console.log(`[AgendamentoService.createParaIA] Criando agendamento no banco de dados...`);
         const novoAgendamento = await prisma.agendamento.create({
             data: {
                 dataHora: dataHoraDate,
@@ -209,9 +233,13 @@ class AgendamentoService {
                 pacienteId,
                 doutorId,
                 servicoId,
-            },
+                relatoPaciente: relatoPaciente || undefined, // Salva o relato do paciente
+                entendimentoIA: entendimentoIA || undefined, // Salva o entendimento da IA
+            } as any, // Type assertion temporária até regenerar Prisma Client
             include: agendamentoInclude,
         });
+
+        console.log(`[AgendamentoService.createParaIA] ✅ Agendamento criado com sucesso - ID: ${novoAgendamento.id}`);
 
         // Formata a resposta
         const { doutor: doutorInfo, ...rest } = novoAgendamento;
@@ -257,6 +285,65 @@ class AgendamentoService {
                 nome: servico.nome,
             },
         }));
+    }
+
+    /**
+     * Busca agendamento do paciente por data, horário e nome do serviço (para cancelamento automático).
+     */
+    async buscarAgendamentoPorDetalhes(pacienteId: number, dataHoraISO: string, nomeServico: string, clinicaId: number) {
+        const paciente = await prisma.paciente.findFirst({
+            where: { id: pacienteId, clinicaId: clinicaId }
+        });
+
+        if (!paciente) {
+            throw new Error("Paciente não encontrado ou não pertence a esta clínica.");
+        }
+
+        // Parse da data/hora ISO (ex: "2025-11-14T16:00:00")
+        const dataHora = new Date(dataHoraISO);
+        if (isNaN(dataHora.getTime())) {
+            throw new Error("Data/hora inválida.");
+        }
+
+        // Criar range de 1 hora antes e depois para buscar agendamentos próximos ao horário informado
+        const inicioHora = new Date(dataHora);
+        inicioHora.setHours(dataHora.getHours() - 1);
+        
+        const fimHora = new Date(dataHora);
+        fimHora.setHours(dataHora.getHours() + 1);
+
+        const agendamentos = await prisma.agendamento.findMany({
+            where: {
+                pacienteId: pacienteId,
+                dataHora: {
+                    gte: inicioHora,
+                    lte: fimHora,
+                },
+                status: {
+                    notIn: ['cancelado', 'finalizado'],
+                },
+                servico: {
+                    nome: {
+                        contains: nomeServico,
+                        mode: 'insensitive',
+                    },
+                },
+            },
+            include: agendamentoInclude,
+        });
+
+        if (agendamentos.length === 0) {
+            throw new Error(`Não encontrei agendamento de ${nomeServico} para o horário informado.`);
+        }
+
+        // Se houver múltiplos, pegar o mais próximo do horário informado
+        const agendamento = agendamentos.sort((a, b) => {
+            const diffA = Math.abs(a.dataHora.getTime() - dataHora.getTime());
+            const diffB = Math.abs(b.dataHora.getTime() - dataHora.getTime());
+            return diffA - diffB;
+        })[0];
+
+        return agendamento;
     }
 
     /**

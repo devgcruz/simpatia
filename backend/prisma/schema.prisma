@@ -105,16 +105,18 @@ model Servico {
 }
 
 model Agendamento {
-  id         Int      @id @default(autoincrement())
-  dataHora   DateTime
-  pacienteId Int
-  paciente   Paciente @relation(fields: [pacienteId], references: [id])
-  doutorId   Int
-  doutor     Doutor   @relation(fields: [doutorId], references: [id])
-  servicoId  Int
-  servico    Servico  @relation(fields: [servicoId], references: [id])
-  status     String // "confirmado", "pendente_ia", "cancelado"
-  historicos HistoricoPaciente[]
+  id             Int      @id @default(autoincrement())
+  dataHora       DateTime
+  pacienteId     Int
+  paciente       Paciente @relation(fields: [pacienteId], references: [id], onDelete: Cascade)
+  doutorId       Int
+  doutor         Doutor   @relation(fields: [doutorId], references: [id])
+  servicoId      Int
+  servico        Servico  @relation(fields: [servicoId], references: [id])
+  status         String   // "confirmado", "pendente_ia", "cancelado"
+  relatoPaciente String?  @db.Text // O que o paciente disse para realizar o agendamento
+  entendimentoIA String?  @db.Text // Resumo/análise da IA sobre o que o paciente relatou
+  historicos     HistoricoPaciente[]
 }
 
 model HistoricoPaciente {

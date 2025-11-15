@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import bcrypt from 'bcryptjs';
+import { randomUUID } from 'crypto';
 
 interface ICreateClinicaEAdmin {
   nome: string;
@@ -18,6 +19,8 @@ interface IUpdateClinica {
   telefone?: string;
   whatsappToken?: string;
   whatsappPhoneId?: string;
+  webhookUrlId?: string;
+  webhookVerifyToken?: string;
 }
 
 class ClinicaService {
@@ -73,6 +76,17 @@ class ClinicaService {
 
   async delete(id: number) {
     return prisma.clinica.delete({ where: { id } });
+  }
+
+  async renovarWebhookVerifyToken(id: number) {
+    const novoToken = randomUUID();
+    
+    return prisma.clinica.update({
+      where: { id },
+      data: {
+        webhookVerifyToken: novoToken,
+      },
+    });
   }
 }
 

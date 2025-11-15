@@ -14,6 +14,8 @@ interface Props {
   onConfirm: () => void;
   title: string;
   message: string;
+  confirmButtonText?: string;
+  confirmButtonColor?: 'error' | 'warning' | 'primary' | 'secondary' | 'success' | 'info';
 }
 
 export const ConfirmationModal: React.FC<Props> = ({
@@ -22,6 +24,8 @@ export const ConfirmationModal: React.FC<Props> = ({
   onConfirm,
   title,
   message,
+  confirmButtonText = 'Excluir',
+  confirmButtonColor = 'error',
 }) => {
   return (
     <Dialog
@@ -38,8 +42,8 @@ export const ConfirmationModal: React.FC<Props> = ({
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Cancelar</Button>
-        <Button onClick={onConfirm} color="error" autoFocus>
-          Excluir
+        <Button onClick={onConfirm} color={confirmButtonColor} autoFocus>
+          {confirmButtonText}
         </Button>
       </DialogActions>
     </Dialog>

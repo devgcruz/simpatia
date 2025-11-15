@@ -8,6 +8,7 @@ router.post('/', clinicaController.handleCreate);
 router.get('/:id', clinicaController.handleGetById);
 router.put('/:id', clinicaController.handleUpdate);
 router.delete('/:id', clinicaController.handleDelete);
+router.post('/:id/renovar-webhook-token', clinicaController.handleRenovarWebhookVerifyToken);
 
 export default router;
 

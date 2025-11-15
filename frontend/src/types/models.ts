@@ -32,6 +32,8 @@ export interface IAgendamento {
   id: number;
   dataHora: string;
   status: string;
+  relatoPaciente?: string | null;
+  entendimentoIA?: string | null;
   paciente: IPaciente;
   doutor: IDoutor;
   servico: IServico;
@@ -56,4 +58,5 @@ export interface IClinica {
   whatsappToken?: string;
   whatsappPhoneId?: string;
   webhookUrlId: string;
+  webhookVerifyToken?: string;
 }

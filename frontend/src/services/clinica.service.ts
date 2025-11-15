@@ -32,3 +32,8 @@ export const deleteClinica = async (id: number) => {
   await api.delete(`/clinicas/${id}`);
 };
 
+export const renovarWebhookVerifyToken = async (id: number) => {
+  const response = await api.post<IClinica>(`/clinicas/${id}/renovar-webhook-token`);
+  return response.data;
+};
+

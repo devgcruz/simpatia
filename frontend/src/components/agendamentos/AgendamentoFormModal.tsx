@@ -26,6 +26,7 @@ import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import InfoIcon from '@mui/icons-material/Info';
 import { toast } from 'sonner';
 import { AgendamentoCreateInput } from '../../services/agendamento.service';
 import { IDoutor, IPaciente, IServico, IAgendamento, IHistoricoPaciente } from '../../types/models';
@@ -349,6 +350,47 @@ export const AgendamentoFormModal: React.FC<Props> = ({
                       </Select>
                     </FormControl>
                   </Grid>
+
+                  {agendamento && agendamento.relatoPaciente && (
+                    <Grid item xs={12}>
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                        <TextField
+                          label="Relato do Paciente"
+                          value={agendamento.relatoPaciente}
+                          fullWidth
+                          multiline
+                          minRows={2}
+                          margin="normal"
+                          disabled
+                          sx={{ flex: 1 }}
+                        />
+                        {agendamento.entendimentoIA && (
+                          <Tooltip
+                            title={
+                              <Box>
+                                <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                                  Entendimento da IA:
+                                </Typography>
+                                <Typography variant="body2">{agendamento.entendimentoIA}</Typography>
+                              </Box>
+                            }
+                            arrow
+                            placement="top"
+                          >
+                            <IconButton
+                              color="primary"
+                              sx={{
+                                mt: 2,
+                                alignSelf: 'flex-start',
+                              }}
+                            >
+                              <InfoIcon />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                      </Box>
+                    </Grid>
+                  )}
                 </Grid>
               )}
             </Box>
