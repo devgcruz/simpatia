@@ -26,6 +26,10 @@ const initialStateCriacao = {
   adminNome: '',
   adminEmail: '',
   adminSenha: '',
+  horarioInicio: '',
+  horarioFim: '',
+  pausaInicio: '',
+  pausaFim: '',
 };
 
 
@@ -48,6 +52,10 @@ export const ClinicaFormModal: React.FC<Props> = ({ open, onClose, onSubmit, ini
         whatsappPhoneId: initialData.whatsappPhoneId || '',
         webhookUrlId: initialData.webhookUrlId || '',
         webhookVerifyToken: initialData.webhookVerifyToken || '',
+        horarioInicio: initialData.horarioInicio || '',
+        horarioFim: initialData.horarioFim || '',
+        pausaInicio: initialData.pausaInicio || '',
+        pausaFim: initialData.pausaFim || '',
       });
     } else {
       setForm(initialStateCriacao);
@@ -110,6 +118,62 @@ export const ClinicaFormModal: React.FC<Props> = ({ open, onClose, onSubmit, ini
                   <TextField name="cnpj" label="CNPJ" value={form.cnpj} onChange={handleChange} fullWidth margin="normal" />
                   <TextField name="endereco" label="Endereço" value={form.endereco} onChange={handleChange} fullWidth margin="normal" />
                   <TextField name="telefone" label="Telefone" value={form.telefone} onChange={handleChange} fullWidth margin="normal" />
+                  <Divider sx={{ my: 2 }} />
+                  <Typography variant="h6">Horário de Funcionamento</Typography>
+                  <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+                    Defina o horário de funcionamento da clínica. O calendário do dashboard respeitará estes horários.
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                    <TextField
+                      name="horarioInicio"
+                      label="Horário de Abertura"
+                      value={form.horarioInicio}
+                      onChange={handleChange}
+                      type="time"
+                      fullWidth
+                      margin="normal"
+                      InputLabelProps={{ shrink: true }}
+                      helperText="Ex: 08:00"
+                    />
+                    <TextField
+                      name="horarioFim"
+                      label="Horário de Fechamento"
+                      value={form.horarioFim}
+                      onChange={handleChange}
+                      type="time"
+                      fullWidth
+                      margin="normal"
+                      InputLabelProps={{ shrink: true }}
+                      helperText="Ex: 18:00"
+                    />
+                  </Box>
+                  <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+                    Intervalo de almoço (opcional)
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 2 }}>
+                    <TextField
+                      name="pausaInicio"
+                      label="Início da Pausa"
+                      value={form.pausaInicio}
+                      onChange={handleChange}
+                      type="time"
+                      fullWidth
+                      margin="normal"
+                      InputLabelProps={{ shrink: true }}
+                      helperText="Ex: 12:00"
+                    />
+                    <TextField
+                      name="pausaFim"
+                      label="Fim da Pausa"
+                      value={form.pausaFim}
+                      onChange={handleChange}
+                      type="time"
+                      fullWidth
+                      margin="normal"
+                      InputLabelProps={{ shrink: true }}
+                      helperText="Ex: 13:00"
+                    />
+                  </Box>
                 </>
               )}
               {tabValue === 1 && (
@@ -239,6 +303,64 @@ export const ClinicaFormModal: React.FC<Props> = ({ open, onClose, onSubmit, ini
               </>
             ) : (
               <>
+                <Divider sx={{ my: 2 }} />
+                <Typography variant="h6">Horário de Funcionamento</Typography>
+                <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+                  Defina o horário de funcionamento da clínica. O calendário do dashboard respeitará estes horários.
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                  <TextField
+                    name="horarioInicio"
+                    label="Horário de Abertura"
+                    value={form.horarioInicio}
+                    onChange={handleChange}
+                    type="time"
+                    fullWidth
+                    required
+                    margin="normal"
+                    InputLabelProps={{ shrink: true }}
+                    helperText="Ex: 08:00"
+                  />
+                  <TextField
+                    name="horarioFim"
+                    label="Horário de Fechamento"
+                    value={form.horarioFim}
+                    onChange={handleChange}
+                    type="time"
+                    fullWidth
+                    required
+                    margin="normal"
+                    InputLabelProps={{ shrink: true }}
+                    helperText="Ex: 18:00"
+                  />
+                </Box>
+                <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+                  Intervalo de almoço (opcional)
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                  <TextField
+                    name="pausaInicio"
+                    label="Início da Pausa"
+                    value={form.pausaInicio}
+                    onChange={handleChange}
+                    type="time"
+                    fullWidth
+                    margin="normal"
+                    InputLabelProps={{ shrink: true }}
+                    helperText="Ex: 12:00"
+                  />
+                  <TextField
+                    name="pausaFim"
+                    label="Fim da Pausa"
+                    value={form.pausaFim}
+                    onChange={handleChange}
+                    type="time"
+                    fullWidth
+                    margin="normal"
+                    InputLabelProps={{ shrink: true }}
+                    helperText="Ex: 13:00"
+                  />
+                </Box>
                 <Divider sx={{ my: 2 }} />
                 <Typography variant="h6">Dados do Admin da Clínica</Typography>
                 <TextField name="adminNome" label="Nome do Admin" value={form.adminNome} onChange={handleChange} fullWidth required margin="normal" />

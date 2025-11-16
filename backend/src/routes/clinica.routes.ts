@@ -5,6 +5,7 @@ const router = Router();
 
 router.get('/', clinicaController.handleGetAll);
 router.post('/', clinicaController.handleCreate);
+router.get('/atual', clinicaController.handleGetMinhaClinica);
 router.get('/:id', clinicaController.handleGetById);
 router.put('/:id', clinicaController.handleUpdate);
 router.delete('/:id', clinicaController.handleDelete);

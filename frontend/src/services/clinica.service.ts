@@ -9,12 +9,21 @@ export interface ClinicaCreateInput {
   adminNome: string;
   adminEmail: string;
   adminSenha: string;
+  horarioInicio?: string;
+  horarioFim?: string;
+  pausaInicio?: string;
+  pausaFim?: string;
 }
 
 type ClinicaUpdateInput = Partial<Omit<IClinica, 'id' | 'webhookUrlId'>>;
 
 export const getClinicas = async () => {
   const response = await api.get<IClinica[]>('/clinicas');
+  return response.data;
+};
+
+export const getMinhaClinica = async () => {
+  const response = await api.get<IClinica>('/clinica/atual');
   return response.data;
 };
 

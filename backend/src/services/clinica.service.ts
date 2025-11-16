@@ -10,6 +10,10 @@ interface ICreateClinicaEAdmin {
   adminNome: string;
   adminEmail: string;
   adminSenha: string;
+  horarioInicio?: string;
+  horarioFim?: string;
+  pausaInicio?: string;
+  pausaFim?: string;
 }
 
 interface IUpdateClinica {
@@ -21,6 +25,10 @@ interface IUpdateClinica {
   whatsappPhoneId?: string;
   webhookUrlId?: string;
   webhookVerifyToken?: string;
+  horarioInicio?: string;
+  horarioFim?: string;
+  pausaInicio?: string;
+  pausaFim?: string;
 }
 
 class ClinicaService {
@@ -33,7 +41,7 @@ class ClinicaService {
   }
 
   async createClinicaEAdmin(data: ICreateClinicaEAdmin) {
-    const { nome, cnpj, endereco, telefone, adminNome, adminEmail, adminSenha } = data;
+    const { nome, cnpj, endereco, telefone, adminNome, adminEmail, adminSenha, horarioInicio, horarioFim, pausaInicio, pausaFim } = data;
     const hashSenha = await bcrypt.hash(adminSenha, 10);
 
     try {
@@ -43,6 +51,10 @@ class ClinicaService {
           cnpj,
           endereco,
           telefone,
+          horarioInicio,
+          horarioFim,
+          pausaInicio,
+          pausaFim,
           doutores: {
             create: {
               nome: adminNome,

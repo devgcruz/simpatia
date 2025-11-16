@@ -59,4 +59,8 @@ export interface IClinica {
   whatsappPhoneId?: string;
   webhookUrlId: string;
   webhookVerifyToken?: string;
+  horarioInicio?: string;
+  horarioFim?: string;
+  pausaInicio?: string;
+  pausaFim?: string;
 }

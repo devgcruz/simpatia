@@ -43,6 +43,12 @@ model Clinica {
   webhookUrlId       String @unique @default(uuid())
   webhookVerifyToken String @default(uuid())
 
+  // --- Horário de Funcionamento da Clínica ---
+  horarioInicio String? // "08:00" - Horário de abertura da clínica
+  horarioFim    String? // "18:00" - Horário de fechamento da clínica
+  pausaInicio   String? // "12:00" - Início do intervalo de almoço (opcional)
+  pausaFim      String? // "13:00" - Fim do intervalo de almoço (opcional)
+
   // --- Relacionamentos (Quais dados pertencem a esta clínica) ---
   doutores  Doutor[]
   pacientes Paciente[]

@@ -73,6 +73,26 @@ class ClinicaController {
       return res.status(400).json({ message: error.message });
     }
   }
+
+  async handleGetMinhaClinica(req: Request, res: Response) {
+    try {
+      const { clinicaId } = req.user!;
+      
+      if (!clinicaId) {
+        return res.status(404).json({ message: 'Você não está associado a nenhuma clínica.' });
+      }
+
+      const clinica = await clinicaService.getById(clinicaId);
+
+      if (!clinica) {
+        return res.status(404).json({ message: 'Clínica não encontrada' });
+      }
+
+      return res.status(200).json(clinica);
+    } catch (error: any) {
+      return res.status(500).json({ message: error.message });
+    }
+  }
 }
 
 export default new ClinicaController();

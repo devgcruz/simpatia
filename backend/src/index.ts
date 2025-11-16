@@ -58,6 +58,9 @@ app.use(authMiddleware);
 // --- Rotas de SUPER ADMIN ---
 app.use('/api/clinicas', isSuperAdmin, clinicaRoutes);
 
+// --- Rota para buscar clínica atual do usuário (acessível a todos autenticados) ---
+app.use('/api/clinica', clinicaRoutes);
+
 // --- Rotas Protegidas ---
 // (O middleware acima será executado antes de cada uma destas)
 app.use('/api/doutores', doutorRoutes);

@@ -14,10 +14,12 @@ import {
   AgendamentoUpdateInput,
   finalizeAgendamento,
 } from '../services/agendamento.service';
-import { IAgendamento } from '../types/models';
+import { IAgendamento, IClinica } from '../types/models';
 
 import { AgendamentoFormModal } from '../components/agendamentos/AgendamentoFormModal';
 import { ConfirmationModal } from '../components/common/ConfirmationModal';
+import { useAuth } from '../hooks/useAuth';
+import { getMinhaClinica } from '../services/clinica.service';
 
 moment.updateLocale('pt-br', {
   week: { dow: 1, doy: 4 },
@@ -88,9 +90,11 @@ interface CalendarEvent {
 export const DashboardPage: React.FC = () => {
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('md'));
+  const { user } = useAuth();
 
   const [eventos, setEventos] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [clinica, setClinica] = useState<IClinica | null>(null);
 
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -120,9 +124,27 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
+  const fetchClinica = async () => {
+    if (!user?.clinicaId) return;
+    try {
+      const clinicaEncontrada = await getMinhaClinica();
+      if (clinicaEncontrada) {
+        setClinica(clinicaEncontrada);
+      }
+    } catch (err: any) {
+      console.error('Erro ao buscar dados da clínica:', err);
+    }
+  };
+
   useEffect(() => {
     fetchAgendamentos();
   }, []);
+
+  useEffect(() => {
+    if (user?.clinicaId) {
+      fetchClinica();
+    }
+  }, [user?.clinicaId]);
 
   const handleSelectEvent = (event: CalendarEvent) => {
     setSelectedEvent(event.resource);
@@ -222,6 +244,26 @@ export const DashboardPage: React.FC = () => {
     return { style };
   };
 
+  // Calcular horários mínimos e máximos do calendário baseado no horário de funcionamento
+  const getCalendarMinMax = () => {
+    if (!clinica?.horarioInicio || !clinica?.horarioFim) {
+      // Se não houver horário configurado, usar horários padrão
+      return { min: new Date(2024, 0, 1, 8, 0, 0), max: new Date(2024, 0, 1, 20, 0, 0) };
+    }
+
+    // Parse dos horários (formato "HH:MM")
+    const [inicioHora, inicioMinuto] = clinica.horarioInicio.split(':').map(Number);
+    const [fimHora, fimMinuto] = clinica.horarioFim.split(':').map(Number);
+
+    // Criar datas base para calcular min/max (usar uma data fixa como referência)
+    const min = new Date(2024, 0, 1, inicioHora, inicioMinuto, 0);
+    const max = new Date(2024, 0, 1, fimHora, fimMinuto, 0);
+
+    return { min, max };
+  };
+
+  const { min, max } = getCalendarMinMax();
+
   if (loading) {
     return <CircularProgress />;
   }
@@ -284,6 +326,8 @@ export const DashboardPage: React.FC = () => {
           onSelectSlot={handleSelectSlot}
           eventPropGetter={eventStyleGetter}
           dayLayoutAlgorithm="no-overlap"
+          min={min}
+          max={max}
         />
       </Box>
 
