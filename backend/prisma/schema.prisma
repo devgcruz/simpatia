@@ -64,11 +64,19 @@ model Doutor {
 
   role Role @default(DOUTOR)
 
+  // --- Horário de Almoço do Doutor ---
+  pausaInicio String? // "12:00" - Início do intervalo de almoço (opcional)
+  pausaFim    String? // "13:00" - Fim do intervalo de almoço (opcional)
+
+  // --- Dias Bloqueados (0 = Domingo, 1 = Segunda, ..., 6 = Sábado) ---
+  diasBloqueados Int[] @default([]) // Array de dias da semana bloqueados
+
   clinicaId Int?
   clinica   Clinica? @relation(fields: [clinicaId], references: [id], onDelete: Cascade)
 
   horarios     Horario[]
   agendamentos Agendamento[]
+  indisponibilidades Indisponibilidade[]
 }
 
 // Horários que o doutor ATENDE (para a IA saber)
@@ -150,4 +158,17 @@ model ChatMessage {
   paciente     Paciente   @relation(fields: [pacienteId], references: [id], onDelete: Cascade)
 
   @@index([pacienteId, createdAt])
+}
+
+// Períodos em que o doutor está indisponível (cirurgias, afastamentos, etc.)
+model Indisponibilidade {
+  id        Int      @id @default(autoincrement())
+  inicio    DateTime
+  fim       DateTime
+  motivo    String?  @db.Text
+  doutorId  Int
+  doutor    Doutor   @relation(fields: [doutorId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([doutorId, inicio, fim])
 }

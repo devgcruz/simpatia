@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { prisma } from '../src/lib/prisma';
+import bcrypt from 'bcryptjs';
 
 async function updateAdminEmail() {
   try {
@@ -28,16 +29,19 @@ async function updateAdminEmail() {
       return;
     }
 
-    // Atualizar o email
+    // Atualizar o email e a senha para 'admin'
+    const senhaHash = await bcrypt.hash('admin', 10);
+
     const adminAtualizado = await prisma.doutor.update({
       where: { id: admin.id },
-      data: { email: 'admin@mail.com' },
+      data: { email: 'admin@mail.com', senha: senhaHash },
     });
 
-    console.log('✅ Email do usuário admin atualizado com sucesso!');
+    console.log('✅ Email e senha do usuário admin atualizados com sucesso!');
     console.log(`   ID: ${adminAtualizado.id}`);
     console.log(`   Nome: ${adminAtualizado.nome}`);
     console.log(`   Email: ${adminAtualizado.email}`);
+    console.log(`   Senha: admin (hash armazenado)`);
   } catch (error: any) {
     console.error('❌ Erro ao atualizar email do admin:', error.message);
     process.exit(1);

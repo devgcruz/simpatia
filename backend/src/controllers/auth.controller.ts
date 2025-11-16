@@ -18,7 +18,8 @@ class AuthController {
             res.cookie('token', token, {
                 httpOnly: true, // Impede acesso via JS (XSS)
                 secure: process.env.NODE_ENV === 'production', // Só envia em HTTPS
-                sameSite: 'strict', // Protege contra CSRF
+                // Em desenvolvimento, usamos 'lax' para permitir cookie entre portas (3000/5173 -> 3333)
+                sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
                 maxAge: 3600000 // 1 hora, igual ao token
             });
 

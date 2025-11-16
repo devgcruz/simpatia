@@ -12,6 +12,11 @@ import {
   InputLabel,
   FormControl,
   FormHelperText,
+  Divider,
+  Typography,
+  FormGroup,
+  FormControlLabel,
+  Checkbox,
 } from '@mui/material';
 import { IDoutor, DoutorRole, IClinica } from '../../types/models';
 import { IUser } from '../../context/types';
@@ -33,6 +38,9 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
     especialidade: '',
     role: 'DOUTOR' as DoutorRole,
     clinicaId: '',
+    pausaInicio: '',
+    pausaFim: '',
+    diasBloqueados: [] as number[],
   });
 
   const isEditing = !!initialData;
@@ -52,7 +60,7 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
 
   useEffect(() => {
     if (initialData) {
-      const { nome, email, especialidade = '', role, clinicaId } = initialData;
+      const { nome, email, especialidade = '', role, clinicaId, pausaInicio = '', pausaFim = '', diasBloqueados = [] } = initialData;
       setForm({
         nome,
         email,
@@ -60,6 +68,9 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
         especialidade,
         role,
         clinicaId: clinicaId != null ? String(clinicaId) : '',
+        pausaInicio,
+        pausaFim,
+        diasBloqueados: diasBloqueados || [],
       });
     } else {
       setForm({
@@ -69,6 +80,9 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
         especialidade: '',
         role: 'DOUTOR',
         clinicaId: '',
+        pausaInicio: '',
+        pausaFim: '',
+        diasBloqueados: [],
       });
     }
   }, [initialData, open]);
@@ -90,6 +104,25 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
   const handleChange = (field: string, value: unknown) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
+
+  const handleDiaBloqueadoChange = (dia: number, checked: boolean) => {
+    setForm((prev) => {
+      const novosDiasBloqueados = checked
+        ? [...prev.diasBloqueados, dia]
+        : prev.diasBloqueados.filter((d) => d !== dia);
+      return { ...prev, diasBloqueados: novosDiasBloqueados };
+    });
+  };
+
+  const diasSemana = [
+    { valor: 0, label: 'Domingo' },
+    { valor: 1, label: 'Segunda-feira' },
+    { valor: 2, label: 'Terça-feira' },
+    { valor: 3, label: 'Quarta-feira' },
+    { valor: 4, label: 'Quinta-feira' },
+    { valor: 5, label: 'Sexta-feira' },
+    { valor: 6, label: 'Sábado' },
+  ];
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -135,6 +168,59 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
             fullWidth
             margin="normal"
           />
+
+          <Divider sx={{ my: 2 }} />
+          <Typography variant="h6" sx={{ mb: 1 }}>Horário de Almoço (Opcional)</Typography>
+          <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+            Defina o horário de almoço do doutor. Este horário aparecerá como "Horário da Pausa" no calendário do dashboard.
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <TextField
+              label="Início do Almoço"
+              name="pausaInicio"
+              value={form.pausaInicio}
+              onChange={(e) => handleChange('pausaInicio', e.target.value)}
+              type="time"
+              fullWidth
+              margin="normal"
+              InputLabelProps={{ shrink: true }}
+              helperText="Ex: 12:00"
+            />
+            <TextField
+              label="Fim do Almoço"
+              name="pausaFim"
+              value={form.pausaFim}
+              onChange={(e) => handleChange('pausaFim', e.target.value)}
+              type="time"
+              fullWidth
+              margin="normal"
+              InputLabelProps={{ shrink: true }}
+              helperText="Ex: 13:00"
+            />
+          </Box>
+
+          <Divider sx={{ my: 2 }} />
+          <Typography variant="h6" sx={{ mb: 1 }}>Dias Bloqueados (Opcional)</Typography>
+          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+            Selecione os dias da semana em que o doutor não atende. Estes dias aparecerão como indisponíveis no calendário.
+          </Typography>
+          <FormGroup>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+              {diasSemana.map((dia) => (
+                <FormControlLabel
+                  key={dia.valor}
+                  control={
+                    <Checkbox
+                      checked={form.diasBloqueados.includes(dia.valor)}
+                      onChange={(e) => handleDiaBloqueadoChange(dia.valor, e.target.checked)}
+                    />
+                  }
+                  label={dia.label}
+                />
+              ))}
+            </Box>
+          </FormGroup>
+
           {!isEditing && user?.role === 'SUPER_ADMIN' && (
             <FormControl fullWidth margin="normal" required>
               <InputLabel id="clinica-select-label">Clínica</InputLabel>

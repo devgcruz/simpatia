@@ -9,6 +9,9 @@ interface ICreateDoutor {
     especialidade?: string;
     role?: string;
     clinicaId?: number;
+    pausaInicio?: string;
+    pausaFim?: string;
+    diasBloqueados?: number[];
 }
 
 interface IUpdateDoutor {
@@ -17,6 +20,9 @@ interface IUpdateDoutor {
     senha?: string;
     especialidade?: string;
     role?: string;
+    pausaInicio?: string;
+    pausaFim?: string;
+    diasBloqueados?: number[];
 }
 
 class DoutorService {
@@ -28,6 +34,9 @@ class DoutorService {
         especialidade: true,
         role: true,
         clinicaId: true,
+        pausaInicio: true,
+        pausaFim: true,
+        diasBloqueados: true,
     };
 
     private superAdminSelect = {
@@ -37,6 +46,9 @@ class DoutorService {
         especialidade: true,
         role: true,
         clinicaId: true,
+        pausaInicio: true,
+        pausaFim: true,
+        diasBloqueados: true,
         clinica: {
             select: {
                 nome: true,
@@ -106,7 +118,7 @@ class DoutorService {
     }
 
     async create(data: ICreateDoutor, user: { id: number, role: string, clinicaId: number | null }) {
-        const { nome, email, senha, especialidade, role } = data;
+        const { nome, email, senha, especialidade, role, pausaInicio, pausaFim, diasBloqueados } = data;
 
         if (!nome || !email || !senha) {
             throw new Error("Nome, email e senha são obrigatórios.");
@@ -146,6 +158,9 @@ class DoutorService {
                 especialidade: especialidade ?? null,
                 role: role as any,
                 clinicaId: targetClinicaId,
+                ...(pausaInicio && { pausaInicio }),
+                ...(pausaFim && { pausaFim }),
+                ...(diasBloqueados && diasBloqueados.length > 0 ? { diasBloqueados } : { diasBloqueados: [] }),
             },
             select: user.role === 'SUPER_ADMIN' ? this.superAdminSelect : this.adminSelect,
         });

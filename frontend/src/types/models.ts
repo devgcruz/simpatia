@@ -23,6 +23,9 @@ export interface IDoutor {
   especialidade?: string;
   role: DoutorRole;
   clinicaId?: number;
+  pausaInicio?: string;
+  pausaFim?: string;
+  diasBloqueados?: number[]; // Array de dias da semana bloqueados (0 = Domingo, 6 = Sábado)
   clinica?: {
     nome: string;
   }

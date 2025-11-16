@@ -26,6 +26,7 @@ import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import InfoIcon from '@mui/icons-material/Info';
 import { toast } from 'sonner';
 import { AgendamentoCreateInput } from '../../services/agendamento.service';
@@ -43,6 +44,7 @@ interface Props {
   initialData?: { dataHora: Date } | null;
   agendamento?: IAgendamento | null;
   onRequestDelete?: () => void;
+  onRequestIndisponibilidade?: () => void;
   onFinalize?: (descricao: string) => Promise<void>;
 }
 
@@ -63,6 +65,7 @@ export const AgendamentoFormModal: React.FC<Props> = ({
   initialData,
   agendamento,
   onRequestDelete,
+  onRequestIndisponibilidade,
   onFinalize,
 }) => {
   const { user } = useAuth();
@@ -224,18 +227,36 @@ export const AgendamentoFormModal: React.FC<Props> = ({
           </Typography>
           <Box sx={{ display: 'flex', gap: 1 }}>
             {agendamento && (
-              <Tooltip title="Excluir agendamento">
-                <span>
-                  <IconButton
-                    aria-label="Excluir agendamento"
-                    onClick={onRequestDelete}
-                    disabled={loading || finalizando}
-                    sx={{ color: 'error.main' }}
-                  >
-                    <DeleteOutlineIcon />
-                  </IconButton>
-                </span>
-              </Tooltip>
+              <>
+                {onRequestIndisponibilidade && (
+                  <Tooltip title="Lançar Indisponibilidade">
+                    <span>
+                      <IconButton
+                        aria-label="Lançar Indisponibilidade"
+                        onClick={onRequestIndisponibilidade}
+                        disabled={loading || finalizando}
+                        sx={{ color: 'primary.main' }}
+                      >
+                        <AccessTimeIcon />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                )}
+                {onRequestDelete && (
+                  <Tooltip title="Excluir agendamento">
+                    <span>
+                      <IconButton
+                        aria-label="Excluir agendamento"
+                        onClick={onRequestDelete}
+                        disabled={loading || finalizando}
+                        sx={{ color: 'error.main' }}
+                      >
+                        <DeleteOutlineIcon />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                )}
+              </>
             )}
             <Tooltip title="Fechar">
               <IconButton aria-label="Fechar" onClick={onClose}>

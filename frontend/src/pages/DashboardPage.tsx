@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Calendar, momentLocalizer } from 'react-big-calendar';
 import moment from 'moment';
 import 'moment/locale/pt-br';
-import { Box, CircularProgress, useMediaQuery, useTheme } from '@mui/material';
+import { Box, CircularProgress, useMediaQuery, useTheme, IconButton, Tooltip } from '@mui/material';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import { toast } from 'sonner';
 
 import {
@@ -14,15 +15,18 @@ import {
   AgendamentoUpdateInput,
   finalizeAgendamento,
 } from '../services/agendamento.service';
-import { IAgendamento, IClinica } from '../types/models';
+import { IAgendamento, IClinica, IDoutor } from '../types/models';
 
 import { AgendamentoFormModal } from '../components/agendamentos/AgendamentoFormModal';
 import { ConfirmationModal } from '../components/common/ConfirmationModal';
 import { useAuth } from '../hooks/useAuth';
 import { getMinhaClinica } from '../services/clinica.service';
+import { listarIndisponibilidadesDaClinica, Indisponibilidade } from '../services/indisponibilidade.service';
+import { IndisponibilidadeManagerModal } from '../components/doutores/IndisponibilidadeManagerModal';
+import { getDoutores } from '../services/doutor.service';
 
 moment.updateLocale('pt-br', {
-  week: { dow: 1, doy: 4 },
+  week: { dow: 0, doy: 4 }, // dow: 0 = Domingo (0 = Domingo, 1 = Segunda, ..., 6 = Sábado)
   weekdaysShort: ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'],
   weekdaysMin: ['do', 'sg', 'te', 'qa', 'qi', 'sx', 'sa'],
   monthsShort: ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'],
@@ -107,6 +111,9 @@ export const DashboardPage: React.FC = () => {
 
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isIndisponibilidadeModalOpen, setIsIndisponibilidadeModalOpen] = useState(false);
+  const [selectedDoutor, setSelectedDoutor] = useState<IDoutor | null>(null);
+  const [indisponibilidadeEditando, setIndisponibilidadeEditando] = useState<Indisponibilidade | null>(null);
 
   const [selectedEvent, setSelectedEvent] = useState<IAgendamento | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<{ dataHora: Date } | null>(null);
@@ -120,12 +127,139 @@ export const DashboardPage: React.FC = () => {
       resource: ag,
     }));
 
+  const criarEventosPausa = async (): Promise<CalendarEvent[]> => {
+    const eventosPausa: CalendarEvent[] = [];
+    const hoje = moment().startOf('day');
+    let indexCounter = 0;
+    
+    // Eventos de pausa da clínica (se configurado)
+    if (clinica?.pausaInicio && clinica?.pausaFim) {
+      for (let i = 0; i < 365; i++) {
+        const data = hoje.clone().add(i, 'days');
+        const [inicioHora, inicioMinuto] = clinica.pausaInicio.split(':').map(Number);
+        const [fimHora, fimMinuto] = clinica.pausaFim.split(':').map(Number);
+        
+        const inicioPausa = data.clone().hour(inicioHora).minute(inicioMinuto).second(0).toDate();
+        const fimPausa = data.clone().hour(fimHora).minute(fimMinuto).second(0).toDate();
+        
+        eventosPausa.push({
+          id: -1000000 - indexCounter++,
+          title: 'Horário da Pausa',
+          start: inicioPausa,
+          end: fimPausa,
+          resource: {
+            id: 0,
+            dataHora: inicioPausa.toISOString(),
+            status: 'pausa',
+            paciente: { id: 0, nome: 'Pausa', telefone: '', clinicaId: 0 },
+            doutor: { id: 0, nome: '', email: '', role: 'DOUTOR' as const, clinicaId: 0 },
+            servico: { id: 0, nome: 'Pausa', descricao: '', duracaoMin: 0, preco: 0, clinicaId: 0 },
+          } as any,
+        });
+      }
+    }
+    
+    // Eventos de pausa dos doutores e dias bloqueados
+    try {
+      const doutores = await getDoutores();
+      doutores.forEach((doutor) => {
+        // Eventos de dias bloqueados do doutor (dia inteiro) - verificar primeiro
+        const diasBloqueadosDoutor = doutor.diasBloqueados || [];
+
+        // Eventos de horário de almoço do doutor (apenas em dias não bloqueados)
+        if (doutor.pausaInicio && doutor.pausaFim) {
+          for (let i = 0; i < 365; i++) {
+            const data = hoje.clone().add(i, 'days');
+            const diaSemana = data.day(); // 0 = Domingo, 6 = Sábado
+
+            // Só criar evento de horário de almoço se o dia NÃO estiver bloqueado
+            if (!diasBloqueadosDoutor.includes(diaSemana)) {
+              const [inicioHora, inicioMinuto] = doutor.pausaInicio!.split(':').map(Number);
+              const [fimHora, fimMinuto] = doutor.pausaFim!.split(':').map(Number);
+              
+              const inicioPausa = data.clone().hour(inicioHora).minute(inicioMinuto).second(0).toDate();
+              const fimPausa = data.clone().hour(fimHora).minute(fimMinuto).second(0).toDate();
+              
+              eventosPausa.push({
+                id: -1000000 - indexCounter++,
+                title: `Horário da Pausa - ${doutor.nome}`,
+                start: inicioPausa,
+                end: fimPausa,
+                resource: {
+                  id: 0,
+                  dataHora: inicioPausa.toISOString(),
+                  status: 'pausa',
+                  paciente: { id: 0, nome: 'Pausa', telefone: '', clinicaId: 0 },
+                  doutor: { id: doutor.id, nome: doutor.nome, email: doutor.email, role: doutor.role, clinicaId: doutor.clinicaId || 0 },
+                  servico: { id: 0, nome: 'Pausa', descricao: '', duracaoMin: 0, preco: 0, clinicaId: 0 },
+                } as any,
+              });
+            }
+          }
+        }
+
+        // Eventos de dias bloqueados do doutor (dia inteiro)
+        if (diasBloqueadosDoutor.length > 0) {
+          for (let i = 0; i < 365; i++) {
+            const data = hoje.clone().add(i, 'days');
+            const diaSemana = data.day(); // 0 = Domingo, 6 = Sábado
+
+            // Se este dia da semana está bloqueado para este doutor
+            if (diasBloqueadosDoutor.includes(diaSemana)) {
+              const inicioDia = data.clone().hour(0).minute(0).second(0).toDate();
+              const fimDia = data.clone().hour(23).minute(59).second(59).toDate();
+
+              eventosPausa.push({
+                id: -2000000 - indexCounter++,
+                title: `Dia Bloqueado - ${doutor.nome}`,
+                start: inicioDia,
+                end: fimDia,
+                resource: {
+                  id: 0,
+                  dataHora: inicioDia.toISOString(),
+                  status: 'pausa',
+                  paciente: { id: 0, nome: 'Dia Bloqueado', telefone: '', clinicaId: 0 },
+                  doutor: { id: doutor.id, nome: doutor.nome, email: doutor.email, role: doutor.role, clinicaId: doutor.clinicaId || 0 },
+                  servico: { id: 0, nome: 'Dia Bloqueado', descricao: '', duracaoMin: 0, preco: 0, clinicaId: 0 },
+                } as any,
+              });
+            }
+          }
+        }
+      });
+    } catch (err) {
+      console.error('Erro ao buscar doutores para eventos de pausa:', err);
+    }
+    
+    return eventosPausa;
+  };
+
   const fetchAgendamentos = async () => {
     try {
       setLoading(true);
       const data: IAgendamento[] = await getAgendamentos();
       const eventosFormatados = formatarEventos(data);
-      setEventos(eventosFormatados);
+      // Buscar indisponibilidades e adicionar como eventos bloqueados
+      const indisps = await listarIndisponibilidadesDaClinica();
+      const eventosIndisp: CalendarEvent[] = indisps.map((i) => ({
+        id: -i.id, // ids negativos para diferenciar
+        title: `Indisponível${i.doutor?.nome ? ` - ${i.doutor.nome}` : ''}${i.motivo ? ` (${i.motivo})` : ''}`,
+        start: new Date(i.inicio),
+        end: new Date(i.fim),
+        resource: {
+          id: 0,
+          dataHora: i.inicio,
+          status: 'indisponivel',
+          paciente: { id: 0, nome: 'Indisponibilidade', telefone: '', clinicaId: 0 },
+          doutor: { id: i.doutor?.id || 0, nome: i.doutor?.nome || '', email: '', role: 'DOUTOR', clinicaId: 0 },
+          servico: { id: 0, nome: 'Indisponibilidade', descricao: '', duracaoMin: 0, preco: 0, clinicaId: 0 },
+        } as any,
+      }));
+      
+      // Adicionar eventos de pausa (clínica + doutores)
+      const eventosPausa = await criarEventosPausa();
+      
+      setEventos([...eventosFormatados, ...eventosIndisp, ...eventosPausa]);
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Erro ao buscar agendamentos');
     } finally {
@@ -155,7 +289,57 @@ export const DashboardPage: React.FC = () => {
     }
   }, [user?.clinicaId]);
 
+  // Recarregar agendamentos quando a clínica mudar (para atualizar eventos de pausa)
+  useEffect(() => {
+    if (clinica) {
+      fetchAgendamentos();
+    }
+  }, [clinica?.pausaInicio, clinica?.pausaFim]);
+
+  const handleOpenIndisponibilidadeModal = () => {
+    setIsIndisponibilidadeModalOpen(true);
+    // Se for DOUTOR, pré-selecionar ele mesmo
+    if (user?.role === 'DOUTOR' && user.id) {
+      // O modal vai carregar os doutores e podemos passar o ID inicial
+      setSelectedDoutor({ id: user.id, nome: '', email: '', role: 'DOUTOR' } as IDoutor);
+    } else {
+      setSelectedDoutor(null);
+    }
+  };
+
+  const handleCloseIndisponibilidadeModal = () => {
+    setIsIndisponibilidadeModalOpen(false);
+    setSelectedDoutor(null);
+    setIndisponibilidadeEditando(null);
+    // Recarregar indisponibilidades para atualizar o calendário
+    fetchAgendamentos();
+  };
+
   const handleSelectEvent = (event: CalendarEvent) => {
+    const resource = event.resource as any;
+    
+    // Eventos de pausa não são clicáveis
+    if (resource?.status === 'pausa') {
+      return;
+    }
+    
+    // Verificar se é uma indisponibilidade (id negativo ou status 'indisponivel')
+    if (event.id < 0 || resource?.status === 'indisponivel') {
+      // Se for evento de pausa (id muito negativo), não fazer nada
+      if (event.id < -100000) {
+        return;
+      }
+      // Buscar a indisponibilidade correspondente
+      listarIndisponibilidadesDaClinica().then((indisps) => {
+        const indisponibilidade = indisps.find((ind) => ind.id === Math.abs(event.id));
+        if (indisponibilidade) {
+          setIndisponibilidadeEditando(indisponibilidade);
+          setSelectedDoutor({ id: indisponibilidade.doutor?.id || 0, nome: indisponibilidade.doutor?.nome || '', email: '', role: 'DOUTOR' } as IDoutor);
+          setIsIndisponibilidadeModalOpen(true);
+        }
+      });
+      return;
+    }
     setSelectedEvent(event.resource);
     setSelectedSlot(null);
     setIsFormModalOpen(true);
@@ -231,6 +415,23 @@ export const DashboardPage: React.FC = () => {
     let color = 'white';
     let textDecoration: 'none' | 'line-through' = 'none';
 
+    // Eventos de pausa (cinza, não clicável)
+    if (status === 'pausa' || (event as any).id < -100000) {
+      backgroundColor = '#9ca3af'; // cinza
+      color = '#ffffff';
+      return {
+        style: {
+          backgroundColor,
+          borderRadius: '5px',
+          opacity: 0.6,
+          color,
+          border: '0px',
+          textDecoration,
+          cursor: 'default',
+        },
+      };
+    }
+
     if (status === 'cancelado') {
       backgroundColor = '#9ca3af';
       color = '#1f2937';
@@ -240,6 +441,12 @@ export const DashboardPage: React.FC = () => {
       color = '#ffffff';
     } else if (status !== 'confirmado') {
       backgroundColor = '#f59e0b';
+    }
+
+    // Eventos de indisponibilidade (status marcado acima como 'indisponivel')
+    if ((event as any).id < 0 || status === 'indisponivel') {
+      backgroundColor = '#ef4444'; // vermelho
+      color = '#ffffff';
     }
 
     const style = {
@@ -287,6 +494,31 @@ export const DashboardPage: React.FC = () => {
         minHeight: 0,
       }}
     >
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          mb: 2,
+          px: { xs: 1, md: 2 },
+        }}
+      >
+        <Tooltip title="Gerenciar Disponibilidades">
+          <IconButton
+            color="primary"
+            onClick={handleOpenIndisponibilidadeModal}
+            sx={{
+              backgroundColor: 'primary.main',
+              color: 'white',
+              '&:hover': {
+                backgroundColor: 'primary.dark',
+              },
+            }}
+          >
+            <AccessTimeIcon />
+          </IconButton>
+        </Tooltip>
+      </Box>
+
       <Box
         sx={{
           flex: 1,
@@ -347,6 +579,14 @@ export const DashboardPage: React.FC = () => {
         initialData={selectedSlot}
         agendamento={selectedEvent}
         onRequestDelete={handleDeleteRequest}
+        onRequestIndisponibilidade={() => {
+          if (selectedEvent?.doutor?.id) {
+            setSelectedDoutor({ id: selectedEvent.doutor.id, nome: selectedEvent.doutor.nome, email: '', role: 'DOUTOR' } as IDoutor);
+            setIndisponibilidadeEditando(null);
+            setIsFormModalOpen(false);
+            setIsIndisponibilidadeModalOpen(true);
+          }
+        }}
         onFinalize={handleFinalizeAgendamento}
       />
 
@@ -356,6 +596,14 @@ export const DashboardPage: React.FC = () => {
         onConfirm={handleDelete}
         title="Excluir Agendamento"
         message={`Tem certeza que deseja excluir o agendamento de ${selectedEvent?.paciente?.nome}?`}
+      />
+
+      <IndisponibilidadeManagerModal
+        open={isIndisponibilidadeModalOpen}
+        onClose={handleCloseIndisponibilidadeModal}
+        doutorId={selectedDoutor?.id || user?.id}
+        doutorNome={selectedDoutor?.nome}
+        indisponibilidadeEditando={indisponibilidadeEditando}
       />
     </Box>
   );

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Box, Button, Paper, CircularProgress, TextField, InputAdornment } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import { DataGrid, GridColDef, GridToolbar, GridActionsCellItem } from '@mui/x-data-grid';
 import { ptBR } from '@mui/x-data-grid/locales';
@@ -11,6 +12,7 @@ import { getDoutores, createDoutor, updateDoutor, deleteDoutor, DoutorCreateInpu
 import { DoutorFormModal } from '../components/doutores/DoutorFormModal';
 import { ConfirmationModal } from '../components/common/ConfirmationModal';
 import { useAuth } from '../hooks/useAuth';
+import { IndisponibilidadeManagerModal } from '../components/doutores/IndisponibilidadeManagerModal';
 
 export const DoutoresPage: React.FC = () => {
   const { user } = useAuth();
@@ -21,6 +23,8 @@ export const DoutoresPage: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDoutor, setEditingDoutor] = useState<IDoutor | null>(null);
   const [itemToDeleteId, setItemToDeleteId] = useState<number | null>(null);
+  const [indispModalOpen, setIndispModalOpen] = useState(false);
+  const [doutorIndisp, setDoutorIndisp] = useState<{ id: number; nome: string } | null>(null);
 
   const fetchDoutores = async () => {
     try {
@@ -97,6 +101,16 @@ export const DoutoresPage: React.FC = () => {
       headerName: 'Ações',
       width: 120,
       getActions: ({ row }) => [
+        <GridActionsCellItem
+          key="indisp"
+          icon={<AccessTimeIcon />}
+          label="Gerenciar disponibilidades"
+          onClick={() => {
+            setDoutorIndisp({ id: row.id, nome: row.nome });
+            setIndispModalOpen(true);
+          }}
+          title="Gerenciar disponibilidades"
+        />,
         <GridActionsCellItem
           key="edit"
           icon={<EditIcon />}
@@ -232,6 +246,14 @@ export const DoutoresPage: React.FC = () => {
         title="Confirmar Exclusão"
         message="Tem certeza que deseja excluir este doutor? Esta ação não pode ser desfeita."
       />
+      {indispModalOpen && doutorIndisp && (
+        <IndisponibilidadeManagerModal
+          open={indispModalOpen}
+          onClose={() => setIndispModalOpen(false)}
+          doutorId={doutorIndisp.id}
+          doutorNome={doutorIndisp.nome}
+        />
+      )}
     </Box>
   );
 };

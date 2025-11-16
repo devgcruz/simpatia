@@ -8,6 +8,9 @@ export interface DoutorCreateInput {
   especialidade?: string;
   role: DoutorRole;
   clinicaId?: number;
+  pausaInicio?: string;
+  pausaFim?: string;
+  diasBloqueados?: number[];
 }
 
 export interface DoutorUpdateInput {
@@ -16,6 +19,9 @@ export interface DoutorUpdateInput {
   senha?: string;
   especialidade?: string;
   role?: DoutorRole;
+  pausaInicio?: string;
+  pausaFim?: string;
+  diasBloqueados?: number[];
 }
 
 export const getDoutores = async () => {
