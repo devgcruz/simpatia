@@ -62,6 +62,15 @@ const formats = {
   monthHeaderFormat: (date: Date) => moment(date).locale('pt-br').format('MMMM YYYY'),
   agendaHeaderFormat: ({ start, end }: { start: Date; end: Date }) =>
     `${moment(start).locale('pt-br').format('DD MMM YYYY')} – ${moment(end).locale('pt-br').format('DD MMM YYYY')}`,
+  // Formato de horário 24 horas (HH:mm)
+  timeGutterFormat: (date: Date) => moment(date).format('HH:mm'),
+  eventTimeRangeFormat: ({ start, end }: { start: Date; end: Date }) =>
+    `${moment(start).format('HH:mm')} – ${moment(end).format('HH:mm')}`,
+  eventTimeRangeStartFormat: ({ start }: { start: Date }) => moment(start).format('HH:mm'),
+  eventTimeRangeEndFormat: ({ end }: { end: Date }) => moment(end).format('HH:mm'),
+  agendaTimeFormat: (date: Date) => moment(date).format('HH:mm'),
+  agendaTimeRangeFormat: ({ start, end }: { start: Date; end: Date }) =>
+    `${moment(start).format('HH:mm')} – ${moment(end).format('HH:mm')}`,
 };
 
 const messages = {
