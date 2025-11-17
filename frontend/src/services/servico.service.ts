@@ -3,8 +3,14 @@ import { IServico } from '../types/models';
 
 type ServicoInput = Omit<IServico, 'id' | 'clinicaId'>;
 
-export const getServicos = async () => {
-  const response = await api.get<IServico[]>('/servicos');
+export const getServicos = async (doutorId?: number) => {
+  const params = doutorId ? { doutorId } : {};
+  const response = await api.get<IServico[]>('/servicos', { params });
+  return response.data;
+};
+
+export const getServicosByDoutor = async (doutorId: number) => {
+  const response = await api.get<IServico[]>(`/servicos/doutor/${doutorId}`);
   return response.data;
 };
 

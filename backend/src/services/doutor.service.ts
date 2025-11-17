@@ -78,6 +78,15 @@ class DoutorService {
             });
         }
 
+        if (user.role === 'DOUTOR') {
+            // Quando o role é DOUTOR, retornar apenas o doutor logado
+            const doutor = await prisma.doutor.findUnique({
+                where: { id: user.id },
+                select: this.adminSelect,
+            });
+            return doutor ? [doutor] : [];
+        }
+
         return [];
     }
 

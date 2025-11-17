@@ -5,7 +5,20 @@ class ServicosController {
     async handleGetAll(req: Request, res: Response) {
         try {
             const { clinicaId } = req.user!;
-            const servicos = await servicoService.getAll(clinicaId);
+            const { doutorId } = req.query;
+            const doutorIdNumber = doutorId ? Number(doutorId) : undefined;
+            const servicos = await servicoService.getAll(clinicaId!, doutorIdNumber);
+            return res.status(200).json(servicos);
+        } catch (error: any) {
+            return res.status(500).json({ message: error.message });
+        }
+    }
+
+    async handleGetByDoutor(req: Request, res: Response) {
+        try {
+            const { clinicaId } = req.user!;
+            const doutorId = Number(req.params.doutorId);
+            const servicos = await servicoService.getByDoutor(doutorId, clinicaId!);
             return res.status(200).json(servicos);
         } catch (error: any) {
             return res.status(500).json({ message: error.message });
@@ -32,16 +45,21 @@ class ServicosController {
 
     async handleCreate(req: Request, res: Response) {
         try {
-            const { nome, descricao, duracaoMin, preco } = req.body;
+            const { nome, descricao, duracaoMin, preco, doutorId } = req.body;
 
             const { clinicaId } = req.user!;
+
+            if (!doutorId) {
+                return res.status(400).json({ message: "doutorId é obrigatório." });
+            }
 
             const novoServico = await servicoService.create({
                 nome,
                 descricao,
                 duracaoMin,
                 preco,
-            }, clinicaId);
+                doutorId,
+            }, clinicaId!);
 
             return res.status(201).json(novoServico);
 

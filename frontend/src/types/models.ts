@@ -5,13 +5,38 @@ export interface IServico {
   duracaoMin: number;
   preco: number;
   clinicaId: number;
+  doutorId?: number;
+  doutor?: {
+    id: number;
+    nome: string;
+  };
 }
 
 export interface IPaciente {
   id: number;
   nome: string;
   telefone: string;
+  cpf?: string | null;
+  dataNascimento?: string | null;
+  genero?: string | null;
+  email?: string | null;
+  cep?: string | null;
+  logradouro?: string | null;
+  numero?: string | null;
+  bairro?: string | null;
+  cidade?: string | null;
+  estado?: string | null;
+  convenio?: string | null;
+  numeroCarteirinha?: string | null;
+  alergias?: string | null;
+  observacoes?: string | null;
   clinicaId: number;
+  doutorId?: number | null;
+  doutor?: {
+    id: number;
+    nome: string;
+    email: string;
+  };
 }
 
 export type DoutorRole = 'DOUTOR' | 'CLINICA_ADMIN' | 'SUPER_ADMIN';

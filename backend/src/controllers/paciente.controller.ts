@@ -53,20 +53,56 @@ class PacienteController {
     async handleCreate(req: Request, res: Response) {
 
         try {
-            const { nome, telefone } = req.body;
+            const { 
+                nome, 
+                telefone, 
+                cpf,
+                dataNascimento,
+                genero,
+                email,
+                cep,
+                logradouro,
+                numero,
+                bairro,
+                cidade,
+                estado,
+                convenio,
+                numeroCarteirinha,
+                alergias,
+                observacoes,
+                doutorId 
+            } = req.body;
 
-            const { clinicaId } = req.user!;
+            const { clinicaId, role, id: userId } = req.user!;
+
+            // Se o usuário for DOUTOR, vincular automaticamente ao doutor logado
+            const doutorIdFinal = role === 'DOUTOR' ? userId : (doutorId ? Number(doutorId) : undefined);
 
             const novoPaciente = await pacienteService.create({
                 nome,
                 telefone,
+                cpf,
+                dataNascimento,
+                genero,
+                email,
+                cep,
+                logradouro,
+                numero,
+                bairro,
+                cidade,
+                estado,
+                convenio,
+                numeroCarteirinha,
+                alergias,
+                observacoes,
+                doutorId: doutorIdFinal,
             }, clinicaId);
 
             return res.status(201).json(novoPaciente);
 
         } catch (error: any) {
 
-            if (error.message.includes("telefone")) {
+            if (error.message.includes("telefone") || error.message.includes("CPF")) {
                 return res.status(409).json({ message: error.message });
             }
 
@@ -82,7 +118,20 @@ class PacienteController {
             const id = Number(req.params.id);
             const data = req.body;
 
-            const { clinicaId } = req.user!;
+            const { clinicaId, role, id: userId } = req.user!;
+
+            // Se o usuário for DOUTOR, garantir que o doutorId não seja alterado ou seja o próprio doutor
+            if (role === 'DOUTOR') {
+                // Remover doutorId do body se estiver presente - DOUTOR não pode alterar
+                const { doutorId, ...dataSemDoutorId } = data;
+                // Forçar o doutorId a ser o ID do doutor logado
+                const dataFinal = {
+                    ...dataSemDoutorId,
+                    doutorId: userId,
+                };
+                const pacienteAtualizado = await pacienteService.update(id, dataFinal, clinicaId);
+                return res.status(200).json(pacienteAtualizado);
+            }
 
             const pacienteAtualizado = await pacienteService.update(id, data, clinicaId);
             return res.status(200).json(pacienteAtualizado);

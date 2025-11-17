@@ -5,6 +5,7 @@ interface ICreateServico {
   descricao: string;
   duracaoMin: number;
   preco: number;
+  doutorId: number;
 }
 
 interface IUpdateServico {
@@ -12,13 +13,44 @@ interface IUpdateServico {
   descricao?: string;
   duracaoMin?: number;
   preco?: number;
+  doutorId?: number;
 }
 
 
 class ServicoService {
-  async getAll(clinicaId: number) {
+  async getAll(clinicaId: number, doutorId?: number) {
+    const where: any = { clinicaId };
+    if (doutorId !== undefined) {
+      where.doutorId = doutorId;
+    }
     const servicos = await prisma.servico.findMany({
-      where: { clinicaId },
+      where,
+      include: {
+        doutor: {
+          select: {
+            id: true,
+            nome: true,
+          },
+        },
+      },
+    });
+    return servicos;
+  }
+
+  async getByDoutor(doutorId: number, clinicaId: number) {
+    const servicos = await prisma.servico.findMany({
+      where: {
+        doutorId,
+        clinicaId,
+      },
+      include: {
+        doutor: {
+          select: {
+            id: true,
+            nome: true,
+          },
+        },
+      },
     });
     return servicos;
   }
@@ -26,6 +58,14 @@ class ServicoService {
   async getById(id: number, clinicaId: number) {
     const servico = await prisma.servico.findFirst({
       where: { id, clinicaId },
+      include: {
+        doutor: {
+          select: {
+            id: true,
+            nome: true,
+          },
+        },
+      },
     });
 
     if (!servico) {
@@ -37,10 +77,26 @@ class ServicoService {
   }
 
   async create(data: ICreateServico, clinicaId: number) {
-    const { nome, descricao, duracaoMin, preco } = data;
+    const { nome, descricao, duracaoMin, preco, doutorId } = data;
 
     if (!nome || !duracaoMin || !preco) {
       throw new Error("Nome, duração mínima e preço são obrigatórios.");
+    }
+
+    if (!doutorId) {
+      throw new Error("doutorId é obrigatório.");
+    }
+
+    // Verificar se o doutor pertence à clínica
+    const doutor = await prisma.doutor.findFirst({
+      where: {
+        id: doutorId,
+        clinicaId,
+      },
+    });
+
+    if (!doutor) {
+      throw new Error("Doutor não encontrado ou não pertence à esta clínica.");
     }
 
     const novoServico = await prisma.servico.create({
@@ -50,6 +106,7 @@ class ServicoService {
         duracaoMin,
         preco,
         clinicaId,
+        doutorId,
       },
     });
 

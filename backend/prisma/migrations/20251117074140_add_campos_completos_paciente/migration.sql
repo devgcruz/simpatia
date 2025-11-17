@@ -1,0 +1,15 @@
+-- AlterTable
+ALTER TABLE "Paciente" ADD COLUMN     "alergias" TEXT,
+ADD COLUMN     "bairro" TEXT,
+ADD COLUMN     "cep" TEXT,
+ADD COLUMN     "cidade" TEXT,
+ADD COLUMN     "convenio" TEXT,
+ADD COLUMN     "cpf" TEXT,
+ADD COLUMN     "dataNascimento" TIMESTAMP(3),
+ADD COLUMN     "email" TEXT,
+ADD COLUMN     "estado" TEXT,
+ADD COLUMN     "genero" TEXT,
+ADD COLUMN     "logradouro" TEXT,
+ADD COLUMN     "numero" TEXT,
+ADD COLUMN     "numeroCarteirinha" TEXT,
+ADD COLUMN     "observacoes" TEXT;

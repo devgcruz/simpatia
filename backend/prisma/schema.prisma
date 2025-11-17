@@ -50,9 +50,10 @@ model Clinica {
   pausaFim      String? // "13:00" - Fim do intervalo de almoço (opcional)
 
   // --- Relacionamentos (Quais dados pertencem a esta clínica) ---
-  doutores  Doutor[]
-  pacientes Paciente[]
-  servicos  Servico[]
+  doutores      Doutor[]
+  pacientes     Paciente[]
+  servicos      Servico[]
+  pausaExcecoes PausaExcecao[]
 }
 
 model Doutor {
@@ -74,9 +75,12 @@ model Doutor {
   clinicaId Int?
   clinica   Clinica? @relation(fields: [clinicaId], references: [id], onDelete: Cascade)
 
-  horarios     Horario[]
-  agendamentos Agendamento[]
+  horarios       Horario[]
+  agendamentos   Agendamento[]
   indisponibilidades Indisponibilidade[]
+  pausaExcecoes  PausaExcecao[]
+  servicos       Servico[]
+  pacientes      Paciente[]
 }
 
 // Horários que o doutor ATENDE (para a IA saber)
@@ -95,6 +99,27 @@ model Paciente {
   id           Int           @id @default(autoincrement())
   nome         String
   telefone     String
+  
+  // Dados de Identificação (Essenciais)
+  cpf          String?       // CPF como identificador único
+  dataNascimento DateTime?   // Data de nascimento
+  genero       String?       // Gênero/Sexo Biológico (ex: "Masculino", "Feminino", "Outro")
+  
+  // Dados de Contacto
+  email        String?       // E-mail para contato
+  cep          String?       // CEP
+  logradouro   String?       // Rua/Logradouro
+  numero       String?       // Número do endereço
+  bairro       String?       // Bairro
+  cidade       String?       // Cidade
+  estado       String?       // Estado (UF)
+  
+  // Dados Clínicos Básicos
+  convenio     String?       // Convênio/Plano de Saúde
+  numeroCarteirinha String?  // Número da carteirinha do convênio
+  alergias     String?       @db.Text // Alergias (campo de texto)
+  observacoes  String?       @db.Text // Histórico/Observações (campo de texto livre)
+  
   agendamentos Agendamento[]
   historicos   HistoricoPaciente[]
   chatStatus   ChatStatus @default(BOT)
@@ -102,6 +127,9 @@ model Paciente {
 
   clinicaId Int?
   clinica   Clinica? @relation(fields: [clinicaId], references: [id], onDelete: Cascade)
+
+  doutorId Int?
+  doutor   Doutor? @relation(fields: [doutorId], references: [id], onDelete: SetNull)
 
   @@unique([telefone, clinicaId])
 }
@@ -116,6 +144,9 @@ model Servico {
 
   clinicaId Int
   clinica   Clinica @relation(fields: [clinicaId], references: [id], onDelete: Cascade)
+  
+  doutorId Int?
+  doutor   Doutor? @relation(fields: [doutorId], references: [id], onDelete: Cascade)
 }
 
 model Agendamento {
@@ -171,4 +202,21 @@ model Indisponibilidade {
   createdAt DateTime @default(now())
 
   @@index([doutorId, inicio, fim])
+}
+
+// Exceções de horário de pausa para um dia específico (clínica ou doutor)
+model PausaExcecao {
+  id         Int      @id @default(autoincrement())
+  data       DateTime @db.Date // Apenas a data (sem hora)
+  pausaInicio String  // "12:00"
+  pausaFim    String  // "13:00"
+  clinicaId   Int?    // Se null, é exceção de doutor
+  doutorId    Int?    // Se null, é exceção de clínica
+  clinica     Clinica? @relation(fields: [clinicaId], references: [id], onDelete: Cascade)
+  doutor      Doutor?  @relation(fields: [doutorId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([data, clinicaId, doutorId])
+  @@index([clinicaId, data])
+  @@index([doutorId, data])
 }

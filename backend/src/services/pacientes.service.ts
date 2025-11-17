@@ -3,17 +3,56 @@ import { prisma } from '../lib/prisma';
 interface ICreatePaciente {
     nome: string;
     telefone: string;
+    cpf?: string;
+    dataNascimento?: Date | string;
+    genero?: string;
+    email?: string;
+    cep?: string;
+    logradouro?: string;
+    numero?: string;
+    bairro?: string;
+    cidade?: string;
+    estado?: string;
+    convenio?: string;
+    numeroCarteirinha?: string;
+    alergias?: string;
+    observacoes?: string;
+    doutorId?: number;
 }
 
 interface IUpdatePaciente {
     nome?: string;
     telefone?: string;
+    cpf?: string;
+    dataNascimento?: Date | string;
+    genero?: string;
+    email?: string;
+    cep?: string;
+    logradouro?: string;
+    numero?: string;
+    bairro?: string;
+    cidade?: string;
+    estado?: string;
+    convenio?: string;
+    numeroCarteirinha?: string;
+    alergias?: string;
+    observacoes?: string;
+    doutorId?: number;
 }
 class PacienteService {
 
     async getAll(clinicaId: number) {
         const paciente = await prisma.paciente.findMany({
             where: { clinicaId },
+            include: {
+                doutor: {
+                    select: {
+                        id: true,
+                        nome: true,
+                        email: true,
+                    },
+                },
+            } as any,
         });
         return paciente;
     }
@@ -21,6 +60,15 @@ class PacienteService {
     async getById(id: number, clinicaId: number) {
         const paciente = await prisma.paciente.findFirst({
             where: { id, clinicaId },
+            include: {
+                doutor: {
+                    select: {
+                        id: true,
+                        nome: true,
+                        email: true,
+                    },
+                },
+            } as any,
         });
 
         if (!paciente) {
@@ -92,6 +140,15 @@ class PacienteService {
     async getByTelefone(telefone: string, clinicaId: number) {
         const paciente = await prisma.paciente.findFirst({
             where: { telefone, clinicaId },
+            include: {
+                doutor: {
+                    select: {
+                        id: true,
+                        nome: true,
+                        email: true,
+                    },
+                },
+            } as any,
         });
 
         return paciente; // Retorna null se não encontrar, em vez de lançar erro
@@ -115,7 +172,25 @@ class PacienteService {
     }
 
     async create(data: ICreatePaciente, clinicaId: number) {
-        const { nome, telefone } = data;
+        const { 
+            nome, 
+            telefone, 
+            cpf,
+            dataNascimento,
+            genero,
+            email,
+            cep,
+            logradouro,
+            numero,
+            bairro,
+            cidade,
+            estado,
+            convenio,
+            numeroCarteirinha,
+            alergias,
+            observacoes,
+            doutorId 
+        } = data;
 
         if (!nome || !telefone) {
             throw new Error("Nome, Telefone são obrigatórios.");
@@ -129,12 +204,66 @@ class PacienteService {
             throw new Error("Esse telefone já esta cadastrado.");
         }
 
+        // Validar CPF único (se fornecido)
+        if (cpf) {
+            const cpfExistente = await prisma.paciente.findFirst({
+                where: { cpf, clinicaId } as any,
+            });
+
+            if (cpfExistente) {
+                throw new Error("Esse CPF já está cadastrado.");
+            }
+        }
+
+        // Validar se o doutor existe e pertence à mesma clínica (se doutorId for fornecido)
+        if (doutorId) {
+            const doutor = await prisma.doutor.findFirst({
+                where: { 
+                    id: doutorId,
+                    clinicaId: clinicaId,
+                },
+            });
+
+            if (!doutor) {
+                throw new Error("Doutor não encontrado ou não pertence à esta clínica.");
+            }
+        }
+
+        // Converter dataNascimento para Date se for string
+        const dataNasc = dataNascimento 
+            ? (typeof dataNascimento === 'string' ? new Date(dataNascimento) : dataNascimento)
+            : null;
+
         const novoPaciente = await prisma.paciente.create({
             data: {
                 nome,
                 telefone,
+                cpf: cpf || null,
+                dataNascimento: dataNasc,
+                genero: genero || null,
+                email: email || null,
+                cep: cep || null,
+                logradouro: logradouro || null,
+                numero: numero || null,
+                bairro: bairro || null,
+                cidade: cidade || null,
+                estado: estado || null,
+                convenio: convenio || null,
+                numeroCarteirinha: numeroCarteirinha || null,
+                alergias: alergias || null,
+                observacoes: observacoes || null,
                 clinicaId,
-            },
+                doutorId: doutorId || null,
+            } as any,
+            include: {
+                doutor: {
+                    select: {
+                        id: true,
+                        nome: true,
+                        email: true,
+                    },
+                },
+            } as any,
         });
 
         return novoPaciente;
@@ -151,9 +280,53 @@ class PacienteService {
             throw new Error("Paciente não encontrado ou não pertence à esta clínica.");
         }
 
+        // Validar CPF único (se fornecido e diferente do atual)
+        if (data.cpf && data.cpf !== (pacienteExistente as any).cpf) {
+            const cpfExistente = await prisma.paciente.findFirst({
+                where: { cpf: data.cpf, clinicaId } as any,
+            });
+
+            if (cpfExistente && cpfExistente.id !== id) {
+                throw new Error("Esse CPF já está cadastrado para outro paciente.");
+            }
+        }
+
+        // Validar se o doutor existe e pertence à mesma clínica (se doutorId for fornecido)
+        if (data.doutorId !== undefined) {
+            if (data.doutorId !== null) {
+                const doutor = await prisma.doutor.findFirst({
+                    where: { 
+                        id: data.doutorId,
+                        clinicaId: clinicaId,
+                    },
+                });
+
+                if (!doutor) {
+                    throw new Error("Doutor não encontrado ou não pertence à esta clínica.");
+                }
+            }
+        }
+
+        // Converter dataNascimento para Date se for string
+        const updateData: any = { ...data };
+        if (data.dataNascimento !== undefined) {
+            updateData.dataNascimento = data.dataNascimento 
+                ? (typeof data.dataNascimento === 'string' ? new Date(data.dataNascimento) : data.dataNascimento)
+                : null;
+        }
+
         const pacienteAtualizado = await prisma.paciente.update({
             where: { id },
-            data: data,
+            data: updateData as any,
+            include: {
+                doutor: {
+                    select: {
+                        id: true,
+                        nome: true,
+                        email: true,
+                    },
+                },
+            } as any,
         });
 
         return pacienteAtualizado;

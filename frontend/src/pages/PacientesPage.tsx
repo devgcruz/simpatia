@@ -2,12 +2,14 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Box, Button, Paper, CircularProgress, TextField, InputAdornment } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import HistoryIcon from '@mui/icons-material/History';
 import { DataGrid, GridColDef, GridActionsCellItem, GridToolbar } from '@mui/x-data-grid';
 import { ptBR } from '@mui/x-data-grid/locales';
 import { toast } from 'sonner';
 import { IPaciente } from '../types/models';
 import { getPacientes, createPaciente, updatePaciente, deletePaciente } from '../services/paciente.service';
 import { PacienteFormModal } from '../components/pacientes/PacienteFormModal';
+import { HistoricoPacienteModal } from '../components/pacientes/HistoricoPacienteModal';
 import { ConfirmationModal } from '../components/common/ConfirmationModal';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 
@@ -19,6 +21,8 @@ export const PacientesPage: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPaciente, setEditingPaciente] = useState<IPaciente | null>(null);
   const [itemToDeleteId, setItemToDeleteId] = useState<number | null>(null);
+  const [isHistoricoModalOpen, setIsHistoricoModalOpen] = useState(false);
+  const [pacienteHistorico, setPacienteHistorico] = useState<IPaciente | null>(null);
 
   const fetchPacientes = async () => {
     try {
@@ -66,6 +70,16 @@ export const PacientesPage: React.FC = () => {
     setItemToDeleteId(id);
   };
 
+  const handleOpenHistoricoModal = (paciente: IPaciente) => {
+    setPacienteHistorico(paciente);
+    setIsHistoricoModalOpen(true);
+  };
+
+  const handleCloseHistoricoModal = () => {
+    setPacienteHistorico(null);
+    setIsHistoricoModalOpen(false);
+  };
+
   const handleConfirmDelete = async () => {
     if (!itemToDeleteId) return;
 
@@ -84,11 +98,25 @@ export const PacientesPage: React.FC = () => {
     { field: 'nome', headerName: 'Nome', flex: 1 },
     { field: 'telefone', headerName: 'Telefone', width: 200 },
     {
+      field: 'doutor',
+      headerName: 'Doutor',
+      width: 200,
+      valueGetter: (_value, row) => {
+        return row.doutor?.nome || 'Não vinculado';
+      },
+    },
+    {
       field: 'actions',
       type: 'actions',
       headerName: 'Ações',
-      width: 120,
+      width: 180,
       getActions: ({ row }) => [
+        <GridActionsCellItem
+          key="historico"
+          icon={<HistoryIcon />}
+          label="Histórico"
+          onClick={() => handleOpenHistoricoModal(row)}
+        />,
         <GridActionsCellItem
           key="edit"
           icon={<EditIcon />}
@@ -197,6 +225,12 @@ export const PacientesPage: React.FC = () => {
         onConfirm={handleConfirmDelete}
         title="Confirmar Exclusão"
         message="Tem certeza que deseja excluir este paciente? Esta ação não pode ser desfeita."
+      />
+
+      <HistoricoPacienteModal
+        open={isHistoricoModalOpen}
+        onClose={handleCloseHistoricoModal}
+        paciente={pacienteHistorico}
       />
     </Box>
   );

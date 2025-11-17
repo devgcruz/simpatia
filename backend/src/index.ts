@@ -16,6 +16,7 @@ import webhookRoutes from './routes/webhook.routes';
 import chatRoutes from './routes/chat.routes';
 import { authMiddleware, isSuperAdmin } from './middleware/auth.middleware';
 import indisponibilidadeRoutes from './routes/indisponibilidade.routes';
+import pausaExcecaoRoutes from './routes/pausa-excecao.routes';
 
 const app = express();
 const PORT = process.env.PORT || 3333;
@@ -71,6 +72,7 @@ app.use('/api/agendamentos', agendamentoRoutes);
 app.use('/api/horarios', horarioRoutes);
 app.use('/api/disponibilidade', disponibilidadeRoutes);
 app.use('/api/indisponibilidades', indisponibilidadeRoutes);
+app.use('/api/pausa-excecoes', pausaExcecaoRoutes);
 app.use('/api/chat', chatRoutes);
 
 app.listen(PORT, () => {

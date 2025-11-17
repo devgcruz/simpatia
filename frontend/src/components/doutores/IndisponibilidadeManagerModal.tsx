@@ -9,6 +9,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import { criarIndisponibilidade, atualizarIndisponibilidade, excluirIndisponibilidade, listarIndisponibilidadesDoDoutor, Indisponibilidade } from '../../services/indisponibilidade.service';
 import { getDoutores } from '../../services/doutor.service';
 import { IDoutor } from '../../types/models';
+import { useAuth } from '../../hooks/useAuth';
 import { toast } from 'sonner';
 
 interface Props {
@@ -20,6 +21,8 @@ interface Props {
 }
 
 export const IndisponibilidadeManagerModal: React.FC<Props> = ({ open, onClose, doutorId: initialDoutorId, doutorNome: initialDoutorNome, indisponibilidadeEditando }) => {
+  const { user } = useAuth();
+  const isDoutor = user?.role === 'DOUTOR';
   const [doutores, setDoutores] = useState<IDoutor[]>([]);
   const [selectedDoutorId, setSelectedDoutorId] = useState<number | ''>(initialDoutorId || '');
   const [itens, setItens] = useState<Indisponibilidade[]>([]);
@@ -33,8 +36,11 @@ export const IndisponibilidadeManagerModal: React.FC<Props> = ({ open, onClose, 
     try {
       const data = await getDoutores();
       setDoutores(data);
-      // Se houver doutor inicial, definir como selecionado
-      if (initialDoutorId && !selectedDoutorId) {
+      // Se for DOUTOR, vincular automaticamente ao doutor logado
+      if (isDoutor && user?.id) {
+        setSelectedDoutorId(user.id);
+      } else if (initialDoutorId && !selectedDoutorId) {
+        // Se houver doutor inicial, definir como selecionado
         setSelectedDoutorId(initialDoutorId);
       }
     } catch (err: any) {
@@ -63,7 +69,9 @@ export const IndisponibilidadeManagerModal: React.FC<Props> = ({ open, onClose, 
       loadDoutores();
       if (indisponibilidadeEditando) {
         // Se estiver editando uma indisponibilidade
-        setSelectedDoutorId(indisponibilidadeEditando.doutor?.id || '');
+        // Se for DOUTOR, sempre usar o próprio ID, senão usar o ID do doutor da indisponibilidade
+        const doutorId = isDoutor && user?.id ? user.id : indisponibilidadeEditando.doutor?.id || '';
+        setSelectedDoutorId(doutorId);
         const inicioDate = new Date(indisponibilidadeEditando.inicio);
         const fimDate = new Date(indisponibilidadeEditando.fim);
         // Formato para datetime-local: YYYY-MM-DDTHH:mm
@@ -77,12 +85,15 @@ export const IndisponibilidadeManagerModal: React.FC<Props> = ({ open, onClose, 
         setFim('');
         setMotivo('');
         setEditandoId(null);
-        if (initialDoutorId) {
+        // Se for DOUTOR, vincular automaticamente ao doutor logado
+        if (isDoutor && user?.id) {
+          setSelectedDoutorId(user.id);
+        } else if (initialDoutorId) {
           setSelectedDoutorId(initialDoutorId);
         }
       }
     }
-  }, [open, indisponibilidadeEditando, initialDoutorId]);
+  }, [open, indisponibilidadeEditando, initialDoutorId, isDoutor, user?.id]);
 
   useEffect(() => {
     if (open && selectedDoutorId && selectedDoutorId !== '') {
@@ -93,7 +104,9 @@ export const IndisponibilidadeManagerModal: React.FC<Props> = ({ open, onClose, 
   }, [open, selectedDoutorId]);
 
   const handleCreate = async () => {
-    if (!selectedDoutorId || selectedDoutorId === '') {
+    // Se for DOUTOR, usar o próprio ID automaticamente
+    const doutorIdToUse = isDoutor && user?.id ? user.id : selectedDoutorId;
+    if (!doutorIdToUse || doutorIdToUse === '') {
       toast.error('Selecione um doutor');
       return;
     }
@@ -105,7 +118,7 @@ export const IndisponibilidadeManagerModal: React.FC<Props> = ({ open, onClose, 
       if (editandoId) {
         // Atualizar
         await atualizarIndisponibilidade(editandoId, {
-          doutorId: selectedDoutorId,
+          doutorId: doutorIdToUse,
           inicio: new Date(inicio).toISOString(),
           fim: new Date(fim).toISOString(),
           motivo: motivo || undefined,
@@ -114,7 +127,7 @@ export const IndisponibilidadeManagerModal: React.FC<Props> = ({ open, onClose, 
       } else {
         // Criar
         await criarIndisponibilidade({
-          doutorId: selectedDoutorId,
+          doutorId: doutorIdToUse,
           inicio: new Date(inicio).toISOString(),
           fim: new Date(fim).toISOString(),
           motivo: motivo || undefined,
@@ -132,7 +145,9 @@ export const IndisponibilidadeManagerModal: React.FC<Props> = ({ open, onClose, 
   };
 
   const handleEdit = (indisponibilidade: Indisponibilidade) => {
-    setSelectedDoutorId(indisponibilidade.doutor?.id || '');
+    // Se for DOUTOR, sempre usar o próprio ID, senão usar o ID do doutor da indisponibilidade
+    const doutorId = isDoutor && user?.id ? user.id : indisponibilidade.doutor?.id || '';
+    setSelectedDoutorId(doutorId);
     const inicioDate = new Date(indisponibilidade.inicio);
     const fimDate = new Date(indisponibilidade.fim);
     setInicio(new Date(inicioDate.getTime() - inicioDate.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
@@ -165,24 +180,26 @@ export const IndisponibilidadeManagerModal: React.FC<Props> = ({ open, onClose, 
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>Gerenciar Indisponibilidades</DialogTitle>
       <DialogContent>
-        <FormControl fullWidth margin="normal" required>
-          <InputLabel id="doutor-select-label">Doutor</InputLabel>
-          <Select
-            labelId="doutor-select-label"
-            value={selectedDoutorId}
-            label="Doutor"
-            onChange={(e) => setSelectedDoutorId(e.target.value as number)}
-          >
-            <MenuItem value="" disabled>
-              <em>Selecione um doutor...</em>
-            </MenuItem>
-            {doutores.map((doutor) => (
-              <MenuItem key={doutor.id} value={doutor.id}>
-                {doutor.nome} {doutor.especialidade ? `- ${doutor.especialidade}` : ''}
+        {!isDoutor && (
+          <FormControl fullWidth margin="normal" required>
+            <InputLabel id="doutor-select-label">Doutor</InputLabel>
+            <Select
+              labelId="doutor-select-label"
+              value={selectedDoutorId}
+              label="Doutor"
+              onChange={(e) => setSelectedDoutorId(e.target.value as number)}
+            >
+              <MenuItem value="" disabled>
+                <em>Selecione um doutor...</em>
               </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+              {doutores.map((doutor) => (
+                <MenuItem key={doutor.id} value={doutor.id}>
+                  {doutor.nome} {doutor.especialidade ? `- ${doutor.especialidade}` : ''}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        )}
 
         {selectedDoutorId && selectedDoutorId !== '' && (
           <>

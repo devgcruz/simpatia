@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Calendar, momentLocalizer } from 'react-big-calendar';
 import moment from 'moment';
 import 'moment/locale/pt-br';
@@ -26,6 +26,8 @@ import { IndisponibilidadeManagerModal } from '../components/doutores/Indisponib
 import { getDoutores } from '../services/doutor.service';
 import { SelectDoutorModal } from '../components/common/SelectDoutorModal';
 import { listarIndisponibilidadesDoDoutor } from '../services/indisponibilidade.service';
+import { AlterarPausaModal } from '../components/common/AlterarPausaModal';
+import { listarExcecoesDoDoutor, PausaExcecao } from '../services/pausa-excecao.service';
 
 moment.updateLocale('pt-br', {
   week: { dow: 0, doy: 4 }, // dow: 0 = Domingo (0 = Domingo, 1 = Segunda, ..., 6 = Sábado)
@@ -120,6 +122,8 @@ export const DashboardPage: React.FC = () => {
   const [isIndisponibilidadeModalOpen, setIsIndisponibilidadeModalOpen] = useState(false);
   const [selectedDoutor, setSelectedDoutor] = useState<IDoutor | null>(null);
   const [indisponibilidadeEditando, setIndisponibilidadeEditando] = useState<Indisponibilidade | null>(null);
+  const [isAlterarPausaModalOpen, setIsAlterarPausaModalOpen] = useState(false);
+  const [pausaSelecionada, setPausaSelecionada] = useState<{ data: Date; doutorId?: number; horarioInicio?: string; horarioFim?: string } | null>(null);
 
   const [selectedEvent, setSelectedEvent] = useState<IAgendamento | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<{ dataHora: Date } | null>(null);
@@ -137,16 +141,33 @@ export const DashboardPage: React.FC = () => {
     const eventosPausa: CalendarEvent[] = [];
     const hoje = moment().startOf('day');
     let indexCounter = 0;
+
+    // Buscar exceções de pausa do doutor se houver doutor selecionado
+    let excecoesDoutor: PausaExcecao[] = [];
+    if (doutorId) {
+      try {
+        const dataInicio = hoje.format('YYYY-MM-DD');
+        const dataFim = hoje.clone().add(365, 'days').format('YYYY-MM-DD');
+        excecoesDoutor = await listarExcecoesDoDoutor(doutorId, dataInicio, dataFim);
+      } catch (err) {
+        console.error('Erro ao buscar exceções de pausa do doutor:', err);
+      }
+    }
     
     // Eventos de pausa da clínica (se configurado) - sempre mostrar
     if (clinica?.pausaInicio && clinica?.pausaFim) {
       for (let i = 0; i < 365; i++) {
         const data = hoje.clone().add(i, 'days');
+        
+        // Verificar se há exceção de pausa para esta data da clínica
+        // (Por enquanto, não implementamos exceções de clínica, apenas de doutor)
+        
         const [inicioHora, inicioMinuto] = clinica.pausaInicio.split(':').map(Number);
         const [fimHora, fimMinuto] = clinica.pausaFim.split(':').map(Number);
         
         const inicioPausa = data.clone().hour(inicioHora).minute(inicioMinuto).second(0).toDate();
         const fimPausa = data.clone().hour(fimHora).minute(fimMinuto).second(0).toDate();
+        const dataStr = data.format('YYYY-MM-DD');
         
         eventosPausa.push({
           id: -1000000 - indexCounter++,
@@ -160,6 +181,9 @@ export const DashboardPage: React.FC = () => {
             paciente: { id: 0, nome: 'Pausa', telefone: '', clinicaId: 0 },
             doutor: { id: 0, nome: '', email: '', role: 'DOUTOR' as const, clinicaId: 0 },
             servico: { id: 0, nome: 'Pausa', descricao: '', duracaoMin: 0, preco: 0, clinicaId: 0 },
+            pausaData: dataStr,
+            pausaInicio: clinica.pausaInicio,
+            pausaFim: clinica.pausaFim,
           } as any,
         });
       }
@@ -181,22 +205,47 @@ export const DashboardPage: React.FC = () => {
       const diasBloqueadosDoutor = doutor.diasBloqueados || [];
 
       // Eventos de horário de almoço do doutor (apenas em dias não bloqueados)
-      if (doutor.pausaInicio && doutor.pausaFim) {
+      const pausaInicioDefault = doutor.pausaInicio;
+      const pausaFimDefault = doutor.pausaFim;
+      
+      if (pausaInicioDefault && pausaFimDefault) {
         for (let i = 0; i < 365; i++) {
           const data = hoje.clone().add(i, 'days');
           const diaSemana = data.day(); // 0 = Domingo, 6 = Sábado
+          const dataStr = data.format('YYYY-MM-DD');
 
           // Só criar evento de horário de almoço se o dia NÃO estiver bloqueado
           if (!diasBloqueadosDoutor.includes(diaSemana)) {
-            const [inicioHora, inicioMinuto] = doutor.pausaInicio!.split(':').map(Number);
-            const [fimHora, fimMinuto] = doutor.pausaFim!.split(':').map(Number);
+            // Verificar se há exceção de pausa para esta data
+            // Formatar data da exceção para comparar (usar UTC para evitar problemas de fuso horário)
+            // Se houver múltiplas exceções para a mesma data (não deveria acontecer), pegar a mais recente
+            const excecoesParaData = excecoesDoutor
+              .map((ex) => ({
+                ...ex,
+                // Usar UTC para formatar a data corretamente (evitar problemas de fuso horário)
+                excecaoDataStr: moment.utc(ex.data).format('YYYY-MM-DD'),
+              }))
+              .filter((ex) => ex.excecaoDataStr === dataStr)
+              .sort((a, b) => {
+                // Ordenar por createdAt desc para pegar a mais recente
+                const dateA = new Date(a.createdAt || 0).getTime();
+                const dateB = new Date(b.createdAt || 0).getTime();
+                return dateB - dateA;
+              });
+            
+            const excecao = excecoesParaData[0]; // Pegar a primeira (mais recente)
+            const pausaInicio = excecao ? excecao.pausaInicio : pausaInicioDefault;
+            const pausaFim = excecao ? excecao.pausaFim : pausaFimDefault;
+            
+            const [inicioHora, inicioMinuto] = pausaInicio.split(':').map(Number);
+            const [fimHora, fimMinuto] = pausaFim.split(':').map(Number);
             
             const inicioPausa = data.clone().hour(inicioHora).minute(inicioMinuto).second(0).toDate();
             const fimPausa = data.clone().hour(fimHora).minute(fimMinuto).second(0).toDate();
             
             eventosPausa.push({
               id: -1000000 - indexCounter++,
-              title: `Horário da Pausa - ${doutor.nome}`,
+              title: `Pausa \n (${doutor.nome})`,
               start: inicioPausa,
               end: fimPausa,
               resource: {
@@ -206,6 +255,9 @@ export const DashboardPage: React.FC = () => {
                 paciente: { id: 0, nome: 'Pausa', telefone: '', clinicaId: 0 },
                 doutor: { id: doutor.id, nome: doutor.nome, email: doutor.email, role: doutor.role, clinicaId: doutor.clinicaId || 0 },
                 servico: { id: 0, nome: 'Pausa', descricao: '', duracaoMin: 0, preco: 0, clinicaId: 0 },
+                pausaData: dataStr,
+                pausaInicio,
+                pausaFim,
               } as any,
             });
           }
@@ -225,7 +277,7 @@ export const DashboardPage: React.FC = () => {
 
             eventosPausa.push({
               id: -2000000 - indexCounter++,
-              title: `Dia Bloqueado - ${doutor.nome}`,
+              title: `Não há expediente \n\n (${doutor.nome})`,
               start: inicioDia,
               end: fimDia,
               resource: {
@@ -298,18 +350,28 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
-  const fetchDoutores = async () => {
+  const fetchDoutores = useCallback(async () => {
     try {
       setLoadingDoutores(true);
       const data = await getDoutores();
       setDoutores(data);
       
-      // Se houver apenas 1 doutor, selecionar automaticamente
-      if (data.length === 1) {
-        setDoutorAgendaSelecionado(data[0]);
-      } else if (data.length > 1) {
-        // Se houver mais de 1 doutor, mostrar modal de seleção
-        setIsSelectDoutorModalOpen(true);
+      // Se o usuário for DOUTOR, selecionar automaticamente a agenda dele
+      if (user?.role === 'DOUTOR' && user.id) {
+        // O backend já retorna apenas o doutor logado quando role é DOUTOR
+        // Mas vamos garantir que seja o doutor correto
+        const doutorLogado = data.find((d) => d.id === user.id) || (data.length === 1 ? data[0] : null);
+        if (doutorLogado) {
+          setDoutorAgendaSelecionado(doutorLogado);
+        }
+      } else {
+        // Se houver apenas 1 doutor, selecionar automaticamente
+        if (data.length === 1) {
+          setDoutorAgendaSelecionado(data[0]);
+        } else if (data.length > 1) {
+          // Se houver mais de 1 doutor, mostrar modal de seleção
+          setIsSelectDoutorModalOpen(true);
+        }
       }
       // Se não houver doutores, doutorAgendaSelecionado permanece null
     } catch (err: any) {
@@ -317,14 +379,14 @@ export const DashboardPage: React.FC = () => {
     } finally {
       setLoadingDoutores(false);
     }
-  };
+  }, [user?.role, user?.id]);
 
   useEffect(() => {
     if (user?.clinicaId) {
       fetchDoutores();
       fetchClinica();
     }
-  }, [user?.clinicaId]);
+  }, [user?.clinicaId, fetchDoutores]);
 
   // Recarregar agendamentos quando o doutor selecionado mudar
   useEffect(() => {
@@ -362,17 +424,47 @@ export const DashboardPage: React.FC = () => {
   const handleSelectEvent = (event: CalendarEvent) => {
     const resource = event.resource as any;
     
-    // Eventos de pausa não são clicáveis
-    if (resource?.status === 'pausa') {
-      return;
-    }
-    
     // Verificar se é uma indisponibilidade (id negativo ou status 'indisponivel')
     if (event.id < 0 || resource?.status === 'indisponivel') {
-      // Se for evento de pausa (id muito negativo), não fazer nada
+      // Se for evento de pausa (id muito negativo), abrir modal de alterar pausa
+      if (event.id < -100000 && resource?.status === 'pausa') {
+        // Verificar se é dia bloqueado (não permitir alterar pausa em dia bloqueado)
+        if (event.title?.includes('Dia Bloqueado')) {
+          return;
+        }
+        
+        // Abrir modal para alterar horário de pausa
+        // Usar pausaData do resource se disponível, senão extrair data do event.start usando moment
+        let dataPausa: Date;
+        if (resource?.pausaData) {
+          // Se temos pausaData no formato YYYY-MM-DD, criar data a partir dela
+          const [ano, mes, dia] = resource.pausaData.split('-').map(Number);
+          dataPausa = new Date(ano, mes - 1, dia);
+        } else {
+          // Extrair apenas a data (sem hora) do event.start usando moment para evitar problemas de fuso horário
+          const dataMoment = moment(event.start);
+          dataPausa = dataMoment.startOf('day').toDate();
+        }
+        
+        const doutorId = resource?.doutor?.id || doutorAgendaSelecionado?.id;
+        const horarioInicio = resource?.pausaInicio || (resource?.doutor?.id ? doutorAgendaSelecionado?.pausaInicio : clinica?.pausaInicio);
+        const horarioFim = resource?.pausaFim || (resource?.doutor?.id ? doutorAgendaSelecionado?.pausaFim : clinica?.pausaFim);
+        
+        setPausaSelecionada({
+          data: dataPausa,
+          doutorId: resource?.doutor?.id ? doutorId : undefined,
+          horarioInicio,
+          horarioFim,
+        });
+        setIsAlterarPausaModalOpen(true);
+        return;
+      }
+      
+      // Se for evento de indisponibilidade (não pausa)
       if (event.id < -100000) {
         return;
       }
+      
       // Buscar a indisponibilidade correspondente
       if (doutorAgendaSelecionado) {
         listarIndisponibilidadesDoDoutor(doutorAgendaSelecionado.id).then((indisps) => {
@@ -386,6 +478,7 @@ export const DashboardPage: React.FC = () => {
       }
       return;
     }
+    
     setSelectedEvent(event.resource);
     setSelectedSlot(null);
     setIsFormModalOpen(true);
@@ -671,6 +764,7 @@ export const DashboardPage: React.FC = () => {
         onSubmit={handleSubmitForm}
         initialData={selectedSlot}
         agendamento={selectedEvent}
+        doutorId={doutorAgendaSelecionado?.id}
         onRequestDelete={handleDeleteRequest}
         onRequestIndisponibilidade={() => {
           if (selectedEvent?.doutor?.id) {
@@ -705,6 +799,22 @@ export const DashboardPage: React.FC = () => {
         onSelect={handleSelectDoutor}
         doutores={doutores}
         title="Selecionar Agenda do Doutor"
+      />
+
+      <AlterarPausaModal
+        open={isAlterarPausaModalOpen}
+        onClose={() => {
+          setIsAlterarPausaModalOpen(false);
+          setPausaSelecionada(null);
+        }}
+        onConfirm={() => {
+          // Recarregar agendamentos para atualizar eventos de pausa
+          fetchAgendamentos();
+        }}
+        data={pausaSelecionada?.data || new Date()}
+        doutorId={pausaSelecionada?.doutorId}
+        horarioInicioAtual={pausaSelecionada?.horarioInicio}
+        horarioFimAtual={pausaSelecionada?.horarioFim}
       />
     </Box>
   );

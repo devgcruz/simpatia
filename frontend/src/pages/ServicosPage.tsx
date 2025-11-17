@@ -100,6 +100,14 @@ export const ServicosPage: React.FC = () => {
       flex: 1,
     },
     {
+      field: 'doutor',
+      headerName: 'Doutor',
+      width: 200,
+      valueGetter: (_value, row) => {
+        return row.doutor?.nome || 'N/A';
+      },
+    },
+    {
       field: 'duracaoMin',
       headerName: 'Duração (min)',
       width: 150,

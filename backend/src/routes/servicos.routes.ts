@@ -4,6 +4,7 @@ import servicosController from '../controllers/servicos.controller';
 const router = Router();
 
 router.get('/', servicosController.handleGetAll);
+router.get('/doutor/:doutorId', servicosController.handleGetByDoutor);
 
 router.post('/', servicosController.handleCreate);
 

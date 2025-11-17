@@ -46,6 +46,7 @@ interface Props {
   onRequestDelete?: () => void;
   onRequestIndisponibilidade?: () => void;
   onFinalize?: (descricao: string) => Promise<void>;
+  doutorId?: number; // ID do doutor da agenda selecionada para filtrar serviços
 }
 
 const initialState = {
@@ -67,6 +68,7 @@ export const AgendamentoFormModal: React.FC<Props> = ({
   onRequestDelete,
   onRequestIndisponibilidade,
   onFinalize,
+  doutorId,
 }) => {
   const { user } = useAuth();
   const [form, setForm] = useState<FormState>(initialState);
@@ -89,10 +91,11 @@ export const AgendamentoFormModal: React.FC<Props> = ({
     const fetchData = async () => {
       try {
         setLoading(true);
+        // Se doutorId foi passado, buscar apenas serviços desse doutor
         const [doutoresData, pacientesData, servicosData] = await Promise.all([
           getDoutores(),
           getPacientes(),
-          getServicos(),
+          getServicos(doutorId),
         ]);
         setDoutores(doutoresData);
         setPacientes(pacientesData);
@@ -105,7 +108,7 @@ export const AgendamentoFormModal: React.FC<Props> = ({
     };
 
     fetchData();
-  }, [open]);
+  }, [open, doutorId]);
 
   useEffect(() => {
     if (!open) return;

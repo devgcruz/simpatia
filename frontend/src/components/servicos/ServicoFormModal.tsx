@@ -7,8 +7,14 @@ import {
   TextField,
   Button,
   Box,
+  Select,
+  MenuItem,
+  InputLabel,
+  FormControl,
 } from '@mui/material';
-import { IServico } from '../../types/models';
+import { SelectChangeEvent } from '@mui/material/Select';
+import { IServico, IDoutor } from '../../types/models';
+import { getDoutores } from '../../services/doutor.service';
 
 interface Props {
   open: boolean;
@@ -23,15 +29,35 @@ export const ServicoFormModal: React.FC<Props> = ({ open, onClose, onSubmit, ini
     descricao: '',
     duracaoMin: 30,
     preco: 100,
+    doutorId: '',
   });
+  const [doutores, setDoutores] = useState<IDoutor[]>([]);
+  const [loading, setLoading] = useState(false);
 
   const isEditing = !!initialData;
+
+  useEffect(() => {
+    if (open) {
+      const fetchDoutores = async () => {
+        try {
+          setLoading(true);
+          const data = await getDoutores();
+          setDoutores(data);
+        } catch (error) {
+          console.error('Erro ao buscar doutores:', error);
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchDoutores();
+    }
+  }, [open]);
 
   useEffect(() => {
     if (initialData) {
       setForm(initialData);
     } else {
-      setForm({ nome: '', descricao: '', duracaoMin: 30, preco: 100 });
+      setForm({ nome: '', descricao: '', duracaoMin: 30, preco: 100, doutorId: '' });
     }
   }, [initialData, open]);
 
@@ -43,8 +69,20 @@ export const ServicoFormModal: React.FC<Props> = ({ open, onClose, onSubmit, ini
     }));
   };
 
+  const handleSelectChange = (e: SelectChangeEvent<string>) => {
+    const { name, value } = e.target;
+    setForm((prev: any) => ({
+      ...prev,
+      [name]: value === '' ? '' : Number(value),
+    }));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isEditing && !form.doutorId) {
+      alert('Por favor, selecione um doutor.');
+      return;
+    }
     onSubmit(form);
   };
 
@@ -53,6 +91,24 @@ export const ServicoFormModal: React.FC<Props> = ({ open, onClose, onSubmit, ini
       <DialogTitle>{isEditing ? 'Editar Serviço' : 'Novo Serviço'}</DialogTitle>
       <Box component="form" onSubmit={handleSubmit}>
         <DialogContent>
+          {!isEditing && (
+            <FormControl fullWidth required margin="normal">
+              <InputLabel>Doutor</InputLabel>
+              <Select
+                name="doutorId"
+                value={form.doutorId?.toString() || ''}
+                onChange={handleSelectChange}
+                label="Doutor"
+                disabled={loading}
+              >
+                {doutores.map((doutor) => (
+                  <MenuItem key={doutor.id} value={doutor.id}>
+                    {doutor.nome}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
           <TextField
             name="nome"
             label="Nome"

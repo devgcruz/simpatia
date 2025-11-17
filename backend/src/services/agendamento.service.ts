@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import * as pausaExcecaoService from './pausa-excecao.service';
 
 interface IFiltrosAgendamento {
     doutorId?: string;
@@ -54,6 +55,64 @@ const agendamentoInclude = {
 };
 
 class AgendamentoService {
+
+    /**
+     * Valida se o horário do agendamento não conflita com o horário de almoço do doutor
+     */
+    private async validarHorarioAlmoco(
+        dataHora: Date,
+        duracaoMin: number,
+        doutorId: number,
+        pausaInicioDefault?: string | null,
+        pausaFimDefault?: string | null,
+        diasBloqueados?: number[] | null
+    ): Promise<void> {
+        // Verificar se o dia da semana está bloqueado
+        const diaSemana = dataHora.getDay(); // 0 = Domingo, 6 = Sábado
+        if (diasBloqueados && diasBloqueados.includes(diaSemana)) {
+            throw new Error("Não é possível agendar em um dia bloqueado para este doutor.");
+        }
+
+        // Se não houver horário de almoço configurado, não há restrição
+        if (!pausaInicioDefault || !pausaFimDefault) {
+            return;
+        }
+
+        // Buscar exceção de pausa para esta data específica
+        const dataStr = dataHora.toISOString().split('T')[0] as string; // YYYY-MM-DD
+        let excecaoPausa = null;
+        if (typeof doutorId === 'number') {
+            excecaoPausa = await pausaExcecaoService.findByDate(dataStr, undefined, doutorId);
+        }
+        
+        // Usar horário de exceção se existir, senão usar o padrão
+        const pausaInicio = excecaoPausa ? excecaoPausa.pausaInicio : pausaInicioDefault;
+        const pausaFim = excecaoPausa ? excecaoPausa.pausaFim : pausaFimDefault;
+
+        // Converter horários para minutos do dia
+        const [pausaInicioH, pausaInicioM] = pausaInicio.split(':').map(Number);
+        const [pausaFimH, pausaFimM] = pausaFim.split(':').map(Number);
+        
+        const pausaInicioMinutos = pausaInicioH * 60 + pausaInicioM;
+        const pausaFimMinutos = pausaFimH * 60 + pausaFimM;
+
+        // Calcular horário de início e fim do agendamento em minutos do dia
+        const agendamentoInicioMinutos = dataHora.getHours() * 60 + dataHora.getMinutes();
+        const agendamentoFimMinutos = agendamentoInicioMinutos + duracaoMin;
+
+        // Verificar se há sobreposição entre agendamento e horário de almoço
+        // O agendamento não pode começar durante a pausa
+        // O agendamento não pode terminar durante a pausa
+        // O agendamento não pode envolver completamente a pausa
+        const conflita =
+            (agendamentoInicioMinutos >= pausaInicioMinutos && agendamentoInicioMinutos < pausaFimMinutos) ||
+            (agendamentoFimMinutos > pausaInicioMinutos && agendamentoFimMinutos <= pausaFimMinutos) ||
+            (agendamentoInicioMinutos <= pausaInicioMinutos && agendamentoFimMinutos >= pausaFimMinutos);
+
+        if (conflita) {
+            throw new Error(`Não é possível agendar no horário de almoço do doutor (${pausaInicio} - ${pausaFim}).`);
+        }
+    }
 
     async getAll(user: AuthUser, filtros: IFiltrosAgendamento = {}) {
         const where: any = {};
@@ -160,6 +219,33 @@ class AgendamentoService {
 
         const dataHoraDate = typeof dataHora === 'string' ? new Date(dataHora) : dataHora;
 
+        // Buscar doutor e serviço para validar horário de almoço
+        const [doutorInfo, servico] = await Promise.all([
+            (prisma.doutor.findUnique({ 
+                where: { id: targetDoutorId },
+                select: {
+                    id: true,
+                    nome: true,
+                    email: true,
+                    pausaInicio: true,
+                    pausaFim: true,
+                    diasBloqueados: true,
+                } as any,
+            }) as Promise<any>),
+            prisma.servico.findUnique({ where: { id: servicoId } }),
+        ]);
+
+        if (!doutorInfo || !servico) {
+            throw new Error("Doutor ou serviço não encontrado.");
+        }
+
+        // Validar se o agendamento não conflita com horário de almoço
+        try {
+            await this.validarHorarioAlmoco(dataHoraDate, servico.duracaoMin, doutorInfo.id, doutorInfo.pausaInicio, doutorInfo.pausaFim, doutorInfo.diasBloqueados);
+        } catch (error: any) {
+            throw new Error(error.message || "Não é possível agendar neste horário.");
+        }
+
         const novoAgendamento = await prisma.agendamento.create({
             data: {
                 dataHora: dataHoraDate,
@@ -204,19 +290,29 @@ class AgendamentoService {
         // Validação de segurança: Garante que todas as entidades pertencem à clínica
         // que recebeu a mensagem do WhatsApp.
         console.log(`[AgendamentoService.createParaIA] Validando entidades...`);
-        const [doutor, paciente, servico] = await Promise.all([
-            prisma.doutor.findFirst({ where: { id: doutorId, clinicaId } }),
+        const [doutorInfo, paciente, servico] = await Promise.all([
+            (prisma.doutor.findFirst({ 
+                where: { id: doutorId, clinicaId },
+                select: {
+                    id: true,
+                    nome: true,
+                    email: true,
+                    pausaInicio: true,
+                    pausaFim: true,
+                    diasBloqueados: true,
+                } as any,
+            }) as Promise<any>),
             prisma.paciente.findFirst({ where: { id: pacienteId, clinicaId } }),
             prisma.servico.findFirst({ where: { id: servicoId, clinicaId } }),
         ]);
 
         console.log(`[AgendamentoService.createParaIA] Resultado da validação:`, {
-            doutor: doutor ? `ID ${doutor.id} - ${doutor.nome}` : 'NÃO ENCONTRADO',
+            doutor: doutorInfo ? `ID ${doutorInfo.id} - ${doutorInfo.nome}` : 'NÃO ENCONTRADO',
             paciente: paciente ? `ID ${paciente.id} - ${paciente.nome}` : 'NÃO ENCONTRADO',
             servico: servico ? `ID ${servico.id} - ${servico.nome}` : 'NÃO ENCONTRADO',
         });
 
-        if (!doutor || !paciente || !servico) {
+        if (!doutorInfo || !paciente || !servico) {
             const erro = "Doutor, Paciente ou Serviço não encontrado ou não pertence à esta clínica.";
             console.error(`[AgendamentoService.createParaIA] ❌ ${erro}`);
             throw new Error(erro);
@@ -224,6 +320,16 @@ class AgendamentoService {
 
         const dataHoraDate = typeof dataHora === 'string' ? new Date(dataHora) : dataHora;
         console.log(`[AgendamentoService.createParaIA] Data/hora processada:`, dataHoraDate);
+
+        // Validar se o agendamento não conflita com horário de almoço
+        try {
+            await this.validarHorarioAlmoco(dataHoraDate, servico.duracaoMin, doutorInfo.id, doutorInfo.pausaInicio || null, doutorInfo.pausaFim || null, doutorInfo.diasBloqueados || null);
+            console.log(`[AgendamentoService.createParaIA] ✅ Validação de horário de almoço passou`);
+        } catch (error: any) {
+            const erro = error.message || "Não é possível agendar no horário de almoço do doutor.";
+            console.error(`[AgendamentoService.createParaIA] ❌ ${erro}`);
+            throw new Error(erro);
+        }
 
         console.log(`[AgendamentoService.createParaIA] Criando agendamento no banco de dados...`);
         const novoAgendamento = await prisma.agendamento.create({
@@ -242,13 +348,13 @@ class AgendamentoService {
         console.log(`[AgendamentoService.createParaIA] ✅ Agendamento criado com sucesso - ID: ${novoAgendamento.id}`);
 
         // Formata a resposta
-        const { doutor: doutorInfo, ...rest } = novoAgendamento;
+        const { doutor: doutorAgendamento, ...rest } = novoAgendamento;
         return {
             ...rest,
             doutor: {
-                id: doutorInfo.id,
-                nome: doutorInfo.nome,
-                email: doutorInfo.email,
+                id: doutorAgendamento.id,
+                nome: doutorAgendamento.nome,
+                email: doutorAgendamento.email,
             },
         };
     }
@@ -429,8 +535,51 @@ class AgendamentoService {
         }
 
         const updateData: any = { ...data };
+        let novaDataHora: Date | null = null;
+        
         if (data.dataHora) {
-            updateData.dataHora = typeof data.dataHora === 'string' ? new Date(data.dataHora) : data.dataHora;
+            novaDataHora = typeof data.dataHora === 'string' ? new Date(data.dataHora) : data.dataHora;
+            updateData.dataHora = novaDataHora;
+        }
+
+        // Se dataHora ou doutorId ou servicoId foram alterados, validar horário de almoço
+        if (novaDataHora || data.doutorId || data.servicoId) {
+            // Buscar doutor e serviço para validação
+            const doutorValidado = await (prisma.doutor.findUnique({ 
+                where: { id: targetDoutorId },
+                select: {
+                    id: true,
+                    nome: true,
+                    email: true,
+                    pausaInicio: true,
+                    pausaFim: true,
+                    diasBloqueados: true,
+                } as any,
+            }) as Promise<any>);
+            const servicoParaValidar = await prisma.servico.findUnique({ 
+                where: { id: targetServicoId } 
+            });
+
+            if (!doutorValidado || !servicoParaValidar) {
+                throw new Error("Doutor ou serviço não encontrado.");
+            }
+
+            const dataHoraParaValidar = novaDataHora || agendamentoExistente.dataHora;
+            const duracaoParaValidar = data.servicoId ? servicoParaValidar.duracaoMin : agendamentoExistente.servico.duracaoMin;
+
+            // Validar se o agendamento não conflita com horário de almoço
+            try {
+                await this.validarHorarioAlmoco(
+                    dataHoraParaValidar,
+                    duracaoParaValidar,
+                    doutorValidado.id,
+                    doutorValidado.pausaInicio || null,
+                    doutorValidado.pausaFim || null,
+                    doutorValidado.diasBloqueados || null
+                );
+            } catch (error: any) {
+                throw new Error(error.message || "Não é possível agendar neste horário.");
+            }
         }
 
         const agendamentoAtualizado = await prisma.agendamento.update({
