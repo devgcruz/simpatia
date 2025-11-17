@@ -536,6 +536,19 @@ export const DashboardPage: React.FC = () => {
 
   const handleDelete = async () => {
     if (!selectedEvent) return;
+    
+    // Verificar se o agendamento está finalizado e é do dia atual
+    const hoje = moment().startOf('day');
+    const dataAgendamento = moment(selectedEvent.dataHora).startOf('day');
+    const isMesmoDia = dataAgendamento.isSame(hoje, 'day');
+    const isFinalizado = selectedEvent.status === 'finalizado';
+    
+    if (isFinalizado && isMesmoDia) {
+      toast.error('Não é possível excluir um atendimento que foi finalizado hoje.');
+      setIsDeleteModalOpen(false);
+      return;
+    }
+    
     try {
       await deleteAgendamento(selectedEvent.id);
       toast.success('Agendamento excluído com sucesso!');

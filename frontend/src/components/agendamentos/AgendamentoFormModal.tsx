@@ -231,34 +231,29 @@ export const AgendamentoFormModal: React.FC<Props> = ({
           <Box sx={{ display: 'flex', gap: 1 }}>
             {agendamento && (
               <>
-                {onRequestIndisponibilidade && (
-                  <Tooltip title="Lançar Indisponibilidade">
-                    <span>
-                      <IconButton
-                        aria-label="Lançar Indisponibilidade"
-                        onClick={onRequestIndisponibilidade}
-                        disabled={loading || finalizando}
-                        sx={{ color: 'primary.main' }}
-                      >
-                        <AccessTimeIcon />
-                      </IconButton>
-                    </span>
-                  </Tooltip>
-                )}
-                {onRequestDelete && (
-                  <Tooltip title="Excluir agendamento">
-                    <span>
-                      <IconButton
-                        aria-label="Excluir agendamento"
-                        onClick={onRequestDelete}
-                        disabled={loading || finalizando}
-                        sx={{ color: 'error.main' }}
-                      >
-                        <DeleteOutlineIcon />
-                      </IconButton>
-                    </span>
-                  </Tooltip>
-                )}
+                {onRequestDelete && (() => {
+                  // Verificar se o agendamento está finalizado e é do dia atual
+                  const hoje = moment().startOf('day');
+                  const isFinalizadoHoje = agendamento?.status === 'finalizado' && 
+                    agendamento?.dataHora && 
+                    moment(agendamento.dataHora).startOf('day').isSame(hoje, 'day');
+                  const canDelete = !isFinalizadoHoje;
+                  
+                  return (
+                    <Tooltip title={isFinalizadoHoje ? 'Não é possível excluir um atendimento finalizado hoje' : 'Excluir agendamento'}>
+                      <span>
+                        <IconButton
+                          aria-label="Excluir agendamento"
+                          onClick={onRequestDelete}
+                          disabled={loading || finalizando || !canDelete}
+                          sx={{ color: 'error.main' }}
+                        >
+                          <DeleteOutlineIcon />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                  );
+                })()}
               </>
             )}
             <Tooltip title="Fechar">

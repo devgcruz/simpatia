@@ -20,6 +20,8 @@ import {
   useTheme,
   alpha,
   Stack,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import PersonIcon from '@mui/icons-material/Person';
@@ -38,6 +40,8 @@ import { getDoutores } from '../services/doutor.service';
 import { useAuth } from '../hooks/useAuth';
 import { AgendamentoFormModal } from '../components/agendamentos/AgendamentoFormModal';
 import { HistoricoPacienteModal } from '../components/pacientes/HistoricoPacienteModal';
+import { ProntuarioModal } from '../components/pacientes/ProntuarioModal';
+import { finalizeAgendamento } from '../services/agendamento.service';
 
 moment.locale('pt-br');
 
@@ -84,6 +88,9 @@ export const AtendimentoDoDiaPage: React.FC = () => {
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [pacienteHistorico, setPacienteHistorico] = useState<IAgendamento | null>(null);
   const [isHistoricoModalOpen, setIsHistoricoModalOpen] = useState(false);
+  const [agendamentoProntuario, setAgendamentoProntuario] = useState<IAgendamento | null>(null);
+  const [isProntuarioModalOpen, setIsProntuarioModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<number>(0);
 
   // Se for DOUTOR, usar o próprio ID automaticamente
   const doutorIdParaBusca = isDoutor && user?.id ? user.id : (doutorSelecionado || '');
@@ -129,41 +136,35 @@ export const AtendimentoDoDiaPage: React.FC = () => {
 
     try {
       setLoading(true);
-      console.log('Buscando agendamentos com:', {
-        doutorId: doutorIdParaBusca,
-        dataInicio: dataHoje.inicio,
-        dataFim: dataHoje.fim,
-      });
-
       const data = await getAgendamentos({
         doutorId: doutorIdParaBusca,
         dataInicio: dataHoje.inicio,
         dataFim: dataHoje.fim,
       });
 
-      console.log('Agendamentos retornados:', data);
-
-      // Filtrar apenas agendamentos do dia atual e ordenar por horário
+      // Filtrar apenas agendamentos do dia atual, excluindo cancelados e pendentes, e ordenar por horário
       const hoje = moment().startOf('day');
       const agendamentosHoje = data
         .filter((ag) => {
           const dataAgendamento = moment(ag.dataHora).startOf('day');
-          const isSameDay = dataAgendamento.isSame(hoje, 'day');
-          if (!isSameDay) {
-            console.log('Agendamento filtrado (fora do dia):', {
-              dataHora: ag.dataHora,
-              dataAgendamento: dataAgendamento.format('YYYY-MM-DD'),
-              hoje: hoje.format('YYYY-MM-DD'),
-            });
-          }
-          return isSameDay;
+          const isMesmoDia = dataAgendamento.isSame(hoje, 'day');
+          const isStatusValido = ag.status !== 'cancelado' && ag.status !== 'pendente';
+          return isMesmoDia && isStatusValido;
         })
         .sort((a, b) => moment(a.dataHora).valueOf() - moment(b.dataHora).valueOf());
 
-      console.log('Agendamentos do dia:', agendamentosHoje);
+      console.log('Total de agendamentos do dia:', agendamentosHoje.length);
+      console.log('Agendamentos filtrados:', agendamentosHoje.map(ag => ({
+        id: ag.id,
+        paciente: ag.paciente.nome,
+        dataHora: ag.dataHora,
+        status: ag.status,
+        servico: ag.servico.nome,
+        duracao: ag.servico.duracaoMin
+      })));
+
       setAgendamentos(agendamentosHoje);
     } catch (err: any) {
-      console.error('Erro ao buscar agendamentos:', err);
       toast.error(err.response?.data?.message || 'Erro ao buscar agendamentos');
     } finally {
       setLoading(false);
@@ -213,6 +214,30 @@ export const AtendimentoDoDiaPage: React.FC = () => {
     setIsHistoricoModalOpen(false);
   };
 
+  const handleOpenProntuario = (agendamento: IAgendamento) => {
+    setAgendamentoProntuario(agendamento);
+    setIsProntuarioModalOpen(true);
+  };
+
+  const handleCloseProntuario = () => {
+    setAgendamentoProntuario(null);
+    setIsProntuarioModalOpen(false);
+  };
+
+  const handleFinalizarConsulta = async (descricao: string) => {
+    if (!agendamentoProntuario) return;
+    try {
+      await finalizeAgendamento(agendamentoProntuario.id, { descricao });
+      toast.success('Consulta finalizada com sucesso!', {
+        duration: 3000,
+      });
+      await fetchAgendamentos();
+      handleCloseProntuario();
+    } catch (err: any) {
+      throw err; // Re-throw para o modal tratar
+    }
+  };
+
   const parseAlergias = (alergias: string | null | undefined): string[] => {
     if (!alergias || alergias.trim() === '') return [];
     return alergias
@@ -223,22 +248,44 @@ export const AtendimentoDoDiaPage: React.FC = () => {
 
   const agendamentosPassados = useMemo(() => {
     const agora = moment();
-    return agendamentos.filter((ag) => moment(ag.dataHora).isBefore(agora));
+    const passados = agendamentos
+      .filter((ag) => {
+        // Se está finalizado, sempre vai para realizados
+        if (ag.status === 'finalizado') {
+          return true;
+        }
+        // Senão, verificar se o horário já passou
+        const inicio = moment(ag.dataHora);
+        const fim = inicio.clone().add(ag.servico.duracaoMin, 'minutes');
+        return fim.isBefore(agora);
+      })
+      .sort((a, b) => moment(b.dataHora).valueOf() - moment(a.dataHora).valueOf()); // Mais recentes primeiro
+    
+    console.log('Agendamentos passados filtrados:', passados.length);
+    console.log('Detalhes dos passados:', passados.map(ag => ({
+      id: ag.id,
+      paciente: ag.paciente.nome,
+      status: ag.status,
+      dataHora: ag.dataHora,
+    })));
+    
+    return passados;
   }, [agendamentos]);
 
   const agendamentosFuturos = useMemo(() => {
     const agora = moment();
-    return agendamentos.filter((ag) => moment(ag.dataHora).isAfter(agora));
-  }, [agendamentos]);
-
-  const agendamentoAtual = useMemo(() => {
-    const agora = moment();
-    return agendamentos.find((ag) => {
+    return agendamentos.filter((ag) => {
+      // Não incluir se está finalizado (já vai para realizados)
+      if (ag.status === 'finalizado') {
+        return false;
+      }
+      // Incluir apenas se ainda não terminou o horário
       const inicio = moment(ag.dataHora);
       const fim = inicio.clone().add(ag.servico.duracaoMin, 'minutes');
-      return agora.isBetween(inicio, fim, null, '[]');
+      return fim.isAfter(agora);
     });
   }, [agendamentos]);
+
 
   if (loading) {
     return (
@@ -255,35 +302,26 @@ export const AtendimentoDoDiaPage: React.FC = () => {
   return (
     <Box>
       <Paper
-        elevation={2}
+        elevation={1}
         sx={{
-          p: 3,
+          p: 2,
           mb: 3,
-          background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`,
-          color: 'white',
         }}
       >
-        <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
-          <TodayIcon sx={{ fontSize: 40 }} />
-          <Box flex={1}>
-            <Typography variant="h4" fontWeight="bold" gutterBottom>
+        <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" justifyContent="space-between">
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            <Typography variant="h5" fontWeight="bold">
               Atendimento do Dia
             </Typography>
-            <Typography variant="body1" sx={{ opacity: 0.9 }}>
-              {moment().format('dddd, DD [de] MMMM [de] YYYY')}
+            <TodayIcon color="primary" />
+            <Typography variant="body1" color="text.secondary">
+              {moment().format('DD/MM/YYYY')}
             </Typography>
-          </Box>
+          </Stack>
           {!isDoutor && (
             <FormControl
               sx={{
                 minWidth: 200,
-                backgroundColor: 'white',
-                borderRadius: 1,
-                '& .MuiOutlinedInput-root': {
-                  '& fieldset': {
-                    borderColor: 'transparent',
-                  },
-                },
               }}
             >
               <InputLabel id="doutor-select-label">Doutor</InputLabel>
@@ -312,118 +350,46 @@ export const AtendimentoDoDiaPage: React.FC = () => {
         </Paper>
       ) : (
         <>
-          {/* Agendamento Atual */}
-          {agendamentoAtual && (
-            <Paper
-              elevation={4}
-              sx={{
-                p: 3,
-                mb: 3,
-                border: `3px solid ${theme.palette.success.main}`,
-                background: `linear-gradient(135deg, ${alpha(theme.palette.success.main, 0.1)} 0%, ${alpha(theme.palette.success.light, 0.05)} 100%)`,
-              }}
+          <Paper elevation={1} sx={{ mb: 3 }}>
+            <Tabs 
+              value={activeTab} 
+              onChange={(_, newValue) => setActiveTab(newValue)}
+              sx={{ borderBottom: 1, borderColor: 'divider' }}
             >
-              <Stack direction="row" spacing={2} alignItems="center" mb={2}>
-                <Avatar sx={{ bgcolor: theme.palette.success.main, width: 56, height: 56 }}>
-                  <AccessTimeIcon />
-                </Avatar>
-                <Box flex={1}>
-                  <Typography variant="h6" fontWeight="bold" color="success.main">
-                    Em Atendimento Agora
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {moment(agendamentoAtual.dataHora).format('HH:mm')} -{' '}
-                    {moment(agendamentoAtual.dataHora)
-                      .add(agendamentoAtual.servico.duracaoMin, 'minutes')
-                      .format('HH:mm')}
-                  </Typography>
-                </Box>
-              </Stack>
-              <Divider sx={{ my: 2 }} />
-              <CardContent sx={{ p: 0 }}>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} md={6}>
-                    <Stack direction="row" spacing={1} alignItems="center" mb={1}>
-                      <PersonIcon color="primary" />
-                      <Typography variant="h6">{agendamentoAtual.paciente.nome}</Typography>
-                    </Stack>
-                    <Stack direction="row" spacing={1} alignItems="center" mb={1}>
-                      <PhoneIcon fontSize="small" color="action" />
-                      <Typography variant="body2" color="text.secondary">
-                        {agendamentoAtual.paciente.telefone}
-                      </Typography>
-                    </Stack>
-                    {agendamentoAtual.paciente.alergias && parseAlergias(agendamentoAtual.paciente.alergias).length > 0 && (
-                      <Stack direction="row" spacing={1} alignItems="center" mt={1} flexWrap="wrap">
-                        <WarningIcon color="error" fontSize="small" />
-                        <Typography variant="caption" color="error" fontWeight="bold">
-                          Alergias:
-                        </Typography>
-                        {parseAlergias(agendamentoAtual.paciente.alergias).map((alergia, idx) => (
-                          <Chip key={idx} label={alergia} size="small" color="error" variant="outlined" sx={{ fontSize: '0.7rem' }} />
-                        ))}
-                      </Stack>
-                    )}
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <Stack direction="row" spacing={1} alignItems="center" mb={1}>
-                      <MedicalServicesIcon color="primary" />
-                      <Typography variant="body1" fontWeight="medium">
-                        {agendamentoAtual.servico.nome}
-                      </Typography>
-                    </Stack>
-                    <Typography variant="body2" color="text.secondary">
-                      Duração: {agendamentoAtual.servico.duracaoMin} minutos
-                    </Typography>
-                    <Chip
-                      label={getStatusLabel(agendamentoAtual.status)}
-                      color={getStatusColor(agendamentoAtual.status)}
-                      size="small"
-                      sx={{ mt: 1 }}
-                    />
-                  </Grid>
-                </Grid>
-                <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
-                  <Button
-                    variant="outlined"
-                    startIcon={<EditIcon />}
-                    onClick={() => handleEditAgendamento(agendamentoAtual)}
-                  >
-                    Editar
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    startIcon={<HistoryIcon />}
-                    onClick={() => handleOpenHistorico(agendamentoAtual)}
-                  >
-                    Histórico
-                  </Button>
-                </Box>
-              </CardContent>
-            </Paper>
-          )}
+              <Tab 
+                label={`Próximos Atendimentos (${agendamentosFuturos.length})`} 
+                sx={{ fontWeight: activeTab === 0 ? 600 : 400 }}
+              />
+              <Tab 
+                label={`Atendimentos Realizados (${agendamentosPassados.length})`} 
+                sx={{ fontWeight: activeTab === 1 ? 600 : 400 }}
+              />
+            </Tabs>
+          </Paper>
 
-          {/* Agendamentos Futuros */}
-          {agendamentosFuturos.length > 0 && (
-            <Box mb={3}>
-              <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ mb: 2 }}>
-                Próximos Atendimentos ({agendamentosFuturos.length})
-              </Typography>
-              <Grid container spacing={2}>
+          {/* Aba: Próximos Atendimentos */}
+          {activeTab === 0 && (
+            <>
+              {agendamentosFuturos.length > 0 ? (
+                <Grid container spacing={2}>
                 {agendamentosFuturos.map((agendamento) => (
                   <Grid item xs={12} sm={6} md={4} key={agendamento.id}>
                     <Card
                       elevation={2}
                       sx={{
                         height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
                         transition: 'all 0.3s ease',
+                        cursor: 'pointer',
                         '&:hover': {
                           transform: 'translateY(-4px)',
                           boxShadow: theme.shadows[8],
                         },
                       }}
+                      onClick={() => handleOpenProntuario(agendamento)}
                     >
-                      <CardContent>
+                      <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                         <Stack direction="row" spacing={2} alignItems="flex-start" mb={2}>
                           <Avatar sx={{ bgcolor: theme.palette.primary.main }}>
                             <PersonIcon />
@@ -443,56 +409,83 @@ export const AtendimentoDoDiaPage: React.FC = () => {
 
                         <Divider sx={{ my: 1.5 }} />
 
-                        <Stack spacing={1}>
-                          <Stack direction="row" spacing={1} alignItems="center">
-                            <MedicalServicesIcon fontSize="small" color="action" />
-                            <Typography variant="body2">{agendamento.servico.nome}</Typography>
-                          </Stack>
-                          <Stack direction="row" spacing={1} alignItems="center">
-                            <PhoneIcon fontSize="small" color="action" />
-                            <Typography variant="body2" color="text.secondary">
-                              {agendamento.paciente.telefone}
-                            </Typography>
-                          </Stack>
-                          {agendamento.paciente.alergias && parseAlergias(agendamento.paciente.alergias).length > 0 && (
-                            <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap">
-                              <WarningIcon color="error" fontSize="small" />
-                              <Typography variant="caption" color="error" fontWeight="bold">
-                                Alergias:
-                              </Typography>
-                              {parseAlergias(agendamento.paciente.alergias).slice(0, 2).map((alergia, idx) => (
-                                <Chip
-                                  key={idx}
-                                  label={alergia}
-                                  size="small"
-                                  color="error"
-                                  variant="outlined"
-                                  sx={{ fontSize: '0.65rem', height: 20 }}
-                                />
-                              ))}
-                              {parseAlergias(agendamento.paciente.alergias).length > 2 && (
-                                <Typography variant="caption" color="text.secondary">
-                                  +{parseAlergias(agendamento.paciente.alergias).length - 2}
-                                </Typography>
-                              )}
+                        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                          <Stack spacing={1}>
+                            <Stack direction="row" spacing={1} alignItems="center">
+                              <MedicalServicesIcon fontSize="small" color="action" />
+                              <Typography variant="body2">{agendamento.servico.nome}</Typography>
                             </Stack>
-                          )}
-                          <Chip
-                            label={getStatusLabel(agendamento.status)}
-                            color={getStatusColor(agendamento.status)}
-                            size="small"
-                            sx={{ width: 'fit-content', mt: 0.5 }}
-                          />
-                        </Stack>
+                            <Stack direction="row" spacing={1} alignItems="center">
+                              <PhoneIcon fontSize="small" color="action" />
+                              <Typography variant="body2" color="text.secondary">
+                                {agendamento.paciente.telefone}
+                              </Typography>
+                            </Stack>
+                            {agendamento.paciente.alergias && parseAlergias(agendamento.paciente.alergias).length > 0 && (
+                              <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap">
+                                <WarningIcon color="error" fontSize="small" />
+                                <Typography variant="caption" color="error" fontWeight="bold">
+                                  Alergias:
+                                </Typography>
+                                {parseAlergias(agendamento.paciente.alergias).slice(0, 2).map((alergia, idx) => (
+                                  <Chip
+                                    key={idx}
+                                    label={alergia}
+                                    size="small"
+                                    color="error"
+                                    variant="outlined"
+                                    sx={{ fontSize: '0.65rem', height: 20 }}
+                                  />
+                                ))}
+                                {parseAlergias(agendamento.paciente.alergias).length > 2 && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    +{parseAlergias(agendamento.paciente.alergias).length - 2}
+                                  </Typography>
+                                )}
+                              </Stack>
+                            )}
+                            <Chip
+                              label={getStatusLabel(agendamento.status)}
+                              color={getStatusColor(agendamento.status)}
+                              size="small"
+                              sx={{ width: 'fit-content', mt: 0.5 }}
+                            />
+                          </Stack>
+                        </Box>
 
-                        <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+                        <Box sx={{ mt: 'auto', pt: 2, display: 'flex', gap: 1 }} onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            variant="contained"
+                            color="primary"
+                            size="small"
+                            startIcon={<PersonIcon />}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenProntuario(agendamento);
+                            }}
+                            fullWidth
+                          >
+                            Abrir Prontuário
+                          </Button>
                           <Tooltip title="Editar">
-                            <IconButton size="small" onClick={() => handleEditAgendamento(agendamento)}>
+                            <IconButton
+                              size="small"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditAgendamento(agendamento);
+                              }}
+                            >
                               <EditIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
                           <Tooltip title="Ver Histórico">
-                            <IconButton size="small" onClick={() => handleOpenHistorico(agendamento)}>
+                            <IconButton
+                              size="small"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenHistorico(agendamento);
+                              }}
+                            >
                               <HistoryIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
@@ -501,28 +494,47 @@ export const AtendimentoDoDiaPage: React.FC = () => {
                     </Card>
                   </Grid>
                 ))}
-              </Grid>
-            </Box>
+                </Grid>
+              ) : (
+                <Paper sx={{ p: 4, textAlign: 'center' }}>
+                  <AccessTimeIcon sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
+                  <Typography variant="h6" color="text.secondary" gutterBottom>
+                    Nenhum atendimento agendado para o futuro
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Os próximos agendamentos aparecerão aqui.
+                  </Typography>
+                </Paper>
+              )}
+            </>
           )}
 
-          {/* Agendamentos Passados */}
-          {agendamentosPassados.length > 0 && (
-            <Box>
-              <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ mb: 2, color: 'text.secondary' }}>
-                Atendimentos Realizados ({agendamentosPassados.length})
-              </Typography>
-              <Grid container spacing={2}>
+          {/* Aba: Atendimentos Realizados */}
+          {activeTab === 1 && (
+            <>
+              {agendamentosPassados.length > 0 ? (
+                <Grid container spacing={2}>
                 {agendamentosPassados.map((agendamento) => (
                   <Grid item xs={12} sm={6} md={4} key={agendamento.id}>
                     <Card
                       elevation={1}
                       sx={{
                         height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
                         opacity: 0.7,
                         backgroundColor: alpha(theme.palette.grey[300], 0.3),
+                        cursor: 'pointer',
+                        transition: 'all 0.3s ease',
+                        '&:hover': {
+                          opacity: 1,
+                          transform: 'translateY(-2px)',
+                          boxShadow: theme.shadows[4],
+                        },
                       }}
+                      onClick={() => handleOpenProntuario(agendamento)}
                     >
-                      <CardContent>
+                      <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                         <Stack direction="row" spacing={2} alignItems="flex-start" mb={2}>
                           <Avatar sx={{ bgcolor: theme.palette.grey[500] }}>
                             <PersonIcon />
@@ -542,37 +554,72 @@ export const AtendimentoDoDiaPage: React.FC = () => {
 
                         <Divider sx={{ my: 1.5 }} />
 
-                        <Stack spacing={1}>
-                          <Stack direction="row" spacing={1} alignItems="center">
-                            <MedicalServicesIcon fontSize="small" color="action" />
-                            <Typography variant="body2">{agendamento.servico.nome}</Typography>
+                        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                          <Stack spacing={1}>
+                            <Stack direction="row" spacing={1} alignItems="center">
+                              <MedicalServicesIcon fontSize="small" color="action" />
+                              <Typography variant="body2">{agendamento.servico.nome}</Typography>
+                            </Stack>
+                            <Stack direction="row" spacing={1} alignItems="center">
+                              <PhoneIcon fontSize="small" color="action" />
+                              <Typography variant="body2" color="text.secondary">
+                                {agendamento.paciente.telefone}
+                              </Typography>
+                            </Stack>
+                            <Chip
+                              label={getStatusLabel(agendamento.status)}
+                              color={getStatusColor(agendamento.status)}
+                              size="small"
+                              sx={{ width: 'fit-content', mt: 0.5 }}
+                            />
                           </Stack>
-                          <Chip
-                            label={getStatusLabel(agendamento.status)}
-                            color={getStatusColor(agendamento.status)}
+                        </Box>
+
+                        <Box sx={{ mt: 'auto', pt: 2, display: 'flex', gap: 1 }} onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            variant="outlined"
+                            color="primary"
                             size="small"
-                            sx={{ width: 'fit-content', mt: 0.5 }}
-                          />
-                        </Stack>
+                            startIcon={<PersonIcon />}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenProntuario(agendamento);
+                            }}
+                            fullWidth
+                          >
+                            Ver Prontuário
+                          </Button>
+                          <Tooltip title="Ver Histórico">
+                            <IconButton
+                              size="small"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenHistorico(agendamento);
+                              }}
+                            >
+                              <HistoryIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
                       </CardContent>
                     </Card>
                   </Grid>
                 ))}
-              </Grid>
-            </Box>
+                </Grid>
+              ) : (
+                <Paper sx={{ p: 4, textAlign: 'center' }}>
+                  <TodayIcon sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
+                  <Typography variant="h6" color="text.secondary" gutterBottom>
+                    Nenhum atendimento realizado ainda
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Os atendimentos realizados aparecerão aqui.
+                  </Typography>
+                </Paper>
+              )}
+            </>
           )}
 
-          {agendamentos.length === 0 && (
-            <Paper sx={{ p: 4, textAlign: 'center' }}>
-              <TodayIcon sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
-              <Typography variant="h6" color="text.secondary" gutterBottom>
-                Nenhum atendimento agendado para hoje
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Os agendamentos do dia aparecerão aqui quando forem criados.
-              </Typography>
-            </Paper>
-          )}
         </>
       )}
 
@@ -593,6 +640,16 @@ export const AtendimentoDoDiaPage: React.FC = () => {
           open={isHistoricoModalOpen}
           onClose={handleCloseHistorico}
           paciente={pacienteHistorico.paciente}
+        />
+      )}
+
+      {/* Modal de Prontuário */}
+      {agendamentoProntuario && (
+        <ProntuarioModal
+          open={isProntuarioModalOpen}
+          onClose={handleCloseProntuario}
+          agendamento={agendamentoProntuario}
+          onFinalizar={handleFinalizarConsulta}
         />
       )}
     </Box>
