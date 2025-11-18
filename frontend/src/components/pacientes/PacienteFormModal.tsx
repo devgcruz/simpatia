@@ -64,6 +64,8 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
     alergias: '',
     observacoes: '',
     doutorId: undefined,
+    pesoKg: undefined,
+    alturaCm: undefined,
   });
   const isEditing = !!initialData;
   const [doutores, setDoutores] = useState<IDoutor[]>([]);
@@ -134,6 +136,8 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
         alergias: formatAlergias(alergiasParsed),
         observacoes: initialData.observacoes || '',
         doutorId: initialData.doutorId || undefined,
+        pesoKg: initialData.pesoKg ?? undefined,
+        alturaCm: initialData.alturaCm ?? undefined,
       });
     } else {
       // Se for DOUTOR e estiver criando novo paciente, vincular automaticamente
@@ -158,6 +162,8 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
         alergias: '',
         observacoes: '',
         doutorId: doutorIdInicial,
+        pesoKg: undefined,
+        alturaCm: undefined,
       });
     }
   }, [initialData, open, isDoutor, user?.id]);
@@ -331,6 +337,38 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
                 margin="normal"
                 placeholder="14999998888"
                 helperText="Incluir DDI e DDD"
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <TextField
+                label="Peso (kg)"
+                type="number"
+                value={form.pesoKg ?? ''}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    pesoKg: e.target.value === '' ? undefined : Number(e.target.value),
+                  }))
+                }
+                fullWidth
+                margin="normal"
+                inputProps={{ step: '0.1', min: 0 }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <TextField
+                label="Altura (cm)"
+                type="number"
+                value={form.alturaCm ?? ''}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    alturaCm: e.target.value === '' ? undefined : Number(e.target.value),
+                  }))
+                }
+                fullWidth
+                margin="normal"
+                inputProps={{ step: '0.5', min: 0 }}
               />
             </Grid>
           </Grid>

@@ -22,6 +22,9 @@ lerna-debug.log*
 /brs-api/storage
 /brs-api/upload
 
+# Uploads de arquivos
+backend/uploads/
+
 
 # ===================================================================
 # Diretórios de Build e Produção

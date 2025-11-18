@@ -1,0 +1,1 @@
+-- Migration intentionally left blank: ProntuarioChatMessage is already created in 20250117180000_add_prontuario_chat_messages

@@ -7,11 +7,15 @@ interface ICreateDoutor {
     email: string;
     senha: string;
     especialidade?: string;
+    crm?: string;
+    crmUf?: string;
+    rqe?: string;
     role?: string;
     clinicaId?: number;
     pausaInicio?: string;
     pausaFim?: string;
     diasBloqueados?: number[];
+    modeloPrescricao?: string;
 }
 
 interface IUpdateDoutor {
@@ -19,10 +23,14 @@ interface IUpdateDoutor {
     email?: string;
     senha?: string;
     especialidade?: string;
+    crm?: string;
+    crmUf?: string;
+    rqe?: string;
     role?: string;
     pausaInicio?: string;
     pausaFim?: string;
     diasBloqueados?: number[];
+    modeloPrescricao?: string;
 }
 
 class DoutorService {
@@ -32,11 +40,25 @@ class DoutorService {
         nome: true,
         email: true,
         especialidade: true,
+        crm: true,
+        crmUf: true,
+        rqe: true,
         role: true,
         clinicaId: true,
         pausaInicio: true,
         pausaFim: true,
         diasBloqueados: true,
+        modeloPrescricao: true,
+        clinica: {
+            select: {
+                nome: true,
+                cnpj: true,
+                endereco: true,
+                telefone: true,
+                email: true,
+                site: true,
+            },
+        },
     };
 
     private superAdminSelect = {
@@ -44,14 +66,23 @@ class DoutorService {
         nome: true,
         email: true,
         especialidade: true,
+        crm: true,
+        crmUf: true,
+        rqe: true,
         role: true,
         clinicaId: true,
         pausaInicio: true,
         pausaFim: true,
         diasBloqueados: true,
+        modeloPrescricao: true,
         clinica: {
             select: {
                 nome: true,
+                cnpj: true,
+                endereco: true,
+                telefone: true,
+                email: true,
+                site: true,
             },
         },
     };

@@ -14,9 +14,12 @@ import disponibilidadeRoutes from './routes/disponibilidade.routes';
 import clinicaRoutes from './routes/clinica.routes';
 import webhookRoutes from './routes/webhook.routes';
 import chatRoutes from './routes/chat.routes';
+import uploadRoutes from './routes/upload.routes';
 import { authMiddleware, isSuperAdmin } from './middleware/auth.middleware';
 import indisponibilidadeRoutes from './routes/indisponibilidade.routes';
 import pausaExcecaoRoutes from './routes/pausa-excecao.routes';
+import prescricaoRoutes from './routes/prescricao.routes';
+import path from 'path';
 
 const app = express();
 const PORT = process.env.PORT || 3333;
@@ -37,7 +40,11 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use(express.json()); // Leitor de JSON
+app.use(express.urlencoded({ extended: true })); // Para multipart/form-data
 app.use(cookieParser()); // Leitor de Cookies (Necessário para o auth)
+
+// Servir arquivos estáticos de uploads
+app.use('/api/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // --- Rotas ---
 // --- Rotas Públicas ---
@@ -74,6 +81,8 @@ app.use('/api/disponibilidade', disponibilidadeRoutes);
 app.use('/api/indisponibilidades', indisponibilidadeRoutes);
 app.use('/api/pausa-excecoes', pausaExcecaoRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/upload', uploadRoutes);
+app.use('/api/prescricoes', prescricaoRoutes);
 
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);

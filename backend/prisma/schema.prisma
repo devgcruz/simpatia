@@ -33,6 +33,8 @@ model Clinica {
   cnpj     String? @unique
   endereco String?
   telefone String?
+  email    String?
+  site     String?
 
   // --- Campos para o Multi-Tenant (WhatsApp Opção 2) ---
   // 1. Chaves da API do WhatsApp (que o admin da clínica vai preencher no painel)
@@ -65,12 +67,20 @@ model Doutor {
 
   role Role @default(DOUTOR)
 
+  // --- Dados Profissionais ---
+  crm           String? // Número do CRM (Conselho Regional de Medicina)
+  crmUf         String? // UF do CRM (ex: "SP", "RJ")
+  rqe           String? // RQE (Registro de Qualificação de Especialista)
+
   // --- Horário de Almoço do Doutor ---
   pausaInicio String? // "12:00" - Início do intervalo de almoço (opcional)
   pausaFim    String? // "13:00" - Fim do intervalo de almoço (opcional)
 
   // --- Dias Bloqueados (0 = Domingo, 1 = Segunda, ..., 6 = Sábado) ---
   diasBloqueados Int[] @default([]) // Array de dias da semana bloqueados
+
+  // --- Modelo de Prescrição ---
+  modeloPrescricao String? @db.Text // HTML/template do modelo de prescrição personalizado
 
   clinicaId Int?
   clinica   Clinica? @relation(fields: [clinicaId], references: [id], onDelete: Cascade)
@@ -81,6 +91,7 @@ model Doutor {
   pausaExcecoes  PausaExcecao[]
   servicos       Servico[]
   pacientes      Paciente[]
+  prescricoes    Prescricao[]
 }
 
 // Horários que o doutor ATENDE (para a IA saber)
@@ -119,9 +130,12 @@ model Paciente {
   numeroCarteirinha String?  // Número da carteirinha do convênio
   alergias     String?       @db.Text // Alergias (campo de texto)
   observacoes  String?       @db.Text // Histórico/Observações (campo de texto livre)
+  pesoKg       Float?
+  alturaCm     Float?
   
   agendamentos Agendamento[]
   historicos   HistoricoPaciente[]
+  prescricoes  Prescricao[]
   chatStatus   ChatStatus @default(BOT)
   chatMessages ChatMessage[]
 
@@ -162,10 +176,13 @@ model Agendamento {
   relatoPaciente String?  @db.Text // O que o paciente disse para realizar o agendamento
   entendimentoIA String?  @db.Text // Resumo/análise da IA sobre o que o paciente relatou
   historicos     HistoricoPaciente[]
+  prescricoes    Prescricao[]
+  prontuarioChats ProntuarioChatMessage[]
 }
 
 model HistoricoPaciente {
   id            Int          @id @default(autoincrement())
+  protocolo     String       @unique @default(uuid()) // Protocolo único do atendimento
   descricao     String       @db.Text
   realizadoEm   DateTime     @default(now())
   pacienteId    Int
@@ -176,6 +193,24 @@ model HistoricoPaciente {
   agendamento Agendamento? @relation(fields: [agendamentoId], references: [id], onDelete: SetNull)
 
   @@index([pacienteId, realizadoEm])
+  @@index([protocolo])
+}
+
+model Prescricao {
+  id            Int          @id @default(autoincrement())
+  protocolo     String       @unique @default(uuid()) // Protocolo único da prescrição
+  conteudo      String       @db.Text // Texto da prescrição
+  pacienteId    Int
+  doutorId      Int
+  agendamentoId Int?
+  createdAt     DateTime     @default(now())
+
+  paciente    Paciente     @relation(fields: [pacienteId], references: [id], onDelete: Cascade)
+  doutor      Doutor       @relation(fields: [doutorId], references: [id], onDelete: Cascade)
+  agendamento Agendamento? @relation(fields: [agendamentoId], references: [id], onDelete: SetNull)
+
+  @@index([pacienteId, createdAt])
+  @@index([protocolo])
 }
 
 model ChatMessage {
@@ -189,6 +224,17 @@ model ChatMessage {
   paciente     Paciente   @relation(fields: [pacienteId], references: [id], onDelete: Cascade)
 
   @@index([pacienteId, createdAt])
+}
+
+model ProntuarioChatMessage {
+  id            Int        @id @default(autoincrement())
+  agendamentoId Int
+  agendamento   Agendamento @relation(fields: [agendamentoId], references: [id], onDelete: Cascade)
+  sender        SenderType
+  content       String     @db.Text
+  createdAt     DateTime   @default(now())
+
+  @@index([agendamentoId, createdAt])
 }
 
 // Períodos em que o doutor está indisponível (cirurgias, afastamentos, etc.)

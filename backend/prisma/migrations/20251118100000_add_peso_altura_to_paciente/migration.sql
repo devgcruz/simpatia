@@ -1,0 +1,6 @@
+-- AlterTable
+ALTER TABLE "Paciente"
+ADD COLUMN "pesoKg" DOUBLE PRECISION,
+ADD COLUMN "alturaCm" DOUBLE PRECISION;
+
+

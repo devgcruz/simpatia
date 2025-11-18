@@ -22,6 +22,7 @@ import {
   Stack,
   Tabs,
   Tab,
+  TextField,
 } from '@mui/material';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import PersonIcon from '@mui/icons-material/Person';
@@ -84,6 +85,7 @@ export const AtendimentoDoDiaPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [doutores, setDoutores] = useState<IDoutor[]>([]);
   const [doutorSelecionado, setDoutorSelecionado] = useState<number | ''>('');
+  const [dataSelecionada, setDataSelecionada] = useState<string>(moment().format('YYYY-MM-DD'));
   const [agendamentoEditando, setAgendamentoEditando] = useState<IAgendamento | null>(null);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [pacienteHistorico, setPacienteHistorico] = useState<IAgendamento | null>(null);
@@ -95,16 +97,17 @@ export const AtendimentoDoDiaPage: React.FC = () => {
   // Se for DOUTOR, usar o próprio ID automaticamente
   const doutorIdParaBusca = isDoutor && user?.id ? user.id : (doutorSelecionado || '');
 
-  // Calcular datas do dia atual no formato que o backend espera
+  // Calcular datas do dia selecionado no formato que o backend espera
   // Passar com hora explícita para evitar problemas de fuso horário
   const dataHoje = useMemo(() => {
-    const inicioDia = moment().startOf('day').format('YYYY-MM-DDTHH:mm:ss');
-    const fimDia = moment().endOf('day').format('YYYY-MM-DDTHH:mm:ss');
+    const dataSelecionadaMoment = moment(dataSelecionada);
+    const inicioDia = dataSelecionadaMoment.startOf('day').format('YYYY-MM-DDTHH:mm:ss');
+    const fimDia = dataSelecionadaMoment.endOf('day').format('YYYY-MM-DDTHH:mm:ss');
     return {
       inicio: inicioDia,
       fim: fimDia,
     };
-  }, []);
+  }, [dataSelecionada]);
 
   useEffect(() => {
     const carregarDoutores = async () => {
@@ -142,12 +145,12 @@ export const AtendimentoDoDiaPage: React.FC = () => {
         dataFim: dataHoje.fim,
       });
 
-      // Filtrar apenas agendamentos do dia atual, excluindo cancelados e pendentes, e ordenar por horário
-      const hoje = moment().startOf('day');
+      // Filtrar apenas agendamentos do dia selecionado, excluindo cancelados e pendentes, e ordenar por horário
+      const dataSelecionadaMoment = moment(dataSelecionada).startOf('day');
       const agendamentosHoje = data
         .filter((ag) => {
           const dataAgendamento = moment(ag.dataHora).startOf('day');
-          const isMesmoDia = dataAgendamento.isSame(hoje, 'day');
+          const isMesmoDia = dataAgendamento.isSame(dataSelecionadaMoment, 'day');
           const isStatusValido = ag.status !== 'cancelado' && ag.status !== 'pendente';
           return isMesmoDia && isStatusValido;
         })
@@ -175,7 +178,7 @@ export const AtendimentoDoDiaPage: React.FC = () => {
     if (doutorIdParaBusca && doutorIdParaBusca !== '') {
       fetchAgendamentos();
     }
-  }, [doutorIdParaBusca]);
+  }, [doutorIdParaBusca, dataSelecionada]);
 
   const handleEditAgendamento = (agendamento: IAgendamento) => {
     setAgendamentoEditando(agendamento);
@@ -247,7 +250,9 @@ export const AtendimentoDoDiaPage: React.FC = () => {
   };
 
   const agendamentosPassados = useMemo(() => {
+    const dataSelecionadaMoment = moment(dataSelecionada);
     const agora = moment();
+    
     const passados = agendamentos
       .filter((ag) => {
         // Se está finalizado, sempre vai para realizados
@@ -257,6 +262,12 @@ export const AtendimentoDoDiaPage: React.FC = () => {
         // Senão, verificar se o horário já passou
         const inicio = moment(ag.dataHora);
         const fim = inicio.clone().add(ag.servico.duracaoMin, 'minutes');
+        
+        // Se a data selecionada é no passado, todos os agendamentos daquele dia são realizados
+        if (dataSelecionadaMoment.isBefore(agora, 'day')) {
+          return true;
+        }
+        // Se a data selecionada é hoje ou futura, verificar se o horário já passou
         return fim.isBefore(agora);
       })
       .sort((a, b) => moment(b.dataHora).valueOf() - moment(a.dataHora).valueOf()); // Mais recentes primeiro
@@ -270,21 +281,29 @@ export const AtendimentoDoDiaPage: React.FC = () => {
     })));
     
     return passados;
-  }, [agendamentos]);
+  }, [agendamentos, dataSelecionada]);
 
   const agendamentosFuturos = useMemo(() => {
+    const dataSelecionadaMoment = moment(dataSelecionada);
     const agora = moment();
+    
     return agendamentos.filter((ag) => {
       // Não incluir se está finalizado (já vai para realizados)
       if (ag.status === 'finalizado') {
         return false;
       }
-      // Incluir apenas se ainda não terminou o horário
+      
+      // Se a data selecionada é no passado, nenhum agendamento é futuro
+      if (dataSelecionadaMoment.isBefore(agora, 'day')) {
+        return false;
+      }
+      
+      // Se a data selecionada é hoje ou futura, incluir apenas se ainda não terminou o horário
       const inicio = moment(ag.dataHora);
       const fim = inicio.clone().add(ag.servico.duracaoMin, 'minutes');
       return fim.isAfter(agora);
     });
-  }, [agendamentos]);
+  }, [agendamentos, dataSelecionada]);
 
 
   if (loading) {
@@ -314,9 +333,22 @@ export const AtendimentoDoDiaPage: React.FC = () => {
               Atendimento do Dia
             </Typography>
             <TodayIcon color="primary" />
-            <Typography variant="body1" color="text.secondary">
-              {moment().format('DD/MM/YYYY')}
-            </Typography>
+            <TextField
+              type="date"
+              value={dataSelecionada}
+              onChange={(e) => setDataSelecionada(e.target.value)}
+              size="small"
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  '& fieldset': {
+                    borderColor: 'primary.main',
+                  },
+                },
+              }}
+              InputLabelProps={{
+                shrink: true,
+              }}
+            />
           </Stack>
           {!isDoutor && (
             <FormControl

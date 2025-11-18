@@ -6,11 +6,15 @@ export interface DoutorCreateInput {
   email: string;
   senha: string;
   especialidade?: string;
+  crm?: string;
+  crmUf?: string;
+  rqe?: string;
   role: DoutorRole;
   clinicaId?: number;
   pausaInicio?: string;
   pausaFim?: string;
   diasBloqueados?: number[];
+  modeloPrescricao?: string;
 }
 
 export interface DoutorUpdateInput {
@@ -18,10 +22,14 @@ export interface DoutorUpdateInput {
   email?: string;
   senha?: string;
   especialidade?: string;
+  crm?: string;
+  crmUf?: string;
+  rqe?: string;
   role?: DoutorRole;
   pausaInicio?: string;
   pausaFim?: string;
   diasBloqueados?: number[];
+  modeloPrescricao?: string;
 }
 
 export const getDoutores = async () => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -29,6 +29,7 @@ import {
   InputAdornment,
   InputLabel,
   FormControl,
+  Tooltip,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import PersonIcon from '@mui/icons-material/Person';
@@ -41,13 +42,22 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import StopIcon from '@mui/icons-material/Stop';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import AddIcon from '@mui/icons-material/Add';
-import { IAgendamento, IHistoricoPaciente, IPaciente, IDoutor } from '../../types/models';
+import DescriptionIcon from '@mui/icons-material/Description';
+import SendIcon from '@mui/icons-material/Send';
+import ReactMarkdown from 'react-markdown';
+import type { Components as ReactMarkdownComponents } from 'react-markdown';
+import { IAgendamento, IHistoricoPaciente, IPaciente, IDoutor, IProntuarioChatMessage, IPrescricao } from '../../types/models';
 import { getPacienteHistoricos, updatePaciente } from '../../services/paciente.service';
 import { getDoutores } from '../../services/doutor.service';
+import { getProntuarioChatMessages, sendProntuarioChatMessage } from '../../services/prontuarioChat.service';
+import { getPrescricoesPaciente, createPrescricao } from '../../services/prescricao.service';
 import { useAuth } from '../../hooks/useAuth';
 import moment from 'moment';
 import 'moment/locale/pt-br';
 import { toast } from 'sonner';
+import { pdf } from '@react-pdf/renderer';
+import PrescricaoPdfView from '../PrescricaoPdfView';
+import { IModeloPrescricaoPDF, modeloPrescricaoPadrao } from '../../types/prescricao';
 
 moment.locale('pt-br');
 
@@ -94,9 +104,29 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
   const [pacienteData, setPacienteData] = useState<Partial<IPaciente>>({});
   const [salvandoPaciente, setSalvandoPaciente] = useState(false);
   const [doutores, setDoutores] = useState<IDoutor[]>([]);
+  const [chatMessages, setChatMessages] = useState<IProntuarioChatMessage[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const [chatInput, setChatInput] = useState('');
+  const [sendingChat, setSendingChat] = useState(false);
+  const [geminiTyping, setGeminiTyping] = useState(false);
+  const chatContainerRef = useRef<HTMLDivElement | null>(null);
+  const [initialChatLoaded, setInitialChatLoaded] = useState(false);
+  const [displayedChatText, setDisplayedChatText] = useState<Record<number, string>>({});
+  const displayedChatTextRef = useRef<Record<number, string>>({});
+  const typingFrameRefs = useRef<Record<number, number>>({});
+  const typingTimeoutRef = useRef<number | null>(null);
   const [alergiasList, setAlergiasList] = useState<string[]>([]);
   const [novaAlergia, setNovaAlergia] = useState<string>('');
   const intervalRef = useRef<number | null>(null);
+  
+  // Estados para prescrição
+  const [openPrescricaoModal, setOpenPrescricaoModal] = useState(false);
+  const [textoPrescricao, setTextoPrescricao] = useState('');
+  const [doutorAtual, setDoutorAtual] = useState<IDoutor | null>(null);
+  const [prescricoes, setPrescricoes] = useState<IPrescricao[]>([]);
+  const [loadingPrescricoes, setLoadingPrescricoes] = useState(false);
+  const [prescricoesError, setPrescricoesError] = useState<string | null>(null);
 
   const duracaoEsperadaMin = agendamento?.servico.duracaoMin || 0;
   const duracaoEsperadaSeg = duracaoEsperadaMin * 60;
@@ -111,6 +141,58 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
   };
 
   const alergias = agendamento ? parseAlergias(agendamento.paciente.alergias) : [];
+
+  const markdownComponents = useMemo<ReactMarkdownComponents>(() => ({
+    p: ({ node, ...props }) => (
+      <Typography
+        variant="body2"
+        sx={{ mb: 1, '&:last-child': { mb: 0 } }}
+        {...props}
+      />
+    ),
+    strong: ({ node, ...props }) => (
+      <Typography component="span" sx={{ fontWeight: 600 }} {...props} />
+    ),
+    em: ({ node, ...props }) => (
+      <Typography component="span" sx={{ fontStyle: 'italic' }} {...props} />
+    ),
+    ul: ({ node, ...props }) => (
+      <Box component="ul" sx={{ pl: 2.5, mb: 1 }} {...props} />
+    ),
+    ol: ({ node, ...props }) => (
+      <Box component="ol" sx={{ pl: 2.5, mb: 1 }} {...props} />
+    ),
+    li: ({ node, ...props }) => (
+      <Typography component="li" variant="body2" sx={{ mb: 0.5 }} {...props} />
+    ),
+    code: ({ node, ...props }) => (
+      <Box
+        component="code"
+        sx={{
+          display: 'inline-block',
+          bgcolor: 'grey.900',
+          color: 'common.white',
+          px: 0.5,
+          borderRadius: 0.5,
+          fontSize: '0.85rem',
+        }}
+        {...props}
+      />
+    ),
+    blockquote: ({ node, ...props }) => (
+      <Box
+        component="blockquote"
+        sx={{
+          borderLeft: '4px solid rgba(0,0,0,0.12)',
+          pl: 2,
+          my: 1,
+          color: 'text.secondary',
+          fontStyle: 'italic',
+        }}
+        {...props}
+      />
+    ),
+  }), []);
 
   // Iniciar/parar timer
   useEffect(() => {
@@ -145,8 +227,147 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
       setHistoricos([]);
       setHistoricoError(null);
       setOpenModalFinalizar(false);
+      setChatMessages([]);
+      setChatInput('');
+      setChatError(null);
+      setInitialChatLoaded(false);
+      setDisplayedChatText({});
+      displayedChatTextRef.current = {};
+      Object.values(typingFrameRefs.current).forEach((frameId) => {
+        if (frameId) {
+          cancelAnimationFrame(frameId);
+        }
+      });
+      typingFrameRefs.current = {};
+      if (typingTimeoutRef.current) {
+        window.clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
     }
   }, [open]);
+
+  useEffect(() => {
+    if (open && agendamento?.id) {
+      carregarChatGemini(agendamento.id, true);
+    }
+  }, [open, agendamento?.id]);
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [chatMessages]);
+
+  useEffect(() => {
+    displayedChatTextRef.current = displayedChatText;
+  }, [displayedChatText]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(typingFrameRefs.current).forEach((frameId) => {
+        if (frameId) {
+          cancelAnimationFrame(frameId);
+        }
+      });
+      if (typingTimeoutRef.current) {
+        window.clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    chatMessages.forEach((message) => {
+      if (displayedChatTextRef.current[message.id]) {
+        return;
+      }
+
+      if (message.sender === 'IA' && initialChatLoaded) {
+        setDisplayedChatText((prev) => ({
+          ...prev,
+          [message.id]: '',
+        }));
+
+        const totalDuration = Math.max(400, Math.min(900, message.content.length * 8));
+        const startTime = performance.now();
+
+        const animate = (currentTime: number) => {
+          const elapsed = currentTime - startTime;
+          const progress = Math.min(1, elapsed / totalDuration);
+          const charsToShow = Math.max(1, Math.floor(progress * message.content.length));
+
+          setDisplayedChatText((prev) => ({
+            ...prev,
+            [message.id]: message.content.slice(0, charsToShow),
+          }));
+
+          if (progress < 1) {
+            typingFrameRefs.current[message.id] = requestAnimationFrame(animate);
+          } else {
+            delete typingFrameRefs.current[message.id];
+          }
+        };
+
+        typingFrameRefs.current[message.id] = requestAnimationFrame(animate);
+      } else {
+        setDisplayedChatText((prev) => ({
+          ...prev,
+          [message.id]: message.content,
+        }));
+      }
+    });
+  }, [chatMessages, initialChatLoaded]);
+
+  const carregarChatGemini = async (agendamentoId: number, skipAnimation = false) => {
+    try {
+      setChatLoading(true);
+      setChatError(null);
+      const data = await getProntuarioChatMessages(agendamentoId);
+      if (skipAnimation) {
+        setDisplayedChatText((prev) => {
+          const next = { ...prev };
+          data.forEach((message) => {
+            next[message.id] = message.content;
+          });
+          return next;
+        });
+        setInitialChatLoaded(true);
+      } else {
+        setInitialChatLoaded(true);
+      }
+      setChatMessages(data);
+    } catch (error: any) {
+      setChatError(error?.response?.data?.message || 'Não foi possível carregar o chat da IA.');
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const handleEnviarMensagemIA = async () => {
+    if (!agendamento || !chatInput.trim()) {
+      return;
+    }
+
+    try {
+      setSendingChat(true);
+      setGeminiTyping(true);
+      const response = await sendProntuarioChatMessage(agendamento.id, chatInput.trim());
+      setChatInput('');
+      if (typingTimeoutRef.current) {
+        window.clearTimeout(typingTimeoutRef.current);
+      }
+      typingTimeoutRef.current = window.setTimeout(() => {
+        setChatMessages(response.messages);
+        setGeminiTyping(false);
+        typingTimeoutRef.current = null;
+      }, 1000);
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Não foi possível enviar a mensagem.');
+      setGeminiTyping(false);
+    } finally {
+      setSendingChat(false);
+    }
+  };
 
 
   // Carregar histórico quando a aba de histórico for selecionada
@@ -165,6 +386,25 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
         }
       };
       carregarHistorico();
+    }
+  }, [open, activeTab, agendamento?.paciente.id]);
+
+  // Carregar prescrições quando a aba de prescrições for selecionada
+  useEffect(() => {
+    if (open && activeTab === 3 && agendamento?.paciente.id) {
+      const carregarPrescricoes = async () => {
+        try {
+          setLoadingPrescricoes(true);
+          setPrescricoesError(null);
+          const data = await getPrescricoesPaciente(agendamento.paciente.id);
+          setPrescricoes(data);
+        } catch (err: any) {
+          setPrescricoesError(err?.response?.data?.message ?? 'Não foi possível carregar as prescrições.');
+        } finally {
+          setLoadingPrescricoes(false);
+        }
+      };
+      carregarPrescricoes();
     }
   }, [open, activeTab, agendamento?.paciente.id]);
 
@@ -195,6 +435,8 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
         alergias: formatAlergias(alergiasParsed),
         observacoes: paciente.observacoes || '',
         doutorId: paciente.doutorId || undefined,
+        pesoKg: paciente.pesoKg ?? undefined,
+        alturaCm: paciente.alturaCm ?? undefined,
       });
 
       // Carregar doutores se não for DOUTOR
@@ -363,6 +605,8 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
         cpf: pacienteData.cpf ? pacienteData.cpf.replace(/\D/g, '') : '',
         cep: pacienteData.cep ? pacienteData.cep.replace(/\D/g, '') : '',
         alergias: formatAlergias(alergiasList),
+        pesoKg: pacienteData.pesoKg ?? null,
+        alturaCm: pacienteData.alturaCm ?? null,
       };
       await updatePaciente(agendamento.paciente.id, dataToSave);
       toast.success('Dados do paciente atualizados com sucesso!');
@@ -382,9 +626,17 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
   const porcentagemTempo = duracaoEsperadaSeg > 0 ? Math.min((tempoDecorrido / duracaoEsperadaSeg) * 100, 100) : 0;
   const tempoExcedido = tempoDecorrido > duracaoEsperadaSeg;
   const tempoFormatado = formatarTempo(tempoDecorrido);
-  const tempoEsperadoFormatado = formatarTempo(duracaoEsperadaSeg);
+  const dataNascimentoPaciente = agendamento.paciente.dataNascimento ? moment(agendamento.paciente.dataNascimento) : null;
+  const idadePaciente = dataNascimentoPaciente ? moment().diff(dataNascimentoPaciente, 'years') : null;
+  const pesoPaciente = agendamento.paciente.pesoKg ?? null;
+  const alturaPaciente = agendamento.paciente.alturaCm ?? null;
+  const imcPaciente =
+    pesoPaciente && alturaPaciente && alturaPaciente > 0
+      ? pesoPaciente / Math.pow(alturaPaciente / 100, 2)
+      : null;
 
   return (
+    <>
     <Dialog 
       open={open} 
       onClose={onClose} 
@@ -402,10 +654,101 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
     >
       <DialogTitle sx={{ flexShrink: 0 }}>
         <Box display="flex" justifyContent="space-between" alignItems="center">
-          <Box flex={1}>
+          <Box flex={1} display="flex" alignItems="center" gap={3}>
             <Typography variant="h5" fontWeight="bold">
               Prontuário do Paciente
             </Typography>
+            
+            {/* Timer de Atendimento */}
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1.5,
+                px: 2,
+                py: 1,
+                borderRadius: 2,
+                border: '1px solid',
+                borderColor: tempoExcedido ? 'error.light' : 'grey.300',
+                bgcolor: tempoExcedido ? 'error.lighter' : 'grey.50',
+              }}
+            >
+              <AccessTimeIcon 
+                fontSize="small" 
+                sx={{ color: tempoExcedido ? 'error.main' : 'text.secondary' }}
+              />
+              <Box>
+                <Typography 
+                  variant="body2" 
+                  fontWeight="bold"
+                  color={tempoExcedido ? 'error.main' : 'text.primary'}
+                >
+                  {tempoFormatado}
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', gap: 0.5 }}>
+                {!atendimentoIniciado && !inicioAtendimento && (
+                  <Tooltip title="Iniciar atendimento">
+                    <span>
+                      <IconButton
+                        color="success"
+                        onClick={handleIniciarAtendimento}
+                        disabled={agendamento.status === 'finalizado'}
+                        size="small"
+                        sx={{ p: 0.5 }}
+                      >
+                        <PlayArrowIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                )}
+
+                {atendimentoIniciado && (
+                  <Tooltip title="Pausar atendimento">
+                    <IconButton 
+                      color="warning" 
+                      onClick={handlePausarAtendimento} 
+                      size="small"
+                      sx={{ p: 0.5 }}
+                    >
+                      <StopIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                )}
+
+                {!atendimentoIniciado && inicioAtendimento && (
+                  <Tooltip title="Retomar atendimento">
+                    <span>
+                      <IconButton
+                        color="success"
+                        onClick={handleRetomarAtendimento}
+                        disabled={agendamento.status === 'finalizado'}
+                        size="small"
+                        sx={{ p: 0.5 }}
+                      >
+                        <PlayArrowIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                )}
+              </Box>
+              <LinearProgress
+                variant="determinate"
+                value={porcentagemTempo}
+                color={tempoExcedido ? 'error' : 'primary'}
+                sx={{ 
+                  width: 80, 
+                  height: 4, 
+                  borderRadius: 2,
+                }}
+              />
+              <Chip
+                label={`${porcentagemTempo.toFixed(0)}%`}
+                size="small"
+                color={tempoExcedido ? 'error' : 'primary'}
+                sx={{ height: 20, fontSize: '0.7rem' }}
+              />
+            </Box>
           </Box>
           <IconButton onClick={onClose}>
             <CloseIcon />
@@ -415,13 +758,14 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
           <Tab label="Prontuário" />
           <Tab label="Histórico de Atendimentos" />
           <Tab label="Dados do Paciente" />
+          <Tab label="Prescrições" />
         </Tabs>
       </DialogTitle>
       <DialogContent 
         dividers
         sx={{
           flex: 1,
-          overflow: activeTab === 0 || activeTab === 1 ? 'hidden' : 'auto',
+          overflow: activeTab === 0 || activeTab === 1 || activeTab === 3 ? 'hidden' : 'auto',
           minHeight: 0,
           display: 'flex',
           flexDirection: 'column',
@@ -444,22 +788,157 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
               }}
             >
               <CardContent sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0, p: 2 }}>
-                <Stack direction="row" spacing={1.5} alignItems="center" mb={2}>
-                  <Avatar sx={{ bgcolor: 'primary.main', width: 48, height: 48 }}>
-                    <PersonIcon sx={{ fontSize: 24 }} />
-                  </Avatar>
-                  <Box>
-                    <Typography variant="h6" fontWeight="bold">
-                      {agendamento.paciente.nome}
-                    </Typography>
-                    <Chip
-                      label={agendamento.status === 'finalizado' ? 'Finalizado' : 'Em Atendimento'}
-                      color={agendamento.status === 'finalizado' ? 'success' : 'primary'}
-                      size="small"
-                      sx={{ mt: 0.5 }}
-                    />
-                  </Box>
+                <Stack spacing={2} mb={2}>
+                  <Stack
+                    direction="row"
+                    alignItems="center"
+                    justifyContent="space-between"
+                  >
+                    <Stack direction="row" spacing={1.5} alignItems="center">
+                      <Avatar sx={{ bgcolor: 'primary.main', width: 48, height: 48 }}>
+                        <PersonIcon sx={{ fontSize: 24 }} />
+                      </Avatar>
+                      <Box>
+                        <Typography variant="h6" fontWeight="bold">
+                          {agendamento.paciente.nome}
+                        </Typography>
+                        <Chip
+                          label={agendamento.status === 'finalizado' ? 'Finalizado' : 'Em Atendimento'}
+                          color={agendamento.status === 'finalizado' ? 'success' : 'primary'}
+                          size="small"
+                          sx={{ mt: 0.5 }}
+                        />
+                      </Box>
+                    </Stack>
+
+                    <Button
+                      variant="contained"
+                      size="medium"
+                      startIcon={<DescriptionIcon />}
+                      onClick={async () => {
+                          console.log('Botão Prescrições clicado');
+                          console.log('Agendamento:', agendamento);
+                          console.log('Doutores carregados:', doutores.length);
+                          
+                          // Se não tiver doutores carregados, buscar
+                          if (doutores.length === 0) {
+                            try {
+                              console.log('Carregando doutores...');
+                              const data = await getDoutores();
+                              console.log('Doutores carregados:', data);
+                              setDoutores(data);
+                              const doutor = data.find(d => d.id === agendamento.doutor.id);
+                              if (doutor) {
+                                console.log('Doutor encontrado:', doutor);
+                                setDoutorAtual(doutor);
+                              } else {
+                                console.log('Doutor não encontrado na lista, usando do agendamento');
+                                setDoutorAtual(agendamento.doutor as IDoutor);
+                              }
+                            } catch (error) {
+                              console.error('Erro ao carregar doutores:', error);
+                              setDoutorAtual(agendamento.doutor as IDoutor);
+                            }
+                          } else {
+                            // Buscar dados do doutor atual na lista
+                            const doutor = doutores.find(d => d.id === agendamento.doutor.id);
+                            if (doutor) {
+                              console.log('Doutor encontrado na lista:', doutor);
+                              setDoutorAtual(doutor);
+                            } else {
+                              // Se não encontrou na lista, usar o doutor do agendamento
+                              console.log('Doutor não encontrado na lista, usando do agendamento');
+                              setDoutorAtual(agendamento.doutor as IDoutor);
+                            }
+                          }
+                          console.log('Abrindo modal de prescrição');
+                          setOpenPrescricaoModal(true);
+                        }}
+                        sx={{ 
+                          minWidth: 140,
+                          boxShadow: 2,
+                          '&:hover': {
+                            boxShadow: 4,
+                          }
+                        }}
+                      >
+                        Prescrição
+                      </Button>
+                  </Stack>
                 </Stack>
+
+                <Divider sx={{ my: 1.5 }} />
+
+                <Grid container spacing={1.5} sx={{ flexShrink: 0, mb: 1 }}>
+                  <Grid item xs={6} sm={3}>
+                    <Box
+                      sx={{
+                        p: 1,
+                        borderRadius: 2,
+                        border: '1px solid',
+                        borderColor: 'grey.200',
+                      }}
+                    >
+                      <Typography variant="caption" color="text.secondary">
+                        Idade
+                      </Typography>
+                      <Typography variant="subtitle2" fontWeight="bold">
+                        {idadePaciente !== null ? `${idadePaciente} anos` : 'Não informado'}
+                      </Typography>
+                    </Box>
+                  </Grid>
+                  <Grid item xs={6} sm={3}>
+                    <Box
+                      sx={{
+                        p: 1,
+                        borderRadius: 2,
+                        border: '1px solid',
+                        borderColor: 'grey.200',
+                      }}
+                    >
+                      <Typography variant="caption" color="text.secondary">
+                        Sexo
+                      </Typography>
+                      <Typography variant="subtitle2" fontWeight="bold">
+                        {agendamento.paciente.genero || 'Não informado'}
+                      </Typography>
+                    </Box>
+                  </Grid>
+                  <Grid item xs={6} sm={3}>
+                    <Box
+                      sx={{
+                        p: 1,
+                        borderRadius: 2,
+                        border: '1px solid',
+                        borderColor: 'grey.200',
+                      }}
+                    >
+                      <Typography variant="caption" color="text.secondary">
+                        Peso
+                      </Typography>
+                      <Typography variant="subtitle2" fontWeight="bold">
+                        {pesoPaciente !== null ? `${pesoPaciente.toFixed(1)} kg` : 'Não informado'}
+                      </Typography>
+                    </Box>
+                  </Grid>
+                  <Grid item xs={6} sm={3}>
+                    <Box
+                      sx={{
+                        p: 1,
+                        borderRadius: 2,
+                        border: '1px solid',
+                        borderColor: 'grey.200',
+                      }}
+                    >
+                      <Typography variant="caption" color="text.secondary">
+                        IMC
+                      </Typography>
+                      <Typography variant="subtitle2" fontWeight="bold">
+                        {imcPaciente !== null ? imcPaciente.toFixed(1) : 'Não calculado'}
+                      </Typography>
+                    </Box>
+                  </Grid>
+                </Grid>
 
                 <Divider sx={{ my: 1.5 }} />
 
@@ -539,9 +1018,9 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
             </Card>
           </Grid>
 
-          {/* Timer e Controles */}
+          {/* Simpatia */}
           <Grid item xs={12} md={6} sx={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
-            <Card 
+            <Card
               elevation={2}
               sx={{
                 height: '100%',
@@ -551,102 +1030,142 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                 minHeight: 0,
               }}
             >
-              <CardContent sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0, p: 2 }}>
-                <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ mb: 1.5 }}>
-                  Tempo de Atendimento
-                </Typography>
-
-                <Box
-                  sx={{
-                    textAlign: 'center',
-                    py: 2,
-                    backgroundColor: tempoExcedido ? 'error.light' : 'transparent',
-                    borderRadius: 2,
-                    mb: 1.5,
-                    border: tempoExcedido ? `2px solid ${tempoExcedido ? 'error.main' : 'primary.main'}` : 'none',
-                    flexShrink: 0,
-                  }}
-                >
-                  <Typography
-                    variant="h3"
-                    fontWeight="bold"
-                    color={tempoExcedido ? 'error.dark' : 'primary.dark'}
-                    sx={{ fontSize: { xs: '2rem', sm: '2.5rem' } }}
-                  >
-                    {tempoFormatado}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
-                    Duração esperada: {tempoEsperadoFormatado}
-                  </Typography>
-                </Box>
-
-                <Box sx={{ mb: 1.5, flexShrink: 0 }}>
-                  <Box display="flex" justifyContent="space-between" mb={0.5}>
-                    <Typography variant="caption" color="text.secondary">
-                      Progresso
+              <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, p: 2 }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
+                  <Box>
+                    <Typography variant="h6" fontWeight="bold">
+                      Simpatia
                     </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {porcentagemTempo.toFixed(0)}%
+                    <Typography variant="body2" color="text.secondary">
+                      Olá dr. estou aqui para lhe auxiliar sobre este atendimento.
                     </Typography>
                   </Box>
-                  <LinearProgress
-                    variant="determinate"
-                    value={porcentagemTempo}
-                    color={tempoExcedido ? 'error' : 'primary'}
-                    sx={{ height: 6, borderRadius: 4 }}
-                  />
+                </Stack>
+
+                <Divider sx={{ my: 1.5 }} />
+
+                <Box
+                  ref={chatContainerRef}
+                  sx={{
+                    flex: 1,
+                    overflowY: 'auto',
+                    pr: 1,
+                    mb: 1.5,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 1,
+                  }}
+                >
+                  {chatLoading ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                      <CircularProgress size={28} />
+                    </Box>
+                  ) : chatMessages.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">
+                      Nenhuma mensagem registrada ainda. Envie a primeira pergunta para a Simpatia.
+                    </Typography>
+                  ) : (
+                    chatMessages.map((message) => {
+                      const isDoctor = message.sender === 'DOUTOR';
+                      const renderedContent = displayedChatText[message.id] ?? message.content;
+
+                      return (
+                        <Box
+                          key={message.id}
+                          sx={{
+                            display: 'flex',
+                            justifyContent: isDoctor ? 'flex-end' : 'flex-start',
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              maxWidth: '80%',
+                              bgcolor: isDoctor ? 'primary.main' : 'grey.100',
+                              color: isDoctor ? 'primary.contrastText' : 'text.primary',
+                              px: 1.5,
+                              py: 1,
+                              borderRadius: 2,
+                              boxShadow: 1,
+                            }}
+                          >
+                            <Typography
+                              variant="caption"
+                              sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}
+                              color={isDoctor ? 'primary.contrastText' : 'text.secondary'}
+                            >
+                              {isDoctor ? 'Você' : 'Simpatia'}
+                            </Typography>
+                            <ReactMarkdown components={markdownComponents}>
+                              {renderedContent}
+                            </ReactMarkdown>
+                            <Typography
+                              variant="caption"
+                              sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}
+                              color={isDoctor ? 'primary.contrastText' : 'text.secondary'}
+                            >
+                              {moment(message.createdAt).format('DD/MM/YYYY HH:mm')}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      );
+                    })
+                  )}
+                  {geminiTyping && (
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-start' }}>
+                      <Box
+                        sx={{
+                          px: 1.5,
+                          py: 0.75,
+                          borderRadius: 2,
+                          bgcolor: 'grey.100',
+                          color: 'text.secondary',
+                          fontStyle: 'italic',
+                        }}
+                      >
+                        ...
+                      </Box>
+                    </Box>
+                  )}
                 </Box>
 
-                {tempoExcedido && (
-                  <Alert severity="warning" sx={{ mb: 1.5, py: 0.5, flexShrink: 0 }}>
-                    <Typography variant="caption">Tempo de atendimento excedido!</Typography>
+                {chatError && (
+                  <Alert severity="error" sx={{ mb: 1.5 }}>
+                    {chatError}
                   </Alert>
                 )}
 
-                <Box sx={{ flex: 1, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                <Stack direction="row" spacing={1.5} justifyContent="center" sx={{ width: '100%' }}>
-                  {!atendimentoIniciado && !inicioAtendimento && (
-                    <Button
-                      variant="contained"
-                      color="success"
-                      size="medium"
-                      startIcon={<PlayArrowIcon />}
-                      onClick={handleIniciarAtendimento}
-                      disabled={agendamento.status === 'finalizado'}
-                      fullWidth
-                    >
-                      Iniciar Atendimento
-                    </Button>
-                  )}
-
-                  {atendimentoIniciado && (
-                    <Button
-                      variant="contained"
-                      color="warning"
-                      size="medium"
-                      startIcon={<StopIcon />}
-                      onClick={handlePausarAtendimento}
-                      fullWidth
-                    >
-                      Pausar Atendimento
-                    </Button>
-                  )}
-
-                  {!atendimentoIniciado && inicioAtendimento && (
-                    <Button
-                      variant="contained"
-                      color="success"
-                      size="medium"
-                      startIcon={<PlayArrowIcon />}
-                      onClick={handleRetomarAtendimento}
-                      disabled={agendamento.status === 'finalizado'}
-                      fullWidth
-                    >
-                      Retomar Atendimento
-                    </Button>
-                  )}
+                <Stack direction="row" spacing={1}>
+                  <TextField
+                    label="Pergunte algo para a Simpatia"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    multiline
+                    minRows={1}
+                    maxRows={3}
+                    fullWidth
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault();
+                        handleEnviarMensagemIA();
+                      }
+                    }}
+                    InputProps={{
+                      endAdornment: (
+                        <Tooltip title="Enviar para o Gemini">
+                          <span>
+                            <IconButton
+                              color="primary"
+                              onClick={handleEnviarMensagemIA}
+                              disabled={sendingChat || !chatInput.trim()}
+                            >
+                              <SendIcon />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                      ),
+                    }}
+                  />
                 </Stack>
-                </Box>
               </CardContent>
             </Card>
           </Grid>
@@ -702,6 +1221,11 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                   const profissionalNome = historico.doutor?.nome
                     ? `Profissional: ${historico.doutor.nome}`
                     : null;
+                  
+                  // Dados do agendamento
+                  const agendamentoData = historico.agendamento
+                    ? moment(historico.agendamento.dataHora).format('DD/MM/YYYY [às] HH:mm')
+                    : null;
 
                   return (
                     <React.Fragment key={historico.id}>
@@ -709,9 +1233,22 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                         <ListItemText
                           primary={
                             <Box>
-                              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
-                                {`${servicoNome} • ${realizadoLabel}`}
-                              </Typography>
+                              <Box display="flex" justifyContent="space-between" alignItems="center" mb={0.5}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                                  {`${servicoNome} • ${realizadoLabel}`}
+                                </Typography>
+                                <Chip
+                                  label={`ID: ${historico.protocolo.substring(0, 8).toUpperCase()}`}
+                                  size="small"
+                                  variant="outlined"
+                                  color="primary"
+                                />
+                              </Box>
+                              {agendamentoData && (
+                                <Typography variant="caption" color="primary" display="block" sx={{ fontWeight: 500 }}>
+                                  Agendamento: {agendamentoData}
+                                </Typography>
+                              )}
                               {profissionalNome && (
                                 <Typography variant="caption" color="text.secondary" display="block">
                                   {profissionalNome}
@@ -819,6 +1356,38 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                   margin="normal"
                   placeholder="14999998888"
                   helperText="Incluir DDI e DDD"
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  label="Peso (kg)"
+                  type="number"
+                  value={pacienteData.pesoKg ?? ''}
+                  onChange={(e) =>
+                    setPacienteData((prev) => ({
+                      ...prev,
+                      pesoKg: e.target.value === '' ? undefined : Number(e.target.value),
+                    }))
+                  }
+                  fullWidth
+                  margin="normal"
+                  inputProps={{ step: '0.1', min: 0 }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  label="Altura (cm)"
+                  type="number"
+                  value={pacienteData.alturaCm ?? ''}
+                  onChange={(e) =>
+                    setPacienteData((prev) => ({
+                      ...prev,
+                      alturaCm: e.target.value === '' ? undefined : Number(e.target.value),
+                    }))
+                  }
+                  fullWidth
+                  margin="normal"
+                  inputProps={{ step: '0.5', min: 0 }}
                 />
               </Grid>
 
@@ -1050,6 +1619,86 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
             </Grid>
           </Box>
         )}
+
+        {/* Aba de Prescrições */}
+        {activeTab === 3 && (
+          <Box sx={{ height: '100%', overflow: 'auto' }}>
+            {loadingPrescricoes ? (
+              <Box display="flex" justifyContent="center" alignItems="center" py={4}>
+                <CircularProgress />
+              </Box>
+            ) : prescricoesError ? (
+              <Alert severity="error">{prescricoesError}</Alert>
+            ) : prescricoes.length === 0 ? (
+              <Box textAlign="center" py={4}>
+                <Typography variant="body1" color="text.secondary">
+                  Nenhuma prescrição encontrada
+                </Typography>
+              </Box>
+            ) : (
+              <List sx={{ width: '100%' }}>
+                {prescricoes.map((prescricao) => (
+                  <React.Fragment key={prescricao.id}>
+                    <ListItem
+                      alignItems="flex-start"
+                      sx={{
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 2,
+                        mb: 2,
+                        p: 2,
+                      }}
+                    >
+                      <ListItemText
+                        primary={
+                          <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                            <Box>
+                              <Typography variant="subtitle1" fontWeight="bold" component="span">
+                                Protocolo: {prescricao.protocolo}
+                              </Typography>
+                              <Chip
+                                label={prescricao.doutor.nome}
+                                size="small"
+                                color="primary"
+                                sx={{ ml: 2 }}
+                              />
+                            </Box>
+                            <Typography variant="caption" color="text.secondary">
+                              {moment(prescricao.createdAt).format('DD/MM/YYYY [às] HH:mm')}
+                            </Typography>
+                          </Box>
+                        }
+                        secondary={
+                          <Box>
+                            {prescricao.agendamento && (
+                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                <strong>Agendamento:</strong> {moment(prescricao.agendamento.dataHora).format('DD/MM/YYYY [às] HH:mm')} - {prescricao.agendamento.servico.nome}
+                              </Typography>
+                            )}
+                            <Divider sx={{ my: 1 }} />
+                            <Typography
+                              variant="body2"
+                              component="div"
+                              sx={{
+                                whiteSpace: 'pre-wrap',
+                                backgroundColor: 'grey.50',
+                                p: 2,
+                                borderRadius: 1,
+                                mt: 1,
+                              }}
+                            >
+                              {prescricao.conteudo}
+                            </Typography>
+                          </Box>
+                        }
+                      />
+                    </ListItem>
+                  </React.Fragment>
+                ))}
+              </List>
+            )}
+          </Box>
+        )}
       </DialogContent>
       <DialogActions sx={{ flexShrink: 0 }}>
         {agendamento && agendamento.status !== 'finalizado' && (
@@ -1066,6 +1715,7 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
           </Button>
         )}
       </DialogActions>
+    </Dialog>
 
       {/* Modal para Descrição do Atendimento */}
       <Dialog
@@ -1115,7 +1765,280 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
           </Button>
         </DialogActions>
       </Dialog>
-    </Dialog>
+
+      {/* Modal de Prescrição */}
+      <Dialog 
+        open={openPrescricaoModal} 
+        onClose={() => {
+          setOpenPrescricaoModal(false);
+          setTextoPrescricao('');
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Typography variant="h6">Nova Prescrição</Typography>
+            <IconButton onClick={() => {
+              setOpenPrescricaoModal(false);
+              setTextoPrescricao('');
+            }}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Paciente: <strong>{agendamento?.paciente.nome}</strong>
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Data: <strong>{moment().format('DD/MM/YYYY')}</strong>
+            </Typography>
+          </Box>
+          
+          <TextField
+            label="Prescrição Médica"
+            value={textoPrescricao}
+            onChange={(e) => setTextoPrescricao(e.target.value)}
+            fullWidth
+            multiline
+            rows={10}
+            placeholder="Digite a prescrição médica aqui..."
+            helperText="Digite os medicamentos, dosagens e orientações para o paciente"
+            margin="normal"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={async () => {
+              try {
+                console.log('Botão Gerar Prescrição clicado');
+                console.log('Doutor atual:', doutorAtual);
+                console.log('Agendamento:', agendamento);
+                
+                if (!doutorAtual) {
+                  toast.error('Doutor não encontrado');
+                  console.error('Doutor não encontrado');
+                  return;
+                }
+
+                if (!textoPrescricao.trim()) {
+                  toast.error('Digite a prescrição antes de gerar');
+                  return;
+                }
+
+                if (!agendamento) {
+                  toast.error('Agendamento não encontrado');
+                  console.error('Agendamento não encontrado');
+                  return;
+                }
+
+                console.log('Todos os dados validados, salvando prescrição...');
+                // Salvar prescrição no banco de dados
+                try {
+                  await createPrescricao({
+                    conteudo: textoPrescricao.trim(),
+                    pacienteId: agendamento.paciente.id,
+                    doutorId: doutorAtual.id,
+                    agendamentoId: agendamento.id,
+                  });
+                  console.log('Prescrição salva com sucesso');
+                } catch (error) {
+                  console.error('Erro ao salvar prescrição:', error);
+                  toast.error('Erro ao salvar prescrição');
+                  return;
+                }
+
+                console.log('Iniciando geração do modelo...');
+                // Carregar modelo do doutor ou usar padrão
+              let modeloPrescricao: IModeloPrescricaoPDF = modeloPrescricaoPadrao;
+              let logoURL = '';
+              
+              const modeloStr = doutorAtual.modeloPrescricao || '';
+              if (modeloStr) {
+                try {
+                  // Parsear modelo como JSON
+                  const modeloCarregado = JSON.parse(modeloStr) as IModeloPrescricaoPDF;
+                  // Fazer merge com modelo padrão para garantir que todos os campos existam
+                  modeloPrescricao = {
+                    ...modeloPrescricaoPadrao,
+                    ...modeloCarregado,
+                    logoWatermark: {
+                      ...modeloPrescricaoPadrao.logoWatermark,
+                      ...(modeloCarregado.logoWatermark || {}),
+                    },
+                    header: {
+                      ...modeloPrescricaoPadrao.header,
+                      ...(modeloCarregado.header || {}),
+                    },
+                    medicoInfo: {
+                      ...modeloPrescricaoPadrao.medicoInfo,
+                      ...(modeloCarregado.medicoInfo || {}),
+                    },
+                    pacienteInfo: {
+                      ...modeloPrescricaoPadrao.pacienteInfo,
+                      ...(modeloCarregado.pacienteInfo || {}),
+                      // Forçar CPF e endereço sempre visíveis
+                      showCPF: true,
+                      showEndereco: true,
+                    },
+                    prescricao: {
+                      ...modeloPrescricaoPadrao.prescricao,
+                      ...(modeloCarregado.prescricao || {}),
+                    },
+                    assinatura: {
+                      ...modeloPrescricaoPadrao.assinatura,
+                      ...(modeloCarregado.assinatura || {}),
+                    },
+                    footer: {
+                      ...modeloPrescricaoPadrao.footer,
+                      ...(modeloCarregado.footer || {}),
+                    },
+                  };
+                  logoURL = modeloPrescricao.logoUrl || '';
+                } catch (error) {
+                  // Se não for JSON válido, usar modelo padrão
+                  console.warn('Modelo de prescrição não é JSON válido, usando padrão:', error);
+                  modeloPrescricao = modeloPrescricaoPadrao;
+                  logoURL = '';
+                }
+              }
+              
+              // Preparar dados para o PDF
+              // Montar endereço do paciente primeiro
+              const enderecoPaciente = [
+                agendamento?.paciente.logradouro,
+                agendamento?.paciente.numero,
+                agendamento?.paciente.bairro,
+                agendamento?.paciente.cidade,
+                agendamento?.paciente.estado
+              ].filter(Boolean).join(', ') || '';
+              
+              // Separar texto da prescrição em linhas
+              const itensPrescricao = textoPrescricao.split('\n').filter(line => line.trim());
+              
+              console.log('Modelo de prescrição final:', modeloPrescricao);
+              console.log('showCPF:', modeloPrescricao.pacienteInfo.showCPF);
+              console.log('showEndereco:', modeloPrescricao.pacienteInfo.showEndereco);
+              console.log('CPF do paciente:', agendamento?.paciente.cpf);
+              console.log('Endereço montado:', enderecoPaciente);
+              console.log('Dados do paciente:', {
+                logradouro: agendamento?.paciente.logradouro,
+                numero: agendamento?.paciente.numero,
+                bairro: agendamento?.paciente.bairro,
+                cidade: agendamento?.paciente.cidade,
+                estado: agendamento?.paciente.estado,
+              });
+
+              // Obter dados da clínica do doutorAtual (que tem dados completos) ou do agendamento como fallback
+              const clinicaNome = doutorAtual.clinica?.nome || agendamento?.doutor.clinica?.nome || 'Clínica';
+              const clinicaEndereco = doutorAtual.clinica?.endereco || agendamento?.doutor.clinica?.endereco || '';
+              const clinicaTelefone = doutorAtual.clinica?.telefone || agendamento?.doutor.clinica?.telefone || '';
+              const clinicaEmail = doutorAtual.clinica?.email || agendamento?.doutor.clinica?.email || doutorAtual.email || '';
+              const clinicaSite = doutorAtual.clinica?.site || agendamento?.doutor.clinica?.site || '';
+              const clinicaCNPJ = doutorAtual.clinica?.cnpj || agendamento?.doutor.clinica?.cnpj;
+
+              console.log('Dados da clínica:', {
+                clinicaNome,
+                clinicaEndereco,
+                clinicaTelefone,
+                clinicaEmail,
+                clinicaSite,
+                clinicaCNPJ,
+                doutorAtualClinica: doutorAtual.clinica,
+                agendamentoClinica: agendamento?.doutor.clinica
+              });
+
+              // Gerar PDF
+              const pdfDoc = (
+                <PrescricaoPdfView
+                  pacienteNome={agendamento?.paciente.nome || ''}
+                  pacienteEndereco={enderecoPaciente}
+                  pacienteCPF={agendamento?.paciente.cpf || undefined}
+                  data={moment().format('YYYY-MM-DD')}
+                  seguroSaude={agendamento?.paciente.convenio || ''}
+                  diagnostico=""
+                  doutorNome={doutorAtual.nome || ''}
+                  doutorEspecialidade={doutorAtual.especialidade || ''}
+                  doutorTagline={modeloPrescricao.medicoInfo.tagline || ''}
+                  doutorCRM={doutorAtual.crm}
+                  doutorCRMUF={doutorAtual.crmUf}
+                  doutorRQE={doutorAtual.rqe}
+                  itensPrescricao={itensPrescricao}
+                  clinicaNome={clinicaNome}
+                  clinicaEndereco={clinicaEndereco}
+                  clinicaTelefone={clinicaTelefone}
+                  clinicaEmail={clinicaEmail}
+                  clinicaSite={clinicaSite}
+                  clinicaCNPJ={clinicaCNPJ}
+                  clinicaLogoUrl={logoURL}
+                  modelo={modeloPrescricao}
+                  isControleEspecial={false}
+                />
+              );
+
+                // Gerar blob do PDF e abrir para impressão
+                console.log('Iniciando geração do PDF...');
+                console.log('PDF Document:', pdfDoc);
+                pdf(pdfDoc).toBlob().then((blob) => {
+                console.log('PDF gerado com sucesso, tamanho:', blob.size);
+                if (blob.size === 0) {
+                  toast.error('Erro: PDF gerado está vazio');
+                  return;
+                }
+                
+                const url = URL.createObjectURL(blob);
+                console.log('URL do blob criada:', url);
+                
+                const printWindow = window.open(url, '_blank');
+                if (printWindow) {
+                  printWindow.onload = () => {
+                    console.log('Janela de impressão carregada');
+                    setTimeout(() => {
+                      printWindow.print();
+                      setOpenPrescricaoModal(false);
+                      setTextoPrescricao('');
+                      toast.success('Prescrição gerada com sucesso!');
+                      // Limpar URL após um tempo
+                      setTimeout(() => URL.revokeObjectURL(url), 1000);
+                    }, 250);
+                  };
+                  
+                  printWindow.onerror = (error) => {
+                    console.error('Erro ao carregar janela:', error);
+                    toast.error('Erro ao abrir janela de impressão');
+                  };
+                } else {
+                  toast.error('Não foi possível abrir a janela de impressão. Verifique se o pop-up está bloqueado.');
+                }
+                }).catch((error) => {
+                  console.error('Erro ao gerar PDF:', error);
+                  console.error('Detalhes do erro:', error.message, error.stack);
+                  toast.error(`Erro ao gerar prescrição: ${error.message || 'Erro desconhecido'}`);
+                });
+              } catch (error: any) {
+                console.error('Erro geral ao processar prescrição:', error);
+                console.error('Stack trace:', error.stack);
+                toast.error(`Erro: ${error.message || 'Erro desconhecido ao gerar prescrição'}`);
+              }
+            }}
+            variant="contained"
+            startIcon={<DescriptionIcon />}
+          >
+            Gerar Prescrição
+          </Button>
+          <Button
+            onClick={() => {
+              setOpenPrescricaoModal(false);
+              setTextoPrescricao('');
+            }}
+          >
+            Cancelar
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 };
-
+  

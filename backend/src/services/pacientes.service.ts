@@ -18,6 +18,8 @@ interface ICreatePaciente {
     alergias?: string;
     observacoes?: string;
     doutorId?: number;
+    pesoKg?: number;
+    alturaCm?: number;
 }
 
 interface IUpdatePaciente {
@@ -38,6 +40,8 @@ interface IUpdatePaciente {
     alergias?: string;
     observacoes?: string;
     doutorId?: number;
+    pesoKg?: number;
+    alturaCm?: number;
 }
 class PacienteService {
 
@@ -88,12 +92,17 @@ class PacienteService {
             throw new Error("Paciente não encontrado ou não pertence à esta clínica.");
         }
 
-        const historicos = await (prisma as any).historicoPaciente.findMany({
+        const historicos = await prisma.historicoPaciente.findMany({
             where: { pacienteId: id },
             include: {
                 agendamento: {
                     include: {
-                        servico: true,
+                        servico: {
+                            select: {
+                                nome: true,
+                                duracaoMin: true,
+                            },
+                        },
                         doutor: {
                             select: {
                                 id: true,
@@ -111,14 +120,25 @@ class PacienteService {
             ],
         });
 
-        return historicos.map((historico: any) => {
+        return historicos.map((historico) => {
             const { agendamento, ...rest } = historico;
             return {
                 id: rest.id,
+                protocolo: rest.protocolo,
                 descricao: rest.descricao,
                 realizadoEm: rest.realizadoEm,
                 criadoEm: rest.createdAt,
                 agendamentoId: rest.agendamentoId,
+                agendamento: agendamento
+                ? {
+                    id: agendamento.id,
+                    dataHora: agendamento.dataHora,
+                    servico: {
+                        nome: agendamento.servico.nome,
+                        duracaoMin: agendamento.servico.duracaoMin,
+                    },
+                }
+                : null,
                 servico: agendamento
                 ? {
                     id: agendamento.servico.id,
@@ -189,7 +209,9 @@ class PacienteService {
             numeroCarteirinha,
             alergias,
             observacoes,
-            doutorId 
+            doutorId,
+            pesoKg,
+            alturaCm,
         } = data;
 
         if (!nome || !telefone) {
@@ -252,6 +274,8 @@ class PacienteService {
                 numeroCarteirinha: numeroCarteirinha || null,
                 alergias: alergias || null,
                 observacoes: observacoes || null,
+                pesoKg: pesoKg ?? null,
+                alturaCm: alturaCm ?? null,
                 clinicaId,
                 doutorId: doutorId || null,
             } as any,

@@ -30,6 +30,8 @@ export interface IPaciente {
   numeroCarteirinha?: string | null;
   alergias?: string | null;
   observacoes?: string | null;
+  pesoKg?: number | null;
+  alturaCm?: number | null;
   clinicaId: number;
   doutorId?: number | null;
   doutor?: {
@@ -46,13 +48,22 @@ export interface IDoutor {
   nome: string;
   email: string;
   especialidade?: string;
+  crm?: string; // Número do CRM
+  crmUf?: string; // UF do CRM
+  rqe?: string; // RQE (Registro de Qualificação de Especialista)
   role: DoutorRole;
   clinicaId?: number;
   pausaInicio?: string;
   pausaFim?: string;
   diasBloqueados?: number[]; // Array de dias da semana bloqueados (0 = Domingo, 6 = Sábado)
+  modeloPrescricao?: string; // JSON do modelo de prescrição personalizado (IModeloPrescricaoPDF)
   clinica?: {
     nome: string;
+    cnpj?: string;
+    endereco?: string;
+    telefone?: string;
+    email?: string;
+    site?: string;
   }
 }
 
@@ -69,12 +80,53 @@ export interface IAgendamento {
 
 export interface IHistoricoPaciente {
   id: number;
+  protocolo: string; // Protocolo único do atendimento
   descricao: string;
   realizadoEm: string;
   criadoEm: string;
   agendamentoId?: number | null;
+  agendamento?: {
+    id: number;
+    dataHora: string;
+    servico: {
+      nome: string;
+      duracaoMin: number;
+    };
+  } | null;
   servico?: Pick<IServico, 'id' | 'nome' | 'duracaoMin'> | null;
   doutor?: Pick<IDoutor, 'id' | 'nome' | 'email'> | null;
+}
+
+export interface IPrescricao {
+  id: number;
+  protocolo: string; // Protocolo único da prescrição
+  conteudo: string;
+  pacienteId: number;
+  doutorId: number;
+  agendamentoId?: number | null;
+  createdAt: string;
+  doutor: {
+    id: number;
+    nome: string;
+    especialidade?: string;
+  };
+  agendamento?: {
+    id: number;
+    dataHora: string;
+    servico: {
+      nome: string;
+    };
+  } | null;
+}
+
+export type ProntuarioChatSender = 'IA' | 'DOUTOR';
+
+export interface IProntuarioChatMessage {
+  id: number;
+  agendamentoId: number;
+  sender: ProntuarioChatSender;
+  content: string;
+  createdAt: string;
 }
 
 export interface IClinica {
@@ -83,6 +135,8 @@ export interface IClinica {
   cnpj?: string;
   endereco?: string;
   telefone?: string;
+  email?: string;
+  site?: string;
   whatsappToken?: string;
   whatsappPhoneId?: string;
   webhookUrlId: string;
