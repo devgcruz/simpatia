@@ -35,7 +35,7 @@ class PrescricaoService {
   }
 
   async findByPaciente(pacienteId: number) {
-    return await prisma.prescricao.findMany({
+    const prescricoes = await prisma.prescricao.findMany({
       where: { pacienteId },
       include: {
         doutor: {
@@ -54,6 +54,16 @@ class PrescricaoService {
                 nome: true,
               },
             },
+            historicos: {
+              select: {
+                id: true,
+                protocolo: true,
+              },
+              orderBy: {
+                realizadoEm: 'desc',
+              },
+              take: 1, // Pegar apenas o histórico mais recente do agendamento
+            },
           },
         },
       },
@@ -61,10 +71,17 @@ class PrescricaoService {
         createdAt: 'desc',
       },
     });
+
+    // Mapear para incluir o ID e protocolo do histórico mais recente
+    return prescricoes.map((prescricao) => ({
+      ...prescricao,
+      historicoId: prescricao.agendamento?.historicos?.[0]?.id || null,
+      historicoProtocolo: prescricao.agendamento?.historicos?.[0]?.protocolo || null,
+    }));
   }
 
   async findByProtocolo(protocolo: string) {
-    return await prisma.prescricao.findUnique({
+    const prescricao = await prisma.prescricao.findUnique({
       where: { protocolo },
       include: {
         paciente: true,
@@ -73,6 +90,21 @@ class PrescricaoService {
             id: true,
             nome: true,
             especialidade: true,
+            crm: true,
+            crmUf: true,
+            rqe: true,
+            modeloPrescricao: true,
+            clinica: {
+              select: {
+                id: true,
+                nome: true,
+                cnpj: true,
+                endereco: true,
+                telefone: true,
+                email: true,
+                site: true,
+              },
+            },
           },
         },
         agendamento: {
@@ -84,10 +116,31 @@ class PrescricaoService {
                 nome: true,
               },
             },
+            historicos: {
+              select: {
+                id: true,
+                protocolo: true,
+              },
+              orderBy: {
+                realizadoEm: 'desc',
+              },
+              take: 1, // Pegar apenas o histórico mais recente do agendamento
+            },
           },
         },
       },
     });
+
+    if (!prescricao) {
+      return null;
+    }
+
+    // Incluir o ID e protocolo do histórico mais recente
+    return {
+      ...prescricao,
+      historicoId: prescricao.agendamento?.historicos?.[0]?.id || null,
+      historicoProtocolo: prescricao.agendamento?.historicos?.[0]?.protocolo || null,
+    };
   }
 }
 

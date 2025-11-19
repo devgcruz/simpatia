@@ -92,9 +92,21 @@ export interface IHistoricoPaciente {
       nome: string;
       duracaoMin: number;
     };
+    prescricoes?: Array<{
+      id: number;
+      protocolo: string;
+      conteudo: string;
+      createdAt: string;
+    }>;
   } | null;
   servico?: Pick<IServico, 'id' | 'nome' | 'duracaoMin'> | null;
   doutor?: Pick<IDoutor, 'id' | 'nome' | 'email'> | null;
+  prescricoes?: Array<{
+    id: number;
+    protocolo: string;
+    conteudo: string;
+    createdAt: string;
+  }>;
 }
 
 export interface IPrescricao {
@@ -105,10 +117,25 @@ export interface IPrescricao {
   doutorId: number;
   agendamentoId?: number | null;
   createdAt: string;
+  historicoId?: number | null; // ID do histórico do paciente que gerou a prescrição
+  historicoProtocolo?: string | null; // Protocolo do histórico do paciente que gerou a prescrição
   doutor: {
     id: number;
     nome: string;
     especialidade?: string;
+    crm?: string;
+    crmUf?: string;
+    rqe?: string;
+    modeloPrescricao?: string;
+    clinica?: {
+      id: number;
+      nome: string;
+      cnpj?: string;
+      endereco?: string;
+      telefone?: string;
+      email?: string;
+      site?: string;
+    };
   };
   agendamento?: {
     id: number;
@@ -117,6 +144,7 @@ export interface IPrescricao {
       nome: string;
     };
   } | null;
+  paciente?: IPaciente;
 }
 
 export type ProntuarioChatSender = 'IA' | 'DOUTOR';

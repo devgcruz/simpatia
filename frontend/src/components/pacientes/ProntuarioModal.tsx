@@ -44,13 +44,16 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import AddIcon from '@mui/icons-material/Add';
 import DescriptionIcon from '@mui/icons-material/Description';
 import SendIcon from '@mui/icons-material/Send';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import SearchIcon from '@mui/icons-material/Search';
+import FilterListIcon from '@mui/icons-material/FilterList';
 import ReactMarkdown from 'react-markdown';
 import type { Components as ReactMarkdownComponents } from 'react-markdown';
 import { IAgendamento, IHistoricoPaciente, IPaciente, IDoutor, IProntuarioChatMessage, IPrescricao } from '../../types/models';
 import { getPacienteHistoricos, updatePaciente } from '../../services/paciente.service';
 import { getDoutores } from '../../services/doutor.service';
 import { getProntuarioChatMessages, sendProntuarioChatMessage } from '../../services/prontuarioChat.service';
-import { getPrescricoesPaciente, createPrescricao } from '../../services/prescricao.service';
+import { getPrescricoesPaciente, createPrescricao, getPrescricaoByProtocolo } from '../../services/prescricao.service';
 import { useAuth } from '../../hooks/useAuth';
 import moment from 'moment';
 import 'moment/locale/pt-br';
@@ -101,6 +104,9 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
   const [historicos, setHistoricos] = useState<IHistoricoPaciente[]>([]);
   const [loadingHistorico, setLoadingHistorico] = useState(false);
   const [historicoError, setHistoricoError] = useState<string | null>(null);
+  const [filtroData, setFiltroData] = useState<string>('');
+  const [filtroPrescricao, setFiltroPrescricao] = useState<string>('');
+  const [filtroDescricao, setFiltroDescricao] = useState<string>('');
   const [pacienteData, setPacienteData] = useState<Partial<IPaciente>>({});
   const [salvandoPaciente, setSalvandoPaciente] = useState(false);
   const [doutores, setDoutores] = useState<IDoutor[]>([]);
@@ -226,6 +232,9 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
       setActiveTab(0);
       setHistoricos([]);
       setHistoricoError(null);
+      setFiltroData('');
+      setFiltroPrescricao('');
+      setFiltroDescricao('');
       setOpenModalFinalizar(false);
       setChatMessages([]);
       setChatInput('');
@@ -618,6 +627,153 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
       toast.error(error?.response?.data?.message || 'Erro ao salvar dados do paciente');
     } finally {
       setSalvandoPaciente(false);
+    }
+  };
+
+  const handleVisualizarPrescricao = async (prescricaoProtocolo: string) => {
+    try {
+      // Buscar prescrição completa pelo protocolo
+      const prescricao = await getPrescricaoByProtocolo(prescricaoProtocolo);
+      
+      if (!prescricao) {
+        toast.error('Prescrição não encontrada');
+        return;
+      }
+
+      if (!prescricao.paciente) {
+        toast.error('Dados do paciente não encontrados');
+        return;
+      }
+
+      // Carregar modelo do doutor ou usar padrão
+      let modeloPrescricao: IModeloPrescricaoPDF = modeloPrescricaoPadrao;
+      let logoURL = '';
+      
+      const modeloStr = prescricao.doutor.modeloPrescricao || '';
+      if (modeloStr) {
+        try {
+          const modeloCarregado = JSON.parse(modeloStr) as IModeloPrescricaoPDF;
+          modeloPrescricao = {
+            ...modeloPrescricaoPadrao,
+            ...modeloCarregado,
+            logoWatermark: {
+              ...modeloPrescricaoPadrao.logoWatermark,
+              ...(modeloCarregado.logoWatermark || {}),
+            },
+            header: {
+              ...modeloPrescricaoPadrao.header,
+              ...(modeloCarregado.header || {}),
+            },
+            medicoInfo: {
+              ...modeloPrescricaoPadrao.medicoInfo,
+              ...(modeloCarregado.medicoInfo || {}),
+            },
+            pacienteInfo: {
+              ...modeloPrescricaoPadrao.pacienteInfo,
+              ...(modeloCarregado.pacienteInfo || {}),
+              showCPF: true,
+              showEndereco: true,
+            },
+            prescricao: {
+              ...modeloPrescricaoPadrao.prescricao,
+              ...(modeloCarregado.prescricao || {}),
+            },
+            assinatura: {
+              ...modeloPrescricaoPadrao.assinatura,
+              ...(modeloCarregado.assinatura || {}),
+            },
+            footer: {
+              ...modeloPrescricaoPadrao.footer,
+              ...(modeloCarregado.footer || {}),
+            },
+          };
+          logoURL = modeloPrescricao.logoUrl || '';
+        } catch (error) {
+          console.warn('Modelo de prescrição não é JSON válido, usando padrão:', error);
+          modeloPrescricao = modeloPrescricaoPadrao;
+          logoURL = '';
+        }
+      }
+      
+      // Montar endereço do paciente
+      const enderecoPaciente = [
+        prescricao.paciente.logradouro,
+        prescricao.paciente.numero,
+        prescricao.paciente.bairro,
+        prescricao.paciente.cidade,
+        prescricao.paciente.estado
+      ].filter(Boolean).join(', ') || '';
+      
+      // Separar texto da prescrição em linhas
+      const itensPrescricao = prescricao.conteudo.split('\n').filter(line => line.trim());
+      
+      // Obter dados da clínica
+      const clinicaNome = prescricao.doutor.clinica?.nome || 'Clínica';
+      const clinicaEndereco = prescricao.doutor.clinica?.endereco || '';
+      const clinicaTelefone = prescricao.doutor.clinica?.telefone || '';
+      const clinicaEmail = prescricao.doutor.clinica?.email || '';
+      const clinicaSite = prescricao.doutor.clinica?.site || '';
+      const clinicaCNPJ = prescricao.doutor.clinica?.cnpj;
+
+      // Gerar PDF
+      const pdfDoc = (
+        <PrescricaoPdfView
+          pacienteNome={prescricao.paciente.nome || ''}
+          pacienteEndereco={enderecoPaciente}
+          pacienteCPF={prescricao.paciente.cpf || undefined}
+          data={moment(prescricao.createdAt).format('YYYY-MM-DD')}
+          seguroSaude={prescricao.paciente.convenio || ''}
+          diagnostico=""
+          doutorNome={prescricao.doutor.nome || ''}
+          doutorEspecialidade={prescricao.doutor.especialidade || ''}
+          doutorTagline={modeloPrescricao.medicoInfo.tagline || ''}
+          doutorCRM={prescricao.doutor.crm}
+          doutorCRMUF={prescricao.doutor.crmUf}
+          doutorRQE={prescricao.doutor.rqe}
+          itensPrescricao={itensPrescricao}
+          clinicaNome={clinicaNome}
+          clinicaEndereco={clinicaEndereco}
+          clinicaTelefone={clinicaTelefone}
+          clinicaEmail={clinicaEmail}
+          clinicaSite={clinicaSite}
+          clinicaCNPJ={clinicaCNPJ}
+          clinicaLogoUrl={logoURL}
+          modelo={modeloPrescricao}
+          isControleEspecial={false}
+        />
+      );
+
+      // Gerar blob do PDF e abrir para impressão
+      pdf(pdfDoc).toBlob().then((blob) => {
+        if (blob.size === 0) {
+          toast.error('Erro: PDF gerado está vazio');
+          return;
+        }
+        
+        const url = URL.createObjectURL(blob);
+        const printWindow = window.open(url, '_blank');
+        if (printWindow) {
+          printWindow.onload = () => {
+            setTimeout(() => {
+              printWindow.print();
+              toast.success('Prescrição carregada com sucesso!');
+              setTimeout(() => URL.revokeObjectURL(url), 1000);
+            }, 250);
+          };
+          
+          printWindow.onerror = () => {
+            toast.error('Erro ao abrir janela de impressão');
+          };
+        } else {
+          toast.error('Não foi possível abrir a janela de impressão. Verifique se o pop-up está bloqueado.');
+        }
+      }).catch((error) => {
+        console.error('Erro ao gerar PDF:', error);
+        toast.error(`Erro ao gerar prescrição: ${error.message || 'Erro desconhecido'}`);
+      });
+    } catch (error: any) {
+      console.error('Erro ao visualizar prescrição:', error);
+      toast.error(`Erro: ${error.message || 'Erro desconhecido ao visualizar prescrição'}`);
     }
   };
 
@@ -1202,15 +1358,142 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
               <Alert severity="error" sx={{ mb: 2 }}>
                 {historicoError}
               </Alert>
-            ) : historicos.length === 0 ? (
-              <Box sx={{ py: 4, textAlign: 'center' }}>
-                <Typography variant="body1" color="text.secondary">
-                  Nenhum histórico disponível para este paciente.
-                </Typography>
-              </Box>
             ) : (
-              <List sx={{ flex: 1, overflowY: 'auto' }}>
-                {historicos.map((historico, index) => {
+              <>
+                {/* Campos de Filtro */}
+                <Box sx={{ mb: 2, p: 2, bgcolor: 'grey.50', borderRadius: 2 }}>
+                  <Box display="flex" alignItems="center" gap={1} mb={2}>
+                    <FilterListIcon color="primary" />
+                    <Typography variant="subtitle2" fontWeight="bold">
+                      Filtros de Busca
+                    </Typography>
+                  </Box>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={4}>
+                      <TextField
+                        label="Filtrar por Data"
+                        type="date"
+                        value={filtroData}
+                        onChange={(e) => setFiltroData(e.target.value)}
+                        fullWidth
+                        size="small"
+                        InputLabelProps={{
+                          shrink: true,
+                        }}
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <SearchIcon fontSize="small" />
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <TextField
+                        label="Filtrar por Prescrição"
+                        value={filtroPrescricao}
+                        onChange={(e) => setFiltroPrescricao(e.target.value)}
+                        fullWidth
+                        size="small"
+                        placeholder="ID ou nome do medicamento"
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <SearchIcon fontSize="small" />
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <TextField
+                        label="Filtrar por Descrição do Atendimento"
+                        value={filtroDescricao}
+                        onChange={(e) => setFiltroDescricao(e.target.value)}
+                        fullWidth
+                        size="small"
+                        placeholder="ID, profissional ou corpo do atendimento"
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <SearchIcon fontSize="small" />
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                    </Grid>
+                  </Grid>
+                  {(filtroData || filtroPrescricao || filtroDescricao) && (
+                    <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                      <Button
+                        size="small"
+                        onClick={() => {
+                          setFiltroData('');
+                          setFiltroPrescricao('');
+                          setFiltroDescricao('');
+                        }}
+                      >
+                        Limpar Filtros
+                      </Button>
+                    </Box>
+                  )}
+                </Box>
+
+                {/* Lista de Históricos Filtrados */}
+                {(() => {
+                  // Aplicar filtros
+                  const historicosFiltrados = historicos.filter((historico) => {
+                    // Filtro por data
+                    if (filtroData) {
+                      const dataHistorico = moment(historico.realizadoEm).format('YYYY-MM-DD');
+                      if (dataHistorico !== filtroData) {
+                        return false;
+                      }
+                    }
+
+                    // Filtro por prescrição
+                    if (filtroPrescricao) {
+                      const prescricoesHistorico = historico.prescricoes || historico.agendamento?.prescricoes || [];
+                      const filtroLower = filtroPrescricao.toLowerCase();
+                      const encontrouPrescricao = prescricoesHistorico.some((prescricao) => {
+                        const idMatch = prescricao.id.toString().includes(filtroPrescricao);
+                        const conteudoMatch = prescricao.conteudo?.toLowerCase().includes(filtroLower);
+                        return idMatch || conteudoMatch;
+                      });
+                      if (!encontrouPrescricao) {
+                        return false;
+                      }
+                    }
+
+                    // Filtro por descrição do atendimento, ID do histórico e profissional
+                    if (filtroDescricao) {
+                      const descricaoLower = historico.descricao.toLowerCase();
+                      const filtroLower = filtroDescricao.toLowerCase();
+                      const idMatch = historico.id.toString().includes(filtroDescricao);
+                      const descricaoMatch = descricaoLower.includes(filtroLower);
+                      const profissionalMatch = historico.doutor?.nome?.toLowerCase().includes(filtroLower) || false;
+                      if (!idMatch && !descricaoMatch && !profissionalMatch) {
+                        return false;
+                      }
+                    }
+
+                    return true;
+                  });
+
+                  if (historicosFiltrados.length === 0) {
+                    return (
+                      <Box sx={{ py: 4, textAlign: 'center' }}>
+                        <Typography variant="body1" color="text.secondary">
+                          Nenhum histórico encontrado com os filtros aplicados.
+                        </Typography>
+                      </Box>
+                    );
+                  }
+
+                  return (
+                    <List sx={{ flex: 1, overflowY: 'auto' }}>
+                      {historicosFiltrados.map((historico, index) => {
                   const realizadoEm = moment(historico.realizadoEm);
                   const realizadoLabel = `${realizadoEm.format('DD/MM/YYYY')} às ${realizadoEm.format('HH:mm')}`;
                   const finalizadoEm = moment(historico.criadoEm);
@@ -1227,22 +1510,52 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                     ? moment(historico.agendamento.dataHora).format('DD/MM/YYYY [às] HH:mm')
                     : null;
 
+                  const prescricoesHistorico = historico.prescricoes || historico.agendamento?.prescricoes || [];
+                  
+                  // Função para extrair o primeiro medicamento do conteúdo
+                  const extrairPrimeiroMedicamento = (conteudo: string): string => {
+                    if (!conteudo) return '';
+                    const linhas = conteudo.split('\n').filter(line => line.trim());
+                    if (linhas.length === 0) return '';
+                    const primeiraLinha = linhas[0].trim();
+                    // Limitar a 30 caracteres e adicionar ... se necessário
+                    return primeiraLinha.length > 30 ? primeiraLinha.substring(0, 30) + '...' : primeiraLinha;
+                  };
+                  
                   return (
                     <React.Fragment key={historico.id}>
-                      <ListItem alignItems="flex-start" disableGutters>
+                      <ListItem 
+                        id={`historico-${historico.id}`}
+                        alignItems="flex-start" 
+                        disableGutters
+                        sx={{
+                          transition: 'background-color 0.3s ease',
+                        }}
+                      >
                         <ListItemText
                           primary={
-                            <Box>
-                              <Box display="flex" justifyContent="space-between" alignItems="center" mb={0.5}>
+                            <Box sx={{ position: 'relative' }}>
+                              {/* Marca d'água no canto superior direito */}
+                              <Typography
+                                variant="h4"
+                                sx={{
+                                  position: 'absolute',
+                                  top: -10,
+                                  right: 20,
+                                  fontSize: '2rem',
+                                  fontWeight: 'bold',
+                                  color: 'rgba(0, 0, 0, 0.08)',
+                                  zIndex: 0,
+                                  pointerEvents: 'none',
+                                  userSelect: 'none',
+                                }}
+                              >
+                                #{historico.id}
+                              </Typography>
+                              <Box display="flex" justifyContent="space-between" alignItems="center" mb={0.5} sx={{ position: 'relative', zIndex: 1 }}>
                                 <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
                                   {`${servicoNome} • ${realizadoLabel}`}
                                 </Typography>
-                                <Chip
-                                  label={`ID: ${historico.protocolo.substring(0, 8).toUpperCase()}`}
-                                  size="small"
-                                  variant="outlined"
-                                  color="primary"
-                                />
                               </Box>
                               {agendamentoData && (
                                 <Typography variant="caption" color="primary" display="block" sx={{ fontWeight: 500 }}>
@@ -1259,6 +1572,51 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                                   {`Finalizado em ${finalizadoLabel}`}
                                 </Typography>
                               )}
+                              {prescricoesHistorico.length > 0 && (
+                                <Box sx={{ mt: 1 }}>
+                                  <Typography variant="caption" fontWeight="bold" display="block" sx={{ mb: 0.5 }}>
+                                    Prescrições Médicas:
+                                  </Typography>
+                                  {prescricoesHistorico.map((prescricao) => {
+                                    const primeiroMedicamento = extrairPrimeiroMedicamento(prescricao.conteudo || '');
+                                    const labelTexto = primeiroMedicamento 
+                                      ? `#${prescricao.id} - ${primeiroMedicamento}`
+                                      : `#${prescricao.id}`;
+                                    
+                                    return (
+                                      <Tooltip
+                                        key={prescricao.id}
+                                        title={
+                                          <Box component="div" sx={{ whiteSpace: 'pre-wrap', maxWidth: 400 }}>
+                                            {prescricao.conteudo || 'Sem conteúdo'}
+                                          </Box>
+                                        }
+                                        arrow
+                                        enterDelay={1000}
+                                        placement="top"
+                                      >
+                                        <Chip
+                                          label={labelTexto}
+                                          size="small"
+                                          variant="outlined"
+                                          color="success"
+                                          onClick={() => handleVisualizarPrescricao(prescricao.protocolo)}
+                                          sx={{ 
+                                            mr: 0.5, 
+                                            mb: 0.5,
+                                            cursor: 'pointer',
+                                            '&:hover': {
+                                              backgroundColor: 'primary.light',
+                                              color: 'primary.main',
+                                              borderColor: 'primary.main',
+                                            }
+                                          }}
+                                        />
+                                      </Tooltip>
+                                    );
+                                  })}
+                                </Box>
+                              )}
                             </Box>
                           }
                           secondary={
@@ -1268,11 +1626,14 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                           }
                         />
                       </ListItem>
-                      {index < historicos.length - 1 && <Divider component="li" />}
+                      {index < historicosFiltrados.length - 1 && <Divider component="li" />}
                     </React.Fragment>
                   );
                 })}
-              </List>
+                    </List>
+                  );
+                })()}
+              </>
             )}
           </Box>
         )}
@@ -1663,9 +2024,21 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                                 sx={{ ml: 2 }}
                               />
                             </Box>
-                            <Typography variant="caption" color="text.secondary">
-                              {moment(prescricao.createdAt).format('DD/MM/YYYY [às] HH:mm')}
-                            </Typography>
+                            <Box display="flex" alignItems="center" gap={1}>
+                              <Typography variant="caption" color="text.secondary">
+                                {moment(prescricao.createdAt).format('DD/MM/YYYY [às] HH:mm')}
+                              </Typography>
+                              <Tooltip title="Visualizar prescrição">
+                                <IconButton
+                                  size="small"
+                                  color="primary"
+                                  onClick={() => handleVisualizarPrescricao(prescricao.protocolo)}
+                                  sx={{ ml: 1 }}
+                                >
+                                  <VisibilityIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            </Box>
                           </Box>
                         }
                         secondary={
@@ -1675,6 +2048,53 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                                 <strong>Agendamento:</strong> {moment(prescricao.agendamento.dataHora).format('DD/MM/YYYY [às] HH:mm')} - {prescricao.agendamento.servico.nome}
                               </Typography>
                             )}
+                            <Box sx={{ mb: 1 }}>
+                              <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                                <strong>ID da Prescrição:</strong> {prescricao.id}
+                              </Typography>
+                              {prescricao.historicoId && (
+                                <Typography 
+                                  variant="body2" 
+                                  color="primary"
+                                  sx={{ 
+                                    cursor: 'pointer',
+                                    textDecoration: 'underline',
+                                    '&:hover': {
+                                      color: 'primary.dark',
+                                    }
+                                  }}
+                                  onClick={() => {
+                                    setActiveTab(1); // Mudar para aba de histórico
+                                    // Scroll até o histórico específico após carregar os históricos
+                                    const scrollToHistorico = () => {
+                                      const historicoElement = document.getElementById(`historico-${prescricao.historicoId}`);
+                                      if (historicoElement) {
+                                        historicoElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                        // Destacar o histórico por um momento
+                                        historicoElement.style.backgroundColor = 'rgba(25, 118, 210, 0.1)';
+                                        setTimeout(() => {
+                                          historicoElement.style.backgroundColor = '';
+                                        }, 2000);
+                                        return true;
+                                      }
+                                      return false;
+                                    };
+                                    
+                                    // Tentar várias vezes até encontrar o elemento (aguardar carregamento)
+                                    let attempts = 0;
+                                    const maxAttempts = 10;
+                                    const tryScroll = setInterval(() => {
+                                      attempts++;
+                                      if (scrollToHistorico() || attempts >= maxAttempts) {
+                                        clearInterval(tryScroll);
+                                      }
+                                    }, 200);
+                                  }}
+                                >
+                                  <strong>ID do Histórico (Atendimento):</strong> {prescricao.historicoId}
+                                </Typography>
+                              )}
+                            </Box>
                             <Divider sx={{ my: 1 }} />
                             <Typography
                               variant="body2"

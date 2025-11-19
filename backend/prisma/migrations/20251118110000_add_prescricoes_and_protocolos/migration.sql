@@ -40,3 +40,4 @@ ALTER TABLE "Prescricao" ADD CONSTRAINT "Prescricao_doutorId_fkey" FOREIGN KEY (
 ALTER TABLE "Prescricao" ADD CONSTRAINT "Prescricao_agendamentoId_fkey" FOREIGN KEY ("agendamentoId") REFERENCES "Agendamento"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 
+

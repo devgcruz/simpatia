@@ -3,15 +3,19 @@ import { Box, Button, Paper, CircularProgress, TextField, InputAdornment } from 
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import HistoryIcon from '@mui/icons-material/History';
+import DescriptionIcon from '@mui/icons-material/Description';
 import { DataGrid, GridColDef, GridActionsCellItem, GridToolbar } from '@mui/x-data-grid';
 import { ptBR } from '@mui/x-data-grid/locales';
 import { toast } from 'sonner';
 import { IPaciente } from '../types/models';
 import { getPacientes, createPaciente, updatePaciente, deletePaciente } from '../services/paciente.service';
+import { getAgendamentos } from '../services/agendamento.service';
 import { PacienteFormModal } from '../components/pacientes/PacienteFormModal';
 import { HistoricoPacienteModal } from '../components/pacientes/HistoricoPacienteModal';
+import { ProntuarioModal } from '../components/pacientes/ProntuarioModal';
 import { ConfirmationModal } from '../components/common/ConfirmationModal';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
+import { IAgendamento } from '../types/models';
 
 export const PacientesPage: React.FC = () => {
   const [pacientes, setPacientes] = useState<IPaciente[]>([]);
@@ -23,6 +27,8 @@ export const PacientesPage: React.FC = () => {
   const [itemToDeleteId, setItemToDeleteId] = useState<number | null>(null);
   const [isHistoricoModalOpen, setIsHistoricoModalOpen] = useState(false);
   const [pacienteHistorico, setPacienteHistorico] = useState<IPaciente | null>(null);
+  const [isProntuarioModalOpen, setIsProntuarioModalOpen] = useState(false);
+  const [agendamentoProntuario, setAgendamentoProntuario] = useState<IAgendamento | null>(null);
 
   const fetchPacientes = async () => {
     try {
@@ -80,6 +86,56 @@ export const PacientesPage: React.FC = () => {
     setIsHistoricoModalOpen(false);
   };
 
+  const handleOpenProntuario = async (paciente: IPaciente) => {
+    try {
+      // Buscar agendamentos do paciente
+      const agendamentos = await getAgendamentos();
+      let agendamento: IAgendamento | null = null;
+
+      // Filtrar agendamentos do paciente e pegar o mais recente
+      const agendamentosPaciente = agendamentos
+        .filter((a) => a.pacienteId === paciente.id)
+        .sort((a, b) => new Date(b.dataHora).getTime() - new Date(a.dataHora).getTime());
+
+      if (agendamentosPaciente.length > 0) {
+        // Usar o último agendamento
+        agendamento = agendamentosPaciente[0];
+      } else {
+        // Criar um agendamento mínimo para o ProntuarioModal funcionar
+        agendamento = {
+          id: 0,
+          dataHora: new Date().toISOString(),
+          status: 'finalizado',
+          pacienteId: paciente.id,
+          doutorId: paciente.doutorId || 0,
+          servicoId: 0,
+          paciente: paciente,
+          doutor: paciente.doutor || null,
+          servico: {
+            id: 0,
+            nome: 'Consulta',
+            duracaoMin: 30,
+            descricao: '',
+            preco: 0,
+            clinicaId: paciente.clinicaId,
+          },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        } as IAgendamento;
+      }
+
+      setAgendamentoProntuario(agendamento);
+      setIsProntuarioModalOpen(true);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Erro ao abrir prontuário');
+    }
+  };
+
+  const handleCloseProntuario = () => {
+    setAgendamentoProntuario(null);
+    setIsProntuarioModalOpen(false);
+  };
+
   const handleConfirmDelete = async () => {
     if (!itemToDeleteId) return;
 
@@ -111,6 +167,12 @@ export const PacientesPage: React.FC = () => {
       headerName: 'Ações',
       width: 180,
       getActions: ({ row }) => [
+        <GridActionsCellItem
+          key="prontuario"
+          icon={<DescriptionIcon />}
+          label="Prontuário"
+          onClick={() => handleOpenProntuario(row)}
+        />,
         <GridActionsCellItem
           key="historico"
           icon={<HistoryIcon />}
@@ -232,6 +294,14 @@ export const PacientesPage: React.FC = () => {
         onClose={handleCloseHistoricoModal}
         paciente={pacienteHistorico}
       />
+
+      {agendamentoProntuario && (
+        <ProntuarioModal
+          open={isProntuarioModalOpen}
+          onClose={handleCloseProntuario}
+          agendamento={agendamentoProntuario}
+        />
+      )}
     </Box>
   );
 };

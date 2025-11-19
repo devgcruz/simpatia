@@ -110,6 +110,17 @@ class PacienteService {
                                 email: true,
                             },
                         },
+                        prescricoes: {
+                            select: {
+                                id: true,
+                                protocolo: true,
+                                conteudo: true,
+                                createdAt: true,
+                            },
+                            orderBy: {
+                                createdAt: 'desc',
+                            },
+                        },
                     },
                 },
             },
@@ -137,6 +148,7 @@ class PacienteService {
                         nome: agendamento.servico.nome,
                         duracaoMin: agendamento.servico.duracaoMin,
                     },
+                    prescricoes: agendamento.prescricoes || [],
                 }
                 : null,
                 servico: agendamento
@@ -153,6 +165,7 @@ class PacienteService {
                     email: agendamento.doutor.email,
                 }
                 : null,
+                prescricoes: agendamento?.prescricoes || [],
             };
         });
     }
