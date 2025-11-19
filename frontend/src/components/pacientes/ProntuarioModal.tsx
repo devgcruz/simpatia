@@ -2121,7 +2121,7 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
         )}
       </DialogContent>
       <DialogActions sx={{ flexShrink: 0 }}>
-        {agendamento && agendamento.status !== 'finalizado' && (
+        {agendamento && agendamento.status !== 'finalizado' && agendamento.id > 0 && onFinalizar && (
           <Button
             variant="contained"
             color="success"
