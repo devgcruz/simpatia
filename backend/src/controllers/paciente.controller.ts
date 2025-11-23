@@ -166,6 +166,24 @@ class PacienteController {
         }
     }
 
+    async handleUpdateHistorico(req: Request, res: Response) {
+        try {
+            const historicoId = Number(req.params.historicoId);
+            const { descricao } = req.body;
+
+            const { clinicaId } = req.user!;
+
+            const historicoAtualizado = await pacienteService.updateHistorico(historicoId, descricao, clinicaId);
+            return res.status(200).json(historicoAtualizado);
+        } catch (error: any) {
+            if (error.message === "Histórico não encontrado." || error.message === "Histórico não pertence a esta clínica.") {
+                return res.status(404).json({ message: error.message });
+            }
+
+            return res.status(400).json({ message: error.message });
+        }
+    }
+
 
 }
 

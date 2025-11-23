@@ -45,12 +45,10 @@ import AddIcon from '@mui/icons-material/Add';
 import DescriptionIcon from '@mui/icons-material/Description';
 import SendIcon from '@mui/icons-material/Send';
 import VisibilityIcon from '@mui/icons-material/Visibility';
-import SearchIcon from '@mui/icons-material/Search';
-import FilterListIcon from '@mui/icons-material/FilterList';
 import ReactMarkdown from 'react-markdown';
 import type { Components as ReactMarkdownComponents } from 'react-markdown';
 import { IAgendamento, IHistoricoPaciente, IPaciente, IDoutor, IProntuarioChatMessage, IPrescricao } from '../../types/models';
-import { getPacienteHistoricos, updatePaciente } from '../../services/paciente.service';
+import { getPacienteHistoricos, updatePaciente, updateHistoricoPaciente } from '../../services/paciente.service';
 import { getDoutores } from '../../services/doutor.service';
 import { getProntuarioChatMessages, sendProntuarioChatMessage } from '../../services/prontuarioChat.service';
 import { getPrescricoesPaciente, createPrescricao, getPrescricaoByProtocolo } from '../../services/prescricao.service';
@@ -68,7 +66,7 @@ interface Props {
   open: boolean;
   onClose: () => void;
   agendamento: IAgendamento | null;
-  onFinalizar?: (descricao: string) => Promise<void>;
+  onFinalizar?: (descricao: string, duracaoMinutos?: number) => Promise<void>;
 }
 
 const formatarTempo = (segundos: number): string => {
@@ -107,6 +105,10 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
   const [filtroData, setFiltroData] = useState<string>('');
   const [filtroPrescricao, setFiltroPrescricao] = useState<string>('');
   const [filtroDescricao, setFiltroDescricao] = useState<string>('');
+  const [openModalHistorico, setOpenModalHistorico] = useState(false);
+  const [historicoSelecionado, setHistoricoSelecionado] = useState<IHistoricoPaciente | null>(null);
+  const [descricaoEditando, setDescricaoEditando] = useState<string>('');
+  const [salvandoHistorico, setSalvandoHistorico] = useState(false);
   const [pacienteData, setPacienteData] = useState<Partial<IPaciente>>({});
   const [salvandoPaciente, setSalvandoPaciente] = useState(false);
   const [doutores, setDoutores] = useState<IDoutor[]>([]);
@@ -507,9 +509,20 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
       return;
     }
 
+    // Verificar se o atendimento foi iniciado
+    if (!atendimentoIniciado && !inicioAtendimento) {
+      toast.error('É necessário iniciar o atendimento antes de finalizá-lo');
+      return;
+    }
+
     try {
       setFinalizando(true);
-      await onFinalizar(descricaoFinalizacao);
+      // Calcular duração em minutos (arredondado)
+      const duracaoMinutos = inicioAtendimento 
+        ? Math.round(tempoDecorrido / 60) 
+        : undefined;
+      
+      await onFinalizar(descricaoFinalizacao, duracaoMinutos);
       // Não mostrar toast aqui, pois o onFinalizar já mostra
       setAtendimentoIniciado(false);
       setTempoDecorrido(0);
@@ -527,6 +540,44 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
   // Função para converter array de alergias em string
   const formatAlergias = (alergias: string[]): string => {
     return alergias.join(', ');
+  };
+
+  const handleAbrirModalHistorico = (historico: IHistoricoPaciente) => {
+    setHistoricoSelecionado(historico);
+    setDescricaoEditando(historico.descricao);
+    setOpenModalHistorico(true);
+  };
+
+  const handleFecharModalHistorico = () => {
+    setHistoricoSelecionado(null);
+    setDescricaoEditando('');
+    setOpenModalHistorico(false);
+  };
+
+  const handleSalvarHistorico = async () => {
+    if (!historicoSelecionado || !descricaoEditando.trim()) {
+      toast.error('A descrição não pode estar vazia');
+      return;
+    }
+
+    try {
+      setSalvandoHistorico(true);
+      await updateHistoricoPaciente(historicoSelecionado.id, descricaoEditando);
+      toast.success('Descrição do atendimento atualizada com sucesso!');
+      
+      // Atualizar o histórico na lista
+      setHistoricos(historicos.map(h => 
+        h.id === historicoSelecionado.id 
+          ? { ...h, descricao: descricaoEditando }
+          : h
+      ));
+      
+      handleFecharModalHistorico();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Erro ao atualizar descrição do atendimento');
+    } finally {
+      setSalvandoHistorico(false);
+    }
   };
 
   // Função para formatar CPF para exibição
@@ -1361,14 +1412,8 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
             ) : (
               <>
                 {/* Campos de Filtro */}
-                <Box sx={{ mb: 2, p: 2, bgcolor: 'grey.50', borderRadius: 2 }}>
-                  <Box display="flex" alignItems="center" gap={1} mb={2}>
-                    <FilterListIcon color="primary" />
-                    <Typography variant="subtitle2" fontWeight="bold">
-                      Filtros de Busca
-                    </Typography>
-                  </Box>
-                  <Grid container spacing={2}>
+                <Box sx={{ mb: 1.5, pb: 1 }}>
+                  <Grid container spacing={1.5}>
                     <Grid item xs={12} sm={4}>
                       <TextField
                         label="Filtrar por Data"
@@ -1380,13 +1425,6 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                         InputLabelProps={{
                           shrink: true,
                         }}
-                        InputProps={{
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <SearchIcon fontSize="small" />
-                            </InputAdornment>
-                          ),
-                        }}
                       />
                     </Grid>
                     <Grid item xs={12} sm={4}>
@@ -1397,13 +1435,6 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                         fullWidth
                         size="small"
                         placeholder="ID ou nome do medicamento"
-                        InputProps={{
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <SearchIcon fontSize="small" />
-                            </InputAdornment>
-                          ),
-                        }}
                       />
                     </Grid>
                     <Grid item xs={12} sm={4}>
@@ -1414,18 +1445,11 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                         fullWidth
                         size="small"
                         placeholder="ID, profissional ou corpo do atendimento"
-                        InputProps={{
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <SearchIcon fontSize="small" />
-                            </InputAdornment>
-                          ),
-                        }}
                       />
                     </Grid>
                   </Grid>
                   {(filtroData || filtroPrescricao || filtroDescricao) && (
-                    <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                    <Box sx={{ mt: 1, display: 'flex', justifyContent: 'flex-end' }}>
                       <Button
                         size="small"
                         onClick={() => {
@@ -1504,11 +1528,6 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                   const profissionalNome = historico.doutor?.nome
                     ? `Profissional: ${historico.doutor.nome}`
                     : null;
-                  
-                  // Dados do agendamento
-                  const agendamentoData = historico.agendamento
-                    ? moment(historico.agendamento.dataHora).format('DD/MM/YYYY [às] HH:mm')
-                    : null;
 
                   const prescricoesHistorico = historico.prescricoes || historico.agendamento?.prescricoes || [];
                   
@@ -1557,11 +1576,6 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                                   {`${servicoNome} • ${realizadoLabel}`}
                                 </Typography>
                               </Box>
-                              {agendamentoData && (
-                                <Typography variant="caption" color="primary" display="block" sx={{ fontWeight: 500 }}>
-                                  Agendamento: {agendamentoData}
-                                </Typography>
-                              )}
                               {profissionalNome && (
                                 <Typography variant="caption" color="text.secondary" display="block">
                                   {profissionalNome}
@@ -1570,6 +1584,9 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                               {finalizadoLabel && (
                                 <Typography variant="caption" color="text.secondary" display="block">
                                   {`Finalizado em ${finalizadoLabel}`}
+                                  {historico.duracaoMinutos && (
+                                    <span> • Duração: {historico.duracaoMinutos} min</span>
+                                  )}
                                 </Typography>
                               )}
                               {prescricoesHistorico.length > 0 && (
@@ -1620,9 +1637,34 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                             </Box>
                           }
                           secondary={
-                            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                              {historico.descricao}
-                            </Typography>
+                            <Tooltip 
+                              title={historico.descricao}
+                              arrow
+                              enterDelay={500}
+                              placement="top"
+                            >
+                              <Typography 
+                                variant="body2" 
+                                color="text.secondary" 
+                                sx={{ 
+                                  display: '-webkit-box',
+                                  WebkitLineClamp: 3,
+                                  WebkitBoxOrient: 'vertical',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  wordBreak: 'break-word',
+                                  whiteSpace: 'pre-wrap',
+                                  cursor: 'pointer',
+                                  mt: 1,
+                                  '&:hover': {
+                                    color: 'primary.main',
+                                  }
+                                }}
+                                onClick={() => handleAbrirModalHistorico(historico)}
+                              >
+                                {historico.descricao}
+                              </Typography>
+                            </Tooltip>
                           }
                         />
                       </ListItem>
@@ -2128,6 +2170,7 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
             size="large"
             startIcon={<CheckCircleIcon />}
             onClick={handleAbrirModalFinalizar}
+            disabled={!atendimentoIniciado && !inicioAtendimento}
             fullWidth
             sx={{ mr: 2, ml: 2, mb: 1, mt: 1 }}
           >
@@ -2455,6 +2498,66 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
             }}
           >
             Cancelar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Modal de Visualização/Edição do Histórico */}
+      <Dialog
+        open={openModalHistorico}
+        onClose={handleFecharModalHistorico}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <DescriptionIcon color="primary" />
+            <Typography variant="h6" fontWeight="bold">
+              Visualizar/Editar Atendimento
+            </Typography>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          {historicoSelecionado && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                <strong>Data do Atendimento:</strong> {moment(historicoSelecionado.realizadoEm).format('DD/MM/YYYY [às] HH:mm')}
+              </Typography>
+              {historicoSelecionado.duracaoMinutos && (
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+                  <strong>Duração:</strong> {historicoSelecionado.duracaoMinutos} minutos
+                </Typography>
+              )}
+              <TextField
+                label="Descrição do Atendimento"
+                multiline
+                rows={12}
+                fullWidth
+                value={descricaoEditando}
+                onChange={(e) => setDescricaoEditando(e.target.value)}
+                placeholder="Descreva os procedimentos realizados, medicamentos prescritos, recomendações e observações..."
+                sx={{ mt: 2 }}
+                autoFocus
+              />
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={handleFecharModalHistorico}
+            variant="outlined"
+            disabled={salvandoHistorico}
+          >
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<CheckCircleIcon />}
+            onClick={handleSalvarHistorico}
+            disabled={!descricaoEditando.trim() || salvandoHistorico}
+          >
+            {salvandoHistorico ? 'Salvando...' : 'Salvar Alterações'}
           </Button>
         </DialogActions>
       </Dialog>

@@ -185,6 +185,7 @@ model HistoricoPaciente {
   protocolo     String       @unique @default(uuid()) // Protocolo único do atendimento
   descricao     String       @db.Text
   realizadoEm   DateTime     @default(now())
+  duracaoMinutos Int?        // Duração do atendimento em minutos (quando iniciado e finalizado)
   pacienteId    Int
   agendamentoId Int?
   createdAt     DateTime     @default(now())

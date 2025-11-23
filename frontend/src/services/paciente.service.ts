@@ -27,3 +27,8 @@ export const getPacienteHistoricos = async (pacienteId: number) => {
   return response.data;
 };
 
+export const updateHistoricoPaciente = async (historicoId: number, descricao: string) => {
+  const response = await api.put<IHistoricoPaciente>(`/pacientes/historicos/${historicoId}`, { descricao });
+  return response.data;
+};
+

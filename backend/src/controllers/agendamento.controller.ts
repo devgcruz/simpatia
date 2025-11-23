@@ -102,10 +102,15 @@ class AgendamentoController {
     async handleFinalize(req: Request, res: Response) {
         try {
             const id = Number(req.params.id);
-            const { descricao } = req.body;
+            const { descricao, duracaoMinutos } = req.body;
             const user = req.user!;
 
-            const agendamentoFinalizado = await agendamentoService.finalize(id, descricao, user);
+            // Converter duracaoMinutos para número ou undefined
+            const duracaoMinutosNumber = duracaoMinutos !== undefined && duracaoMinutos !== null 
+                ? Number(duracaoMinutos) 
+                : undefined;
+
+            const agendamentoFinalizado = await agendamentoService.finalize(id, descricao, duracaoMinutosNumber, user);
             return res.status(200).json(agendamentoFinalizado);
         } catch (error: any) {
             if (error.message === "Agendamento não encontrado.") {

@@ -41,3 +41,4 @@ ALTER TABLE "Prescricao" ADD CONSTRAINT "Prescricao_agendamentoId_fkey" FOREIGN 
 
 
 
+

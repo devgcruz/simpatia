@@ -227,10 +227,10 @@ export const AtendimentoDoDiaPage: React.FC = () => {
     setIsProntuarioModalOpen(false);
   };
 
-  const handleFinalizarConsulta = async (descricao: string) => {
+  const handleFinalizarConsulta = async (descricao: string, duracaoMinutos?: number) => {
     if (!agendamentoProntuario) return;
     try {
-      await finalizeAgendamento(agendamentoProntuario.id, { descricao });
+      await finalizeAgendamento(agendamentoProntuario.id, { descricao, duracaoMinutos });
       toast.success('Consulta finalizada com sucesso!', {
         duration: 3000,
       });

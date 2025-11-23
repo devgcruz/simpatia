@@ -614,7 +614,7 @@ class AgendamentoService {
         };
     }
 
-    async finalize(id: number, descricao: string, user: AuthUser) {
+    async finalize(id: number, descricao: string, duracaoMinutos: number | undefined, user: AuthUser) {
         if (!descricao || !descricao.trim()) {
             throw new Error("Uma descrição do atendimento é obrigatória para finalizar a consulta.");
         }
@@ -638,13 +638,20 @@ class AgendamentoService {
             });
 
             const historicoDelegate = tx as any;
+            const historicoData: any = {
+                pacienteId: atualizado.pacienteId,
+                agendamentoId: atualizado.id,
+                descricao: descricao.trim(),
+                realizadoEm: new Date(atualizado.dataHora),
+            };
+            
+            // Adicionar duracaoMinutos apenas se for um número válido
+            if (duracaoMinutos !== undefined && duracaoMinutos !== null && !isNaN(Number(duracaoMinutos))) {
+                historicoData.duracaoMinutos = Math.round(Number(duracaoMinutos));
+            }
+            
             await historicoDelegate.historicoPaciente.create({
-                data: {
-                    pacienteId: atualizado.pacienteId,
-                    agendamentoId: atualizado.id,
-                    descricao: descricao.trim(),
-                    realizadoEm: new Date(atualizado.dataHora),
-                },
+                data: historicoData,
             });
 
             return atualizado;

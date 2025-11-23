@@ -139,6 +139,7 @@ class PacienteService {
                 descricao: rest.descricao,
                 realizadoEm: rest.realizadoEm,
                 criadoEm: rest.createdAt,
+                duracaoMinutos: rest.duracaoMinutos,
                 agendamentoId: rest.agendamentoId,
                 agendamento: agendamento
                 ? {
@@ -202,6 +203,36 @@ class PacienteService {
         );
 
         return novoPaciente;
+    }
+
+    async updateHistorico(historicoId: number, descricao: string, clinicaId: number) {
+        if (!descricao || !descricao.trim()) {
+            throw new Error("A descrição do atendimento é obrigatória.");
+        }
+
+        const historico = await prisma.historicoPaciente.findUnique({
+            where: { id: historicoId },
+            include: {
+                paciente: true,
+            },
+        });
+
+        if (!historico) {
+            throw new Error("Histórico não encontrado.");
+        }
+
+        if (historico.paciente.clinicaId !== clinicaId) {
+            throw new Error("Histórico não pertence a esta clínica.");
+        }
+
+        const historicoAtualizado = await prisma.historicoPaciente.update({
+            where: { id: historicoId },
+            data: {
+                descricao: descricao.trim(),
+            },
+        });
+
+        return historicoAtualizado;
     }
 
     async create(data: ICreatePaciente, clinicaId: number) {

@@ -15,6 +15,7 @@ export type AgendamentoUpdateInput = Partial<AgendamentoCreateInput>;
 
 export type AgendamentoFinalizeInput = {
   descricao: string;
+  duracaoMinutos?: number;
 };
 
 // GET (Já existente)

@@ -84,6 +84,7 @@ export interface IHistoricoPaciente {
   descricao: string;
   realizadoEm: string;
   criadoEm: string;
+  duracaoMinutos?: number | null; // Duração do atendimento em minutos
   agendamentoId?: number | null;
   agendamento?: {
     id: number;
