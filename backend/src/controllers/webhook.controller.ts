@@ -57,9 +57,9 @@ class WebhookController {
         return res.status(400).send('Missing webhook identifier.');
       }
 
-      // 2. Busca a clínica no banco
-      const clinica = await prisma.clinica.findUnique({
-        where: { webhookUrlId: urlId },
+      // 2. Busca a clínica no banco (apenas ativas)
+      const clinica = await prisma.clinica.findFirst({
+        where: { webhookUrlId: urlId, ativo: true },
       });
 
       // 3. Se a clínica não existir, ignora a mensagem

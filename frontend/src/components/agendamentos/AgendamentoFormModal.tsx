@@ -20,6 +20,8 @@ import {
   ListItemText,
   Divider,
   Typography,
+  Chip,
+  Alert,
 } from '@mui/material';
 import { SelectChangeEvent } from '@mui/material/Select';
 import IconButton from '@mui/material/IconButton';
@@ -28,14 +30,19 @@ import CloseIcon from '@mui/icons-material/Close';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import InfoIcon from '@mui/icons-material/Info';
+import DescriptionIcon from '@mui/icons-material/Description';
 import { toast } from 'sonner';
 import { AgendamentoCreateInput } from '../../services/agendamento.service';
 import { IDoutor, IPaciente, IServico, IAgendamento, IHistoricoPaciente } from '../../types/models';
 import { getDoutores } from '../../services/doutor.service';
-import { getPacientes, getPacienteHistoricos } from '../../services/paciente.service';
+import { getPacientes, getPacienteHistoricos, updateHistoricoPaciente } from '../../services/paciente.service';
 import { getServicos } from '../../services/servico.service';
+import { getPrescricaoByProtocolo } from '../../services/prescricao.service';
 import { useAuth } from '../../hooks/useAuth';
 import moment from 'moment';
+import { pdf } from '@react-pdf/renderer';
+import PrescricaoPdfView from '../PrescricaoPdfView';
+import { IModeloPrescricaoPDF, modeloPrescricaoPadrao } from '../../types/prescricao';
 
 interface Props {
   open: boolean;
@@ -45,7 +52,6 @@ interface Props {
   agendamento?: IAgendamento | null;
   onRequestDelete?: () => void;
   onRequestIndisponibilidade?: () => void;
-  onFinalize?: (descricao: string) => Promise<void>;
   doutorId?: number; // ID do doutor da agenda selecionada para filtrar serviços
 }
 
@@ -67,7 +73,6 @@ export const AgendamentoFormModal: React.FC<Props> = ({
   agendamento,
   onRequestDelete,
   onRequestIndisponibilidade,
-  onFinalize,
   doutorId,
 }) => {
   const { user } = useAuth();
@@ -79,11 +84,15 @@ export const AgendamentoFormModal: React.FC<Props> = ({
   const [servicos, setServicos] = useState<IServico[]>([]);
   const [activeTab, setActiveTab] = useState<'dados' | 'historico'>('dados');
   const [historicos, setHistoricos] = useState<IHistoricoPaciente[]>([]);
-  const [historicoSearch, setHistoricoSearch] = useState('');
   const [historicoLoading, setHistoricoLoading] = useState(false);
   const [historicoError, setHistoricoError] = useState<string | null>(null);
-  const [finalizacaoDescricao, setFinalizacaoDescricao] = useState('');
-  const [finalizando, setFinalizando] = useState(false);
+  const [filtroData, setFiltroData] = useState('');
+  const [filtroPrescricao, setFiltroPrescricao] = useState('');
+  const [filtroDescricao, setFiltroDescricao] = useState('');
+  const [historicoSelecionado, setHistoricoSelecionado] = useState<IHistoricoPaciente | null>(null);
+  const [descricaoEditando, setDescricaoEditando] = useState('');
+  const [openHistoricoModal, setOpenHistoricoModal] = useState(false);
+  const [salvandoHistorico, setSalvandoHistorico] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -114,8 +123,13 @@ export const AgendamentoFormModal: React.FC<Props> = ({
     if (!open) return;
 
     setActiveTab('dados');
-    setFinalizacaoDescricao('');
     setHistoricoError(null);
+    setFiltroData('');
+    setFiltroPrescricao('');
+    setFiltroDescricao('');
+    setHistoricoSelecionado(null);
+    setDescricaoEditando('');
+    setOpenHistoricoModal(false);
 
     if (agendamento) {
       setForm({
@@ -179,15 +193,194 @@ export const AgendamentoFormModal: React.FC<Props> = ({
     if (!name) return;
     setForm((prev) => ({ ...prev, [name]: value }));
   };
-  const filteredHistoricos = historicos.filter((historico) => {
-    if (!historicoSearch.trim()) return true;
-    const term = historicoSearch.trim().toLowerCase();
-    return (
-      historico.descricao.toLowerCase().includes(term) ||
-      (historico.servico?.nome?.toLowerCase().includes(term) ?? false) ||
-      (historico.doutor?.nome?.toLowerCase().includes(term) ?? false)
-    );
-  });
+
+  const extrairPrimeiroMedicamento = (conteudo: string): string => {
+    if (!conteudo) return '';
+    const linhas = conteudo.split('\n').filter((line) => line.trim());
+    if (linhas.length === 0) return '';
+    const primeiraLinha = linhas[0].trim();
+    return primeiraLinha.length > 30 ? `${primeiraLinha.substring(0, 30)}...` : primeiraLinha;
+  };
+
+  const handleAbrirHistoricoModal = (historico: IHistoricoPaciente) => {
+    setHistoricoSelecionado(historico);
+    setDescricaoEditando(historico.descricao || '');
+    setOpenHistoricoModal(true);
+  };
+
+  const handleFecharHistoricoModal = () => {
+    setHistoricoSelecionado(null);
+    setDescricaoEditando('');
+    setOpenHistoricoModal(false);
+  };
+
+  const handleSalvarHistoricoDescricao = async () => {
+    if (!historicoSelecionado || !descricaoEditando.trim()) {
+      toast.error('A descrição não pode ficar vazia.');
+      return;
+    }
+    try {
+      setSalvandoHistorico(true);
+      await updateHistoricoPaciente(historicoSelecionado.id, descricaoEditando.trim());
+      setHistoricos((prev) =>
+        prev.map((hist) =>
+          hist.id === historicoSelecionado.id ? { ...hist, descricao: descricaoEditando.trim() } : hist
+        )
+      );
+      toast.success('Descrição atualizada com sucesso!');
+      handleFecharHistoricoModal();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Erro ao atualizar descrição.');
+    } finally {
+      setSalvandoHistorico(false);
+    }
+  };
+
+  const handleVisualizarPrescricao = async (prescricaoProtocolo: string) => {
+    try {
+      const prescricao = await getPrescricaoByProtocolo(prescricaoProtocolo);
+
+      if (!prescricao) {
+        toast.error('Prescrição não encontrada');
+        return;
+      }
+
+      if (!prescricao.paciente) {
+        toast.error('Dados do paciente não encontrados');
+        return;
+      }
+
+      let modeloPrescricao: IModeloPrescricaoPDF = modeloPrescricaoPadrao;
+      let logoURL = '';
+
+      const modeloStr = prescricao.doutor.modeloPrescricao || '';
+      if (modeloStr) {
+        try {
+          const modeloCarregado = JSON.parse(modeloStr) as IModeloPrescricaoPDF;
+          modeloPrescricao = {
+            ...modeloPrescricaoPadrao,
+            ...modeloCarregado,
+            logoWatermark: {
+              ...modeloPrescricaoPadrao.logoWatermark,
+              ...(modeloCarregado.logoWatermark || {}),
+            },
+            header: {
+              ...modeloPrescricaoPadrao.header,
+              ...(modeloCarregado.header || {}),
+            },
+            medicoInfo: {
+              ...modeloPrescricaoPadrao.medicoInfo,
+              ...(modeloCarregado.medicoInfo || {}),
+            },
+            pacienteInfo: {
+              ...modeloPrescricaoPadrao.pacienteInfo,
+              ...(modeloCarregado.pacienteInfo || {}),
+              showCPF: true,
+              showEndereco: true,
+            },
+            prescricao: {
+              ...modeloPrescricaoPadrao.prescricao,
+              ...(modeloCarregado.prescricao || {}),
+            },
+            assinatura: {
+              ...modeloPrescricaoPadrao.assinatura,
+              ...(modeloCarregado.assinatura || {}),
+            },
+            footer: {
+              ...modeloPrescricaoPadrao.footer,
+              ...(modeloCarregado.footer || {}),
+            },
+          };
+          logoURL = modeloPrescricao.logoUrl || '';
+        } catch (error) {
+          console.warn('Modelo de prescrição inválido, usando padrão:', error);
+          modeloPrescricao = modeloPrescricaoPadrao;
+          logoURL = '';
+        }
+      }
+
+      const enderecoPaciente =
+        [
+          prescricao.paciente.logradouro,
+          prescricao.paciente.numero,
+          prescricao.paciente.bairro,
+          prescricao.paciente.cidade,
+          prescricao.paciente.estado,
+        ]
+          .filter(Boolean)
+          .join(', ') || '';
+
+      const itensPrescricao = prescricao.conteudo.split('\n').filter((line) => line.trim());
+
+      const clinicaNome = prescricao.doutor.clinica?.nome || 'Clínica';
+      const clinicaEndereco = prescricao.doutor.clinica?.endereco || '';
+      const clinicaTelefone = prescricao.doutor.clinica?.telefone || '';
+      const clinicaEmail = prescricao.doutor.clinica?.email || '';
+      const clinicaSite = prescricao.doutor.clinica?.site || '';
+      const clinicaCNPJ = prescricao.doutor.clinica?.cnpj;
+
+      const pdfDoc = (
+        <PrescricaoPdfView
+          pacienteNome={prescricao.paciente.nome || ''}
+          pacienteEndereco={enderecoPaciente}
+          pacienteCPF={prescricao.paciente.cpf || undefined}
+          data={moment(prescricao.createdAt).format('YYYY-MM-DD')}
+          seguroSaude={prescricao.paciente.convenio || ''}
+          diagnostico=""
+          doutorNome={prescricao.doutor.nome || ''}
+          doutorEspecialidade={prescricao.doutor.especialidade || ''}
+          doutorTagline={modeloPrescricao.medicoInfo.tagline || ''}
+          doutorCRM={prescricao.doutor.crm}
+          doutorCRMUF={prescricao.doutor.crmUf}
+          doutorRQE={prescricao.doutor.rqe}
+          itensPrescricao={itensPrescricao}
+          clinicaNome={clinicaNome}
+          clinicaEndereco={clinicaEndereco}
+          clinicaTelefone={clinicaTelefone}
+          clinicaEmail={clinicaEmail}
+          clinicaSite={clinicaSite}
+          clinicaCNPJ={clinicaCNPJ}
+          clinicaLogoUrl={logoURL}
+          modelo={modeloPrescricao}
+          isControleEspecial={false}
+        />
+      );
+
+      pdf(pdfDoc)
+        .toBlob()
+        .then((blob) => {
+          if (blob.size === 0) {
+            toast.error('Erro: PDF gerado está vazio');
+            return;
+          }
+
+          const url = URL.createObjectURL(blob);
+          const printWindow = window.open(url, '_blank');
+          if (printWindow) {
+            printWindow.onload = () => {
+              setTimeout(() => {
+                printWindow.print();
+                toast.success('Prescrição carregada com sucesso!');
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+              }, 250);
+            };
+
+            printWindow.onerror = () => {
+              toast.error('Erro ao abrir janela de impressão');
+            };
+          } else {
+            toast.error('Não foi possível abrir a janela de impressão. Verifique se o pop-up está bloqueado.');
+          }
+        })
+        .catch((error) => {
+          console.error('Erro ao gerar PDF:', error);
+          toast.error(`Erro ao gerar prescrição: ${error.message || 'Erro desconhecido'}`);
+        });
+    } catch (error: any) {
+      console.error('Erro ao visualizar prescrição:', error);
+      toast.error(error?.message || 'Erro ao visualizar prescrição');
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -202,27 +395,12 @@ export const AgendamentoFormModal: React.FC<Props> = ({
     onSubmit(dataToSend);
   };
 
-  const handleFinalizeConsulta = async () => {
-    if (!onFinalize || !agendamento) return;
-    try {
-      setFinalizando(true);
-      await onFinalize(finalizacaoDescricao.trim());
-      setFinalizacaoDescricao('');
-      setForm((prev) => ({ ...prev, status: 'finalizado' }));
-    } catch (error: any) {
-      const message = error?.response?.data?.message ?? 'Erro ao finalizar consulta';
-      toast.error(message);
-    } finally {
-      setFinalizando(false);
-    }
-  };
-
   const handleTabChange = (_event: React.SyntheticEvent, value: 'dados' | 'historico') => {
     setActiveTab(value);
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth scroll="body">
       <DialogTitle sx={{ m: 0, p: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Typography variant="h6">
@@ -245,7 +423,7 @@ export const AgendamentoFormModal: React.FC<Props> = ({
                         <IconButton
                           aria-label="Excluir agendamento"
                           onClick={onRequestDelete}
-                          disabled={loading || finalizando || !canDelete}
+                          disabled={loading || !canDelete}
                           sx={{ color: 'error.main' }}
                         >
                           <DeleteOutlineIcon />
@@ -265,7 +443,7 @@ export const AgendamentoFormModal: React.FC<Props> = ({
         </Box>
       </DialogTitle>
       <Box component="form" onSubmit={handleSubmit}>
-        <DialogContent dividers>
+        <DialogContent dividers sx={{ overflow: 'visible' }}>
           {agendamento && (
             <Tabs value={activeTab} onChange={handleTabChange} sx={{ mb: 2 }}>
               <Tab value="dados" label="Dados do agendamento" />
@@ -419,32 +597,110 @@ export const AgendamentoFormModal: React.FC<Props> = ({
             <Box>
               {historicoLoading ? (
                 <CircularProgress />
+              ) : historicoError ? (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  {historicoError}
+                </Alert>
+              ) : historicos.length === 0 ? (
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Nenhum histórico encontrado para este paciente.
+                </Typography>
               ) : (
-                <Box>
-                  {historicoError && (
-                    <Typography variant="body2" color="error" sx={{ mb: 2 }}>
-                      {historicoError}
-                    </Typography>
-                  )}
-                  {!historicoError && historicos.length > 0 && (
-                    <>
+                <>
+                  <Grid container spacing={1.5} sx={{ mb: 1.5 }}>
+                    <Grid item xs={12} sm={4}>
                       <TextField
-                        label="Pesquisar histórico"
-                        value={historicoSearch}
-                        onChange={(event) => setHistoricoSearch(event.target.value)}
+                        label="Filtrar por Data"
+                        type="date"
+                        value={filtroData}
+                        onChange={(e) => setFiltroData(e.target.value)}
                         fullWidth
                         size="small"
-                        variant="outlined"
-                        placeholder="Busque por descrição, serviço ou profissional..."
-                        sx={{ mb: 2 }}
+                        InputLabelProps={{ shrink: true }}
                       />
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <TextField
+                        label="Filtrar por Prescrição"
+                        value={filtroPrescricao}
+                        onChange={(e) => setFiltroPrescricao(e.target.value)}
+                        fullWidth
+                        size="small"
+                        placeholder="ID ou conteúdo"
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <TextField
+                        label="Filtrar por Descrição/Profissional"
+                        value={filtroDescricao}
+                        onChange={(e) => setFiltroDescricao(e.target.value)}
+                        fullWidth
+                        size="small"
+                        placeholder="ID, profissional ou descrição"
+                      />
+                    </Grid>
+                  </Grid>
+                  {(filtroData || filtroPrescricao || filtroDescricao) && (
+                    <Box sx={{ mb: 1, display: 'flex', justifyContent: 'flex-end' }}>
+                      <Button
+                        size="small"
+                        onClick={() => {
+                          setFiltroData('');
+                          setFiltroPrescricao('');
+                          setFiltroDescricao('');
+                        }}
+                      >
+                        Limpar filtros
+                      </Button>
+                    </Box>
+                  )}
+
+                  {(() => {
+                    const historicosFiltrados = historicos.filter((historico) => {
+                      if (filtroData) {
+                        const dataHistorico = moment(historico.realizadoEm).format('YYYY-MM-DD');
+                        if (dataHistorico !== filtroData) {
+                          return false;
+                        }
+                      }
+
+                      if (filtroPrescricao) {
+                        const filtroLower = filtroPrescricao.toLowerCase();
+                        const prescricoesHistorico = historico.prescricoes || historico.agendamento?.prescricoes || [];
+                        const encontrouPrescricao = prescricoesHistorico.some((prescricao) => {
+                          const idMatch = prescricao.id.toString().includes(filtroPrescricao);
+                          const conteudoMatch = prescricao.conteudo?.toLowerCase().includes(filtroLower);
+                          return idMatch || conteudoMatch;
+                        });
+                        if (!encontrouPrescricao) {
+                          return false;
+                        }
+                      }
+
+                      if (filtroDescricao) {
+                        const filtroLower = filtroDescricao.toLowerCase();
+                        const descricaoMatch = historico.descricao?.toLowerCase().includes(filtroLower) || false;
+                        const idMatch = historico.id.toString().includes(filtroDescricao);
+                        const profissionalMatch = historico.doutor?.nome?.toLowerCase().includes(filtroLower) || false;
+                        if (!descricaoMatch && !idMatch && !profissionalMatch) {
+                          return false;
+                        }
+                      }
+
+                      return true;
+                    });
+
+                    if (historicosFiltrados.length === 0) {
+                      return (
+                        <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
+                          Nenhum histórico encontrado com os filtros aplicados.
+                        </Typography>
+                      );
+                    }
+
+                    return (
                       <List dense sx={{ mb: 2, maxHeight: 320, overflowY: 'auto' }}>
-                        {filteredHistoricos.length === 0 && (
-                          <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
-                            Nenhum registro encontrado para a busca.
-                          </Typography>
-                        )}
-                        {filteredHistoricos.map((historico, index) => {
+                        {historicosFiltrados.map((historico, index) => {
                           const realizadoEm = moment(historico.realizadoEm);
                           const realizadoLabel = `${realizadoEm.format('DD/MM/YYYY')} às ${realizadoEm.format('HH:mm')}`;
                           const finalizadoEm = moment(historico.criadoEm);
@@ -452,91 +708,198 @@ export const AgendamentoFormModal: React.FC<Props> = ({
                             ? `${finalizadoEm.format('DD/MM/YYYY')} às ${finalizadoEm.format('HH:mm')}`
                             : null;
                           const servicoNome = historico.servico?.nome ?? 'Consulta';
-                          const profissionalNome = historico.doutor?.nome
-                            ? `Profissional: ${historico.doutor.nome}`
-                            : null;
+                          const profissionalNome = historico.doutor?.nome ? `Profissional: ${historico.doutor.nome}` : null;
+                          const prescricoesHistorico = historico.prescricoes || historico.agendamento?.prescricoes || [];
+                          const descricaoCompleta = historico.descricao || 'Sem descrição registrada.';
 
                           return (
                             <React.Fragment key={historico.id}>
                               <ListItem alignItems="flex-start" disableGutters>
                                 <ListItemText
                                   primary={
-                                    <Box>
-                                      <Typography variant="subtitle2">{`${servicoNome} • ${realizadoLabel}`}</Typography>
-                                      {profissionalNome && (
-                                        <Typography variant="caption" color="text.secondary">
-                                          {profissionalNome}
+                                    <Box sx={{ position: 'relative' }}>
+                                      <Typography
+                                        variant="h4"
+                                        sx={{
+                                          position: 'absolute',
+                                          top: -10,
+                                          right: 10,
+                                          fontSize: '2rem',
+                                          fontWeight: 'bold',
+                                          color: 'rgba(0, 0, 0, 0.08)',
+                                          pointerEvents: 'none',
+                                          userSelect: 'none',
+                                        }}
+                                      >
+                                        #{historico.id}
+                                      </Typography>
+                                      <Box sx={{ position: 'relative', zIndex: 1 }}>
+                                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                                          {`${servicoNome} • ${realizadoLabel}`}
+                                        </Typography>
+                                        {profissionalNome && (
+                                          <Typography variant="caption" color="text.secondary" display="block">
+                                            {profissionalNome}
                                         </Typography>
                                       )}
                                       {finalizadoLabel && (
                                         <Typography variant="caption" color="text.secondary" display="block">
                                           {`Finalizado em ${finalizadoLabel}`}
+                                            {historico.duracaoMinutos && (
+                                              <span> • Duração: {historico.duracaoMinutos} min</span>
+                                            )}
                                         </Typography>
                                       )}
+                                        {prescricoesHistorico.length > 0 && (
+                                          <Box sx={{ mt: 1 }}>
+                                            <Typography variant="caption" fontWeight="bold" display="block" sx={{ mb: 0.5 }}>
+                                              Prescrições Médicas:
+                                            </Typography>
+                                            {prescricoesHistorico.map((prescricao) => {
+                                              const primeiroMedicamento = extrairPrimeiroMedicamento(prescricao.conteudo || '');
+                                              const labelTexto = primeiroMedicamento
+                                                ? `#${prescricao.id} - ${primeiroMedicamento}`
+                                                : `#${prescricao.id}`;
+                                              return (
+                                                <Tooltip
+                                                  key={prescricao.id}
+                                                  title={
+                                                    <Box component="div" sx={{ whiteSpace: 'pre-wrap', maxWidth: 400 }}>
+                                                      {prescricao.conteudo || 'Sem conteúdo'}
+                                                    </Box>
+                                                  }
+                                                  arrow
+                                                  enterDelay={1000}
+                                                  placement="top"
+                                                >
+                                                  <Chip
+                                                    label={labelTexto}
+                                                    size="small"
+                                                    variant="outlined"
+                                                    color="success"
+                                                    onClick={() => handleVisualizarPrescricao(prescricao.protocolo)}
+                                                    sx={{
+                                                      mr: 0.5,
+                                                      mb: 0.5,
+                                                      cursor: 'pointer',
+                                                      '&:hover': {
+                                                        backgroundColor: 'primary.light',
+                                                        color: 'primary.main',
+                                                        borderColor: 'primary.main',
+                                                      },
+                                                    }}
+                                                  />
+                                                </Tooltip>
+                                              );
+                                            })}
+                                          </Box>
+                                        )}
+                                      </Box>
                                     </Box>
                                   }
                                   secondary={
-                                    <Typography variant="body2" color="text.secondary">
-                                      {historico.descricao}
+                                    <Tooltip
+                                      title={
+                                        <Box component="div" sx={{ whiteSpace: 'pre-wrap', maxWidth: 400 }}>
+                                          {descricaoCompleta}
+                                        </Box>
+                                      }
+                                      arrow
+                                      enterDelay={500}
+                                      placement="top"
+                                    >
+                                      <Typography
+                                        variant="body2"
+                                        color="text.secondary"
+                                        sx={{
+                                          mt: 1,
+                                          display: '-webkit-box',
+                                          WebkitLineClamp: 3,
+                                          WebkitBoxOrient: 'vertical',
+                                          overflow: 'hidden',
+                                          textOverflow: 'ellipsis',
+                                          wordBreak: 'break-word',
+                                          whiteSpace: 'pre-wrap',
+                                          cursor: 'pointer',
+                                          '&:hover': { color: 'primary.main' },
+                                        }}
+                                        onClick={() => handleAbrirHistoricoModal(historico)}
+                                      >
+                                        {descricaoCompleta}
                                     </Typography>
+                                    </Tooltip>
                                   }
                                 />
                               </ListItem>
-                              {index < filteredHistoricos.length - 1 && <Divider component="li" />}
+                              {index < historicosFiltrados.length - 1 && <Divider component="li" />}
                             </React.Fragment>
                           );
                         })}
                       </List>
-                    </>
-                  )}
-                  {!historicoError && historicos.length === 0 && (
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      Nenhum histórico encontrado para este paciente.
-                    </Typography>
-                  )}
-                </Box>
-              )}
-
-              {onFinalize && (
-                <Box sx={{ mt: 2 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                    Registre o que foi realizado nesta consulta
-                  </Typography>
-                  <TextField
-                    label="Resumo da consulta"
-                    multiline
-                    minRows={4}
-                    fullWidth
-                    value={finalizacaoDescricao}
-                    onChange={(event) => setFinalizacaoDescricao(event.target.value)}
-                    placeholder="Descreva procedimentos, medicamentos, recomendações..."
-                    margin="normal"
-                    disabled={agendamento.status === 'finalizado'}
-                  />
-                </Box>
+                    );
+                  })()}
+                </>
               )}
             </Box>
           )}
         </DialogContent>
         <DialogActions>
-          {agendamento && onFinalize && (
-            <Button
-              onClick={handleFinalizeConsulta}
-              color="success"
-              variant="contained"
-              disabled={
-                finalizando ||
-                !finalizacaoDescricao.trim() ||
-                agendamento.status === 'finalizado'
-              }
-            >
-              {finalizando ? 'Finalizando...' : 'Finalizar Consulta'}
-            </Button>
-          )}
-          <Button type="submit" variant="contained" disabled={loading || finalizando}>
+          <Button type="submit" variant="contained" disabled={loading}>
             {agendamento ? 'Atualizar' : 'Salvar'}
           </Button>
         </DialogActions>
+
+        <Dialog
+          open={openHistoricoModal}
+          onClose={handleFecharHistoricoModal}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <DescriptionIcon color="primary" />
+              <Typography variant="h6" fontWeight="bold">
+                Visualizar/Editar Atendimento #{historicoSelecionado?.id}
+              </Typography>
+            </Box>
+          </DialogTitle>
+          <DialogContent dividers>
+            {historicoSelecionado && (
+              <Box>
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                  Data do Atendimento: {moment(historicoSelecionado.realizadoEm).format('DD/MM/YYYY [às] HH:mm')}
+                </Typography>
+                {historicoSelecionado.duracaoMinutos && (
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+                    Duração: {historicoSelecionado.duracaoMinutos} min
+                  </Typography>
+                )}
+                <TextField
+                  label="Descrição do atendimento"
+                  multiline
+                  minRows={8}
+                  fullWidth
+                  value={descricaoEditando}
+                  onChange={(event) => setDescricaoEditando(event.target.value)}
+                  placeholder="Atualize a descrição deste atendimento..."
+                  autoFocus
+                />
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleFecharHistoricoModal} disabled={salvandoHistorico}>
+              Cancelar
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleSalvarHistoricoDescricao}
+              disabled={!descricaoEditando.trim() || salvandoHistorico}
+            >
+              {salvandoHistorico ? 'Salvando...' : 'Salvar alterações'}
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
     </Dialog>
   );

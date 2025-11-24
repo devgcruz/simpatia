@@ -28,7 +28,7 @@ class IndisponibilidadeService {
 
     // Verificar se doutor pertence à clínica do usuário
     const doutor = await prisma.doutor.findFirst({
-      where: { id: doutorId, clinicaId: user.clinicaId },
+      where: { id: doutorId, clinicaId: user.clinicaId, ativo: true },
       select: { id: true },
     });
     if (!doutor) {
@@ -73,7 +73,7 @@ class IndisponibilidadeService {
     if (data.doutorId) {
       // Verificar se novo doutor pertence à clínica
       const doutor = await prisma.doutor.findFirst({
-        where: { id: data.doutorId, clinicaId: user.clinicaId },
+        where: { id: data.doutorId, clinicaId: user.clinicaId, ativo: true },
         select: { id: true },
       });
       if (!doutor) {
@@ -105,7 +105,10 @@ class IndisponibilidadeService {
     if (!registro) {
       throw new Error('Indisponibilidade não encontrada.');
     }
-    return prisma.indisponibilidade.delete({ where: { id } });
+    return prisma.indisponibilidade.update({ 
+      where: { id },
+      data: { ativo: false },
+    });
   }
 }
 

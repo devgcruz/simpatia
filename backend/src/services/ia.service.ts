@@ -1211,11 +1211,11 @@ class IaService {
           
           // Validar se os IDs pertencem à clínica correta
           const servicoValido = await prisma.servico.findFirst({
-            where: { id: servicoIdExtraido, clinicaId },
+            where: { id: servicoIdExtraido, clinicaId, ativo: true },
           });
           
           const doutorValido = await prisma.doutor.findFirst({
-            where: { id: doutorIdExtraido, clinicaId },
+            where: { id: doutorIdExtraido, clinicaId, ativo: true },
           });
           
           if (!servicoValido || !doutorValido) {
@@ -1226,8 +1226,8 @@ class IaService {
             if (!doutorValido) {
               console.warn(`[IaService] ⚠️ Doutor ${doutorIdExtraido} não encontrado ou não pertence à clínica ${clinicaId}`);
               // Tentar encontrar doutor sem filtro para ver qual clínica ele pertence
-              const doutorSemFiltro = await prisma.doutor.findUnique({
-                where: { id: doutorIdExtraido },
+              const doutorSemFiltro = await prisma.doutor.findFirst({
+                where: { id: doutorIdExtraido, ativo: true },
               });
               if (doutorSemFiltro) {
                 console.warn(`[IaService] ⚠️ Doutor ${doutorIdExtraido} existe mas pertence à clínica ${doutorSemFiltro.clinicaId || 'null'}`);

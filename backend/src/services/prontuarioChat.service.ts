@@ -98,10 +98,11 @@ class ProntuarioChatService {
     const agendamento = await this.getAgendamentoOrThrow(agendamentoId);
     this.ensureAccess(agendamento, user);
 
-    // Buscar todos os agendamentos do paciente para contexto
+    // Buscar todos os agendamentos do paciente para contexto (apenas ativos)
     const todosAgendamentosRaw = await prisma.agendamento.findMany({
       where: {
         pacienteId: agendamento.pacienteId,
+        ativo: true,
       },
       include: {
         servico: {

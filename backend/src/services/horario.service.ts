@@ -115,7 +115,7 @@ class HorarioService {
             }
 
             const doutor = await prisma.doutor.findFirst({
-                where: { id: targetDoutorId, clinicaId: user.clinicaId },
+                where: { id: targetDoutorId, clinicaId: user.clinicaId, ativo: true },
             });
 
             if (!doutor) {
@@ -129,8 +129,8 @@ class HorarioService {
             throw new Error("Acesso negado.");
         }
 
-        const doutorExistente = await prisma.doutor.findUnique({
-            where: { id: targetDoutorId },
+        const doutorExistente = await prisma.doutor.findFirst({
+            where: { id: targetDoutorId, ativo: true },
         });
 
         if (!doutorExistente) {
@@ -177,8 +177,8 @@ class HorarioService {
                 }
             }
 
-            const doutorExistente = await prisma.doutor.findUnique({
-                where: { id: data.doutorId },
+            const doutorExistente = await prisma.doutor.findFirst({
+                where: { id: data.doutorId, ativo: true },
             });
 
             if (!doutorExistente) {
@@ -219,11 +219,12 @@ class HorarioService {
 
         await this.ensureAccessToHorario(horarioExistente, user);
 
-        await prisma.horario.delete({
+        await prisma.horario.update({
             where: { id },
+            data: { ativo: false },
         });
 
-        return { message: "Horário deletado com sucesso." };
+        return { message: "Horário inativado com sucesso." };
     }
 
     private async ensureAccessToHorario(horario: { doutorId: number }, user: AuthUser) {
@@ -236,7 +237,7 @@ class HorarioService {
 
         if (user.role === 'CLINICA_ADMIN') {
             const doutor = await prisma.doutor.findFirst({
-                where: { id: horario.doutorId, clinicaId: user.clinicaId },
+                where: { id: horario.doutorId, clinicaId: user.clinicaId, ativo: true },
             });
 
             if (!doutor) {

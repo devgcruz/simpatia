@@ -13,7 +13,6 @@ import {
   deleteAgendamento,
   AgendamentoCreateInput,
   AgendamentoUpdateInput,
-  finalizeAgendamento,
 } from '../services/agendamento.service';
 import { IAgendamento, IClinica, IDoutor } from '../types/models';
 
@@ -522,18 +521,6 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
-  const handleFinalizeAgendamento = async (descricao: string) => {
-    if (!selectedEvent) return;
-    try {
-      await finalizeAgendamento(selectedEvent.id, { descricao });
-      toast.success('Consulta finalizada com sucesso!');
-      await fetchAgendamentos();
-      handleCloseModals();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Erro ao finalizar consulta');
-    }
-  };
-
   const handleDelete = async () => {
     if (!selectedEvent) return;
     
@@ -787,7 +774,6 @@ export const DashboardPage: React.FC = () => {
             setIsIndisponibilidadeModalOpen(true);
           }
         }}
-        onFinalize={handleFinalizeAgendamento}
       />
 
       <ConfirmationModal

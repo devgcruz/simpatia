@@ -47,7 +47,7 @@ class PacienteService {
 
     async getAll(clinicaId: number) {
         const paciente = await prisma.paciente.findMany({
-            where: { clinicaId },
+            where: { clinicaId, ativo: true },
             include: {
                 doutor: {
                     select: {
@@ -63,7 +63,7 @@ class PacienteService {
 
     async getById(id: number, clinicaId: number) {
         const paciente = await prisma.paciente.findFirst({
-            where: { id, clinicaId },
+            where: { id, clinicaId, ativo: true },
             include: {
                 doutor: {
                     select: {
@@ -85,7 +85,7 @@ class PacienteService {
 
     async getHistoricos(id: number, clinicaId: number) {
         const paciente = await prisma.paciente.findFirst({
-            where: { id, clinicaId },
+            where: { id, clinicaId, ativo: true },
         });
 
         if (!paciente) {
@@ -173,7 +173,7 @@ class PacienteService {
 
     async getByTelefone(telefone: string, clinicaId: number) {
         const paciente = await prisma.paciente.findFirst({
-            where: { telefone, clinicaId },
+            where: { telefone, clinicaId, ativo: true },
             include: {
                 doutor: {
                     select: {
@@ -263,7 +263,7 @@ class PacienteService {
         }
 
         const telefoneExistente = await prisma.paciente.findFirst({
-            where: { telefone, clinicaId },
+            where: { telefone, clinicaId, ativo: true },
         });
 
         if(telefoneExistente){
@@ -273,7 +273,7 @@ class PacienteService {
         // Validar CPF único (se fornecido)
         if (cpf) {
             const cpfExistente = await prisma.paciente.findFirst({
-                where: { cpf, clinicaId } as any,
+                where: { cpf, clinicaId, ativo: true } as any,
             });
 
             if (cpfExistente) {
@@ -287,6 +287,7 @@ class PacienteService {
                 where: { 
                     id: doutorId,
                     clinicaId: clinicaId,
+                    ativo: true,
                 },
             });
 
@@ -341,7 +342,7 @@ class PacienteService {
 
     async update(id: number, data: IUpdatePaciente, clinicaId: number){
         const pacienteExistente = await prisma.paciente.findFirst({
-            where: { id, clinicaId },
+            where: { id, clinicaId, ativo: true },
         });
 
         if (!pacienteExistente){
@@ -351,7 +352,7 @@ class PacienteService {
         // Validar CPF único (se fornecido e diferente do atual)
         if (data.cpf && data.cpf !== (pacienteExistente as any).cpf) {
             const cpfExistente = await prisma.paciente.findFirst({
-                where: { cpf: data.cpf, clinicaId } as any,
+                where: { cpf: data.cpf, clinicaId, ativo: true } as any,
             });
 
             if (cpfExistente && cpfExistente.id !== id) {
@@ -366,6 +367,7 @@ class PacienteService {
                     where: { 
                         id: data.doutorId,
                         clinicaId: clinicaId,
+                        ativo: true,
                     },
                 });
 
@@ -404,18 +406,19 @@ class PacienteService {
     async delete(id: number, clinicaId: number) {
 
         const pacienteExistente = await prisma.paciente.findFirst({
-            where: { id, clinicaId },
+            where: { id, clinicaId, ativo: true },
         });
 
         if (!pacienteExistente) {
             throw new Error("Paciente não encontrado ou não pertence à esta clínica.");
         }
 
-        await prisma.paciente.delete({
+        await prisma.paciente.update({
             where: { id },
+            data: { ativo: false },
         });
 
-        return { message: "Paciente deletado com sucesso."};
+        return { message: "Paciente inativado com sucesso."};
     }
 
 

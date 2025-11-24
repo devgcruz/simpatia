@@ -19,7 +19,7 @@ interface IUpdateServico {
 
 class ServicoService {
   async getAll(clinicaId: number, doutorId?: number) {
-    const where: any = { clinicaId };
+    const where: any = { clinicaId, ativo: true };
     if (doutorId !== undefined) {
       where.doutorId = doutorId;
     }
@@ -42,6 +42,7 @@ class ServicoService {
       where: {
         doutorId,
         clinicaId,
+        ativo: true,
       },
       include: {
         doutor: {
@@ -57,7 +58,7 @@ class ServicoService {
 
   async getById(id: number, clinicaId: number) {
     const servico = await prisma.servico.findFirst({
-      where: { id, clinicaId },
+      where: { id, clinicaId, ativo: true },
       include: {
         doutor: {
           select: {
@@ -92,6 +93,7 @@ class ServicoService {
       where: {
         id: doutorId,
         clinicaId,
+        ativo: true,
       },
     });
 
@@ -115,7 +117,7 @@ class ServicoService {
 
   async update(id: number, data: IUpdateServico, clinicaId: number) {
     const servicoExistente = await prisma.servico.findFirst({
-      where: { id, clinicaId },
+      where: { id, clinicaId, ativo: true },
     });
 
     if (!servicoExistente) {
@@ -133,18 +135,19 @@ class ServicoService {
 
   async delete(id: number, clinicaId: number) {
     const servicoExistente = await prisma.servico.findFirst({
-      where: { id, clinicaId },
+      where: { id, clinicaId, ativo: true },
     });
 
     if (!servicoExistente) {
       throw new Error("Serviço não encontrado ou não pertence à esta clínica.");
     }
 
-    await prisma.servico.delete({
+    await prisma.servico.update({
       where: { id },
+      data: { ativo: false },
     });
 
-    return { message: "Serviço deletado com sucesso." };
+    return { message: "Serviço inativado com sucesso." };
 
   }
 

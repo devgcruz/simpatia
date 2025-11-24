@@ -236,8 +236,8 @@ class AgendamentoService {
 
         // Buscar doutor e serviço para validar horário de almoço
         const [doutorInfo, servico] = await Promise.all([
-            (prisma.doutor.findUnique({ 
-                where: { id: targetDoutorId },
+            (prisma.doutor.findFirst({ 
+                where: { id: targetDoutorId, ativo: true },
                 select: {
                     id: true,
                     nome: true,
@@ -247,7 +247,7 @@ class AgendamentoService {
                     diasBloqueados: true,
                 } as any,
             }) as Promise<any>),
-            prisma.servico.findUnique({ where: { id: servicoId } }),
+            prisma.servico.findFirst({ where: { id: servicoId, ativo: true } }),
         ]);
 
         if (!doutorInfo || !servico) {
@@ -307,7 +307,7 @@ class AgendamentoService {
         console.log(`[AgendamentoService.createParaIA] Validando entidades...`);
         const [doutorInfo, paciente, servico] = await Promise.all([
             (prisma.doutor.findFirst({ 
-                where: { id: doutorId, clinicaId },
+                where: { id: doutorId, clinicaId, ativo: true },
                 select: {
                     id: true,
                     nome: true,
@@ -317,8 +317,8 @@ class AgendamentoService {
                     diasBloqueados: true,
                 } as any,
             }) as Promise<any>),
-            prisma.paciente.findFirst({ where: { id: pacienteId, clinicaId } }),
-            prisma.servico.findFirst({ where: { id: servicoId, clinicaId } }),
+            prisma.paciente.findFirst({ where: { id: pacienteId, clinicaId, ativo: true } }),
+            prisma.servico.findFirst({ where: { id: servicoId, clinicaId, ativo: true } }),
         ]);
 
         console.log(`[AgendamentoService.createParaIA] Resultado da validação:`, {
@@ -387,6 +387,7 @@ class AgendamentoService {
                 status: {
                     notIn: ['cancelado', 'finalizado'],
                 },
+                ativo: true,
             },
             include: agendamentoInclude,
             orderBy: {
@@ -443,6 +444,7 @@ class AgendamentoService {
                 status: {
                     notIn: ['cancelado', 'finalizado'],
                 },
+                ativo: true,
                 servico: {
                     nome: {
                         contains: nomeServico,
@@ -560,8 +562,8 @@ class AgendamentoService {
         // Se dataHora ou doutorId ou servicoId foram alterados, validar horário de almoço
         if (novaDataHora || data.doutorId || data.servicoId) {
             // Buscar doutor e serviço para validação
-            const doutorValidado = await (prisma.doutor.findUnique({ 
-                where: { id: targetDoutorId },
+            const doutorValidado = await (prisma.doutor.findFirst({ 
+                where: { id: targetDoutorId, ativo: true },
                 select: {
                     id: true,
                     nome: true,
@@ -571,8 +573,8 @@ class AgendamentoService {
                     diasBloqueados: true,
                 } as any,
             }) as Promise<any>);
-            const servicoParaValidar = await prisma.servico.findUnique({ 
-                where: { id: targetServicoId } 
+            const servicoParaValidar = await prisma.servico.findFirst({ 
+                where: { id: targetServicoId, ativo: true } 
             });
 
             if (!doutorValidado || !servicoParaValidar) {
@@ -680,11 +682,12 @@ class AgendamentoService {
 
         await this.ensureAccessToAgendamento(agendamentoExistente, user);
 
-        await prisma.agendamento.delete({
+        await prisma.agendamento.update({
             where: { id },
+            data: { ativo: false },
         });
 
-        return { message: "Agendamento deletado com sucesso." };
+        return { message: "Agendamento inativado com sucesso." };
     }
 
     private async ensureAccessToAgendamento(agendamento: any, user: AuthUser) {
@@ -703,9 +706,9 @@ class AgendamentoService {
         const { doutorId, pacienteId, servicoId, clinicaId } = params;
 
         const [doutor, paciente, servico] = await Promise.all([
-            prisma.doutor.findFirst({ where: { id: doutorId, clinicaId } }),
-            prisma.paciente.findFirst({ where: { id: pacienteId, clinicaId } }),
-            prisma.servico.findFirst({ where: { id: servicoId, clinicaId } }),
+            prisma.doutor.findFirst({ where: { id: doutorId, clinicaId, ativo: true } }),
+            prisma.paciente.findFirst({ where: { id: pacienteId, clinicaId, ativo: true } }),
+            prisma.servico.findFirst({ where: { id: servicoId, clinicaId, ativo: true } }),
         ]);
 
         if (!doutor || !paciente || !servico) {
@@ -717,9 +720,9 @@ class AgendamentoService {
         const { doutorId, pacienteId, servicoId } = params;
 
         const [doutor, paciente, servico] = await Promise.all([
-            prisma.doutor.findUnique({ where: { id: doutorId } }),
-            prisma.paciente.findUnique({ where: { id: pacienteId } }),
-            prisma.servico.findUnique({ where: { id: servicoId } }),
+            prisma.doutor.findFirst({ where: { id: doutorId, ativo: true } }),
+            prisma.paciente.findFirst({ where: { id: pacienteId, ativo: true } }),
+            prisma.servico.findFirst({ where: { id: servicoId, ativo: true } }),
         ]);
 
         if (!doutor) {

@@ -145,8 +145,9 @@ export const update = async (id: number, data: IUpdatePausaExcecao) => {
 };
 
 export const remove = async (id: number) => {
-  return prisma.pausaExcecao.delete({
+  return prisma.pausaExcecao.update({
     where: { id },
+    data: { ativo: false },
   });
 };
 

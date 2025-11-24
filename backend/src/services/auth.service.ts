@@ -4,9 +4,9 @@ import { prisma } from '../lib/prisma';
 
 class AuthService {
     async login(email: string, senhaRecebida: string) {
-        // Buscar o doutor pelo email
-        const doutor = await prisma.doutor.findUnique({
-            where: { email }
+        // Buscar o doutor pelo email (apenas ativos)
+        const doutor = await prisma.doutor.findFirst({
+            where: { email, ativo: true }
         });
 
         // Hash dummy para manter tempo de resposta consistente (proteção contra timing attack)

@@ -45,11 +45,11 @@ class DisponibilidadeService {
         data: string
     ): Promise<string[]> {
         const servico = await prisma.servico.findFirst({
-            where: { id: servicoId, clinicaId: user.clinicaId },
+            where: { id: servicoId, clinicaId: user.clinicaId, ativo: true },
         });
 
         const doutor = await prisma.doutor.findFirst({
-            where: { id: doutorId, clinicaId: user.clinicaId },
+            where: { id: doutorId, clinicaId: user.clinicaId, ativo: true },
         });
 
         if (!servico || !doutor) {
@@ -95,10 +95,11 @@ class DisponibilidadeService {
                     gte: inicioDia,
                     lte: fimDia,
                 },
-                // Considerar apenas agendamentos confirmados ou pendentes (não cancelados)
+                // Considerar apenas agendamentos confirmados ou pendentes (não cancelados) e ativos
                 status: {
                     not: 'cancelado'
-                }
+                },
+                ativo: true,
             },
             include: {
                 servico: true,
@@ -175,20 +176,20 @@ class DisponibilidadeService {
         
         console.log(`[DisponibilidadeService] 🔍 Buscando serviço: id=${servicoId}, clinicaId=${clinicaId}`);
         const servico = await prisma.servico.findFirst({
-            where: { id: servicoId, clinicaId },
+            where: { id: servicoId, clinicaId, ativo: true },
         });
         console.log(`[DisponibilidadeService] 🔍 Serviço encontrado: ${servico ? `SIM (id=${servico.id}, nome="${servico.nome}", clinicaId=${servico.clinicaId})` : 'NÃO'}`);
 
         console.log(`[DisponibilidadeService] 🔍 Buscando doutor: id=${doutorId}, clinicaId=${clinicaId}`);
         const doutor = await prisma.doutor.findFirst({
-            where: { id: doutorId, clinicaId },
+            where: { id: doutorId, clinicaId, ativo: true },
         });
         
         // Se não encontrou com filtro de clinicaId, verificar se existe sem filtro
         if (!doutor) {
             console.warn(`[DisponibilidadeService] ⚠️ Doutor ${doutorId} não encontrado com filtro clinicaId=${clinicaId}`);
-            const doutorSemFiltro = await prisma.doutor.findUnique({
-                where: { id: doutorId },
+            const doutorSemFiltro = await prisma.doutor.findFirst({
+                where: { id: doutorId, ativo: true },
             });
             if (doutorSemFiltro) {
                 console.warn(`[DisponibilidadeService] ⚠️ Doutor ${doutorId} existe, mas pertence à clínica ${doutorSemFiltro.clinicaId || 'NENHUMA (null)'}, não à clínica ${clinicaId}`);
@@ -276,6 +277,7 @@ class DisponibilidadeService {
                 status: {
                     not: 'cancelado',
                 },
+                ativo: true,
             },
             include: {
                 servico: true,

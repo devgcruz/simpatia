@@ -33,11 +33,15 @@ interface IUpdateClinica {
 
 class ClinicaService {
   async getAll() {
-    return prisma.clinica.findMany();
+    return prisma.clinica.findMany({
+      where: { ativo: true },
+    });
   }
 
   async getById(id: number) {
-    return prisma.clinica.findUnique({ where: { id } });
+    return prisma.clinica.findFirst({ 
+      where: { id, ativo: true },
+    });
   }
 
   async createClinicaEAdmin(data: ICreateClinicaEAdmin) {
@@ -87,7 +91,10 @@ class ClinicaService {
   }
 
   async delete(id: number) {
-    return prisma.clinica.delete({ where: { id } });
+    return prisma.clinica.update({ 
+      where: { id },
+      data: { ativo: false },
+    });
   }
 
   async renovarWebhookVerifyToken(id: number) {

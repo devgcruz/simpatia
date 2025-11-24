@@ -35,6 +35,7 @@ model Clinica {
   telefone String?
   email    String?
   site     String?
+  ativo    Boolean @default(true)
 
   // --- Campos para o Multi-Tenant (WhatsApp Opção 2) ---
   // 1. Chaves da API do WhatsApp (que o admin da clínica vai preencher no painel)
@@ -66,6 +67,7 @@ model Doutor {
   especialidade String?
 
   role Role @default(DOUTOR)
+  ativo Boolean @default(true)
 
   // --- Dados Profissionais ---
   crm           String? // Número do CRM (Conselho Regional de Medicina)
@@ -104,12 +106,14 @@ model Horario {
   pausaFim    String? // "14:00"
   doutorId    Int
   doutor      Doutor  @relation(fields: [doutorId], references: [id])
+  ativo       Boolean @default(true)
 }
 
 model Paciente {
   id           Int           @id @default(autoincrement())
   nome         String
   telefone     String
+  ativo        Boolean       @default(true)
   
   // Dados de Identificação (Essenciais)
   cpf          String?       // CPF como identificador único
@@ -145,7 +149,7 @@ model Paciente {
   doutorId Int?
   doutor   Doutor? @relation(fields: [doutorId], references: [id], onDelete: SetNull)
 
-  @@unique([telefone, clinicaId])
+  @@unique([telefone, clinicaId, ativo])
 }
 
 model Servico {
@@ -154,6 +158,7 @@ model Servico {
   descricao    String        @db.Text
   duracaoMin   Int
   preco        Float
+  ativo        Boolean       @default(true)
   agendamentos Agendamento[]
 
   clinicaId Int
@@ -173,6 +178,7 @@ model Agendamento {
   servicoId      Int
   servico        Servico  @relation(fields: [servicoId], references: [id])
   status         String   // "confirmado", "pendente_ia", "cancelado"
+  ativo          Boolean  @default(true)
   relatoPaciente String?  @db.Text // O que o paciente disse para realizar o agendamento
   entendimentoIA String?  @db.Text // Resumo/análise da IA sobre o que o paciente relatou
   historicos     HistoricoPaciente[]
@@ -247,6 +253,7 @@ model Indisponibilidade {
   doutorId  Int
   doutor    Doutor   @relation(fields: [doutorId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
+  ativo     Boolean  @default(true)
 
   @@index([doutorId, inicio, fim])
 }
@@ -262,8 +269,9 @@ model PausaExcecao {
   clinica     Clinica? @relation(fields: [clinicaId], references: [id], onDelete: Cascade)
   doutor      Doutor?  @relation(fields: [doutorId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
+  ativo       Boolean  @default(true)
 
-  @@unique([data, clinicaId, doutorId])
+  @@unique([data, clinicaId, doutorId, ativo])
   @@index([clinicaId, data])
   @@index([doutorId, data])
 }

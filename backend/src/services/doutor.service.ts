@@ -90,6 +90,7 @@ class DoutorService {
     async getAll(user: { id: number, role: string, clinicaId: number | null }) {
         if (user.role === 'SUPER_ADMIN') {
             return prisma.doutor.findMany({
+                where: { ativo: true },
                 select: this.superAdminSelect,
             });
         }
@@ -104,6 +105,7 @@ class DoutorService {
                     role: {
                         not: 'SUPER_ADMIN',
                     },
+                    ativo: true,
                 },
                 select: this.adminSelect,
             });
@@ -111,8 +113,8 @@ class DoutorService {
 
         if (user.role === 'DOUTOR') {
             // Quando o role é DOUTOR, retornar apenas o doutor logado
-            const doutor = await prisma.doutor.findUnique({
-                where: { id: user.id },
+            const doutor = await prisma.doutor.findFirst({
+                where: { id: user.id, ativo: true },
                 select: this.adminSelect,
             });
             return doutor ? [doutor] : [];
@@ -127,7 +129,7 @@ class DoutorService {
      */
     async getAllParaIA(clinicaId: number) {
         return prisma.doutor.findMany({
-            where: { clinicaId: clinicaId },
+            where: { clinicaId: clinicaId, ativo: true },
             select: {
                 id: true,
                 nome: true,
@@ -138,8 +140,8 @@ class DoutorService {
 
     async getById(id: number, user: { id: number, role: string, clinicaId: number | null }) {
         if (user.role === 'SUPER_ADMIN') {
-            return prisma.doutor.findUnique({
-                where: { id },
+            return prisma.doutor.findFirst({
+                where: { id, ativo: true },
                 select: this.superAdminSelect,
             });
         }
@@ -149,7 +151,7 @@ class DoutorService {
                 throw new Error("CLINICA_ADMIN logado não possui clínica associada.");
             }
             return prisma.doutor.findFirst({
-                where: { id, clinicaId: user.clinicaId },
+                where: { id, clinicaId: user.clinicaId, ativo: true },
                 select: this.adminSelect,
             });
         }
@@ -164,8 +166,8 @@ class DoutorService {
             throw new Error("Nome, email e senha são obrigatórios.");
         }
 
-        const emailExistente = await prisma.doutor.findUnique({
-            where: { email },
+        const emailExistente = await prisma.doutor.findFirst({
+            where: { email, ativo: true },
         });
 
         if (emailExistente) {
@@ -214,7 +216,7 @@ class DoutorService {
         let doutorExistente = null;
 
         if (user.role === 'SUPER_ADMIN') {
-            doutorExistente = await prisma.doutor.findUnique({ where: { id } });
+            doutorExistente = await prisma.doutor.findFirst({ where: { id, ativo: true } });
             if (!doutorExistente) {
                 throw new Error("Doutor não encontrado.");
             }
@@ -223,7 +225,7 @@ class DoutorService {
                 throw new Error("CLINICA_ADMIN logado não possui clínica associada.");
             }
             doutorExistente = await prisma.doutor.findFirst({
-                where: { id, clinicaId: user.clinicaId },
+                where: { id, clinicaId: user.clinicaId, ativo: true },
             });
 
             if (!doutorExistente) {
@@ -231,8 +233,8 @@ class DoutorService {
             }
 
             if (data.email && data.email !== doutorExistente.email) {
-                const emailExistente = await prisma.doutor.findUnique({
-                    where: { email: data.email },
+                const emailExistente = await prisma.doutor.findFirst({
+                    where: { email: data.email, ativo: true },
                 });
 
                 if (emailExistente) {
@@ -244,8 +246,8 @@ class DoutorService {
         }
 
         if (data.email && (!doutorExistente || data.email !== doutorExistente.email)) {
-            const emailExistente = await prisma.doutor.findUnique({
-                where: { email: data.email },
+            const emailExistente = await prisma.doutor.findFirst({
+                where: { email: data.email, ativo: true },
             });
             if (emailExistente && emailExistente.id !== id) {
                 throw new Error("Esse email já está cadastrado.");
@@ -277,7 +279,7 @@ class DoutorService {
                 throw new Error("CLINICA_ADMIN logado não possui clínica associada.");
             }
             const doutorExistente = await prisma.doutor.findFirst({
-                where: { id, clinicaId: user.clinicaId },
+                where: { id, clinicaId: user.clinicaId, ativo: true },
             });
 
             if (!doutorExistente) {
@@ -288,8 +290,9 @@ class DoutorService {
         }
 
         try {
-            await prisma.doutor.delete({
+            await prisma.doutor.update({
                 where: { id },
+                data: { ativo: false },
             });
         } catch (error: any) {
             if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
@@ -298,7 +301,7 @@ class DoutorService {
             throw error;
         }
 
-        return { message: "Doutor deletado com sucesso." };
+        return { message: "Doutor inativado com sucesso." };
     }
 }
 

@@ -1,4 +1,4 @@
-﻿-- CreateTable
+-- CreateTable
 CREATE TABLE "ProntuarioChatMessage" (
     "id" SERIAL NOT NULL,
     "agendamentoId" INTEGER NOT NULL,
