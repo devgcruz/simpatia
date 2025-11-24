@@ -40,7 +40,9 @@ interface IFilterMedicamento {
 
 class MedicamentoService {
   async getAll(filters?: IFilterMedicamento, skip?: number, take?: number) {
-    const where: any = {};
+    const where: any = {
+      ativo: true, // Filtrar apenas medicamentos ativos
+    };
 
     if (filters?.nomeProduto) {
       where.nomeProduto = {
@@ -112,8 +114,11 @@ class MedicamentoService {
   }
 
   async getById(id: number) {
-    const medicamento = await prisma.medicamento.findUnique({
-      where: { id },
+    const medicamento = await prisma.medicamento.findFirst({
+      where: { 
+        id,
+        ativo: true, // Apenas medicamentos ativos
+      },
     });
 
     if (!medicamento) {
@@ -141,6 +146,7 @@ class MedicamentoService {
         empresaDetentoraRegistro: data.empresaDetentoraRegistro,
         situacaoRegistro: data.situacaoRegistro,
         principioAtivo: data.principioAtivo,
+        ativo: true, // Sempre criar como ativo
       },
     });
 
@@ -148,8 +154,11 @@ class MedicamentoService {
   }
 
   async update(id: number, data: IUpdateMedicamento) {
-    const medicamentoExistente = await prisma.medicamento.findUnique({
-      where: { id },
+    const medicamentoExistente = await prisma.medicamento.findFirst({
+      where: { 
+        id,
+        ativo: true, // Apenas medicamentos ativos
+      },
     });
 
     if (!medicamentoExistente) {
@@ -165,16 +174,23 @@ class MedicamentoService {
   }
 
   async delete(id: number) {
-    const medicamentoExistente = await prisma.medicamento.findUnique({
-      where: { id },
+    const medicamentoExistente = await prisma.medicamento.findFirst({
+      where: { 
+        id,
+        ativo: true, // Apenas medicamentos ativos
+      },
     });
 
     if (!medicamentoExistente) {
       throw new Error('Medicamento não encontrado.');
     }
 
-    await prisma.medicamento.delete({
+    // Soft delete: marcar como inativo ao invés de deletar fisicamente
+    await prisma.medicamento.update({
       where: { id },
+      data: {
+        ativo: false,
+      },
     });
 
     return { message: 'Medicamento excluído com sucesso.' };

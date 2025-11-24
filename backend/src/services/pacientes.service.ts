@@ -116,6 +116,7 @@ class PacienteService {
                                 protocolo: true,
                                 conteudo: true,
                                 createdAt: true,
+                                agendamentoId: true,
                             },
                             orderBy: {
                                 createdAt: 'desc',
@@ -129,6 +130,30 @@ class PacienteService {
                 { createdAt: 'desc' },
                 { id: 'desc' },
             ],
+        });
+
+        // Buscar prescrições avulsas (sem agendamento) do paciente
+        const prescricoesAvulsas = await prisma.prescricao.findMany({
+            where: {
+                pacienteId: id,
+                agendamentoId: null,
+            },
+            select: {
+                id: true,
+                protocolo: true,
+                conteudo: true,
+                createdAt: true,
+                doutor: {
+                    select: {
+                        id: true,
+                        nome: true,
+                        email: true,
+                    },
+                },
+            },
+            orderBy: {
+                createdAt: 'desc',
+            },
         });
 
         return historicos.map((historico) => {
@@ -149,7 +174,10 @@ class PacienteService {
                         nome: agendamento.servico.nome,
                         duracaoMin: agendamento.servico.duracaoMin,
                     },
-                    prescricoes: agendamento.prescricoes || [],
+                    prescricoes: (agendamento.prescricoes || []).map((p: any) => ({
+                        ...p,
+                        agendamentoId: agendamento.id,
+                    })),
                 }
                 : null,
                 servico: agendamento
@@ -168,7 +196,32 @@ class PacienteService {
                 : null,
                 prescricoes: agendamento?.prescricoes || [],
             };
-        });
+        }).concat(
+            // Adicionar prescrições avulsas como "históricos" especiais
+            prescricoesAvulsas.map((prescricao) => ({
+                id: `prescricao-${prescricao.id}`, // ID especial para identificar como prescrição avulsa
+                protocolo: `prescricao-${prescricao.protocolo}`,
+                descricao: 'Prescrição Fora do Atendimento',
+                realizadoEm: prescricao.createdAt,
+                criadoEm: prescricao.createdAt,
+                duracaoMinutos: null,
+                agendamentoId: null,
+                agendamento: null,
+                servico: null,
+                doutor: prescricao.doutor ? {
+                    id: prescricao.doutor.id,
+                    nome: prescricao.doutor.nome,
+                    email: prescricao.doutor.email,
+                } : null,
+                prescricoes: [{
+                    id: prescricao.id,
+                    protocolo: prescricao.protocolo,
+                    conteudo: prescricao.conteudo,
+                    createdAt: prescricao.createdAt,
+                    agendamentoId: null, // Marca como prescrição avulsa
+                }],
+            }))
+        );
     }
 
     async getByTelefone(telefone: string, clinicaId: number) {

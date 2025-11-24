@@ -156,6 +156,17 @@ class DoutorService {
             });
         }
 
+        if (user.role === 'DOUTOR') {
+            // DOUTOR pode buscar apenas seus próprios dados
+            if (id !== user.id) {
+                throw new Error("Acesso negado. Você só pode buscar seus próprios dados.");
+            }
+            return prisma.doutor.findFirst({
+                where: { id: user.id, ativo: true },
+                select: this.adminSelect, // Usar adminSelect para incluir dados da clínica
+            });
+        }
+
         return null;
     }
 

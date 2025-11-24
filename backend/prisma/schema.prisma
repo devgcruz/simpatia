@@ -289,10 +289,12 @@ model Medicamento {
   empresaDetentoraRegistro String? // EMPRESA_DETENTORA_REGISTRO
   situacaoRegistro         String? // SITUACAO_REGISTRO
   principioAtivo           String?   @db.Text // PRINCIPIO_ATIVO
+  ativo                    Boolean   @default(true) // Soft delete: true = ativo, false = inativo
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 
   @@index([nomeProduto])
   @@index([numeroRegistroProduto])
   @@index([classeTerapeutica])
+  @@index([ativo])
 }

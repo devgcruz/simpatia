@@ -30,6 +30,7 @@ import {
   InputLabel,
   FormControl,
   Tooltip,
+  Autocomplete,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import PersonIcon from '@mui/icons-material/Person';
@@ -45,6 +46,12 @@ import AddIcon from '@mui/icons-material/Add';
 import DescriptionIcon from '@mui/icons-material/Description';
 import SendIcon from '@mui/icons-material/Send';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import MedicationIcon from '@mui/icons-material/Medication';
+import AddCircleIcon from '@mui/icons-material/AddCircle';
+import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
+import BusinessIcon from '@mui/icons-material/Business';
+import CategoryIcon from '@mui/icons-material/Category';
+import ScienceIcon from '@mui/icons-material/Science';
 import ReactMarkdown from 'react-markdown';
 import type { Components as ReactMarkdownComponents } from 'react-markdown';
 import { IAgendamento, IHistoricoPaciente, IPaciente, IDoutor, IProntuarioChatMessage, IPrescricao } from '../../types/models';
@@ -52,6 +59,8 @@ import { getPacienteHistoricos, updatePaciente, updateHistoricoPaciente } from '
 import { getDoutores } from '../../services/doutor.service';
 import { getProntuarioChatMessages, sendProntuarioChatMessage } from '../../services/prontuarioChat.service';
 import { getPrescricoesPaciente, createPrescricao, getPrescricaoByProtocolo } from '../../services/prescricao.service';
+import { getMedicamentos } from '../../services/medicamento.service';
+import { IMedicamento } from '../../types/models';
 import { useAuth } from '../../hooks/useAuth';
 import moment from 'moment';
 import 'moment/locale/pt-br';
@@ -135,6 +144,21 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
   const [prescricoes, setPrescricoes] = useState<IPrescricao[]>([]);
   const [loadingPrescricoes, setLoadingPrescricoes] = useState(false);
   const [prescricoesError, setPrescricoesError] = useState<string | null>(null);
+  
+  // Estados para busca de medicamentos
+  const [openMedicamentoModal, setOpenMedicamentoModal] = useState(false);
+  const [buscaMedicamento, setBuscaMedicamento] = useState('');
+  const [buscaPrincipioAtivo, setBuscaPrincipioAtivo] = useState('');
+  const [buscaEmpresa, setBuscaEmpresa] = useState('');
+  const [buscaCategoria, setBuscaCategoria] = useState('');
+  const [medicamentosEncontrados, setMedicamentosEncontrados] = useState<IMedicamento[]>([]);
+  const [loadingMedicamentos, setLoadingMedicamentos] = useState(false);
+  const [medicamentoSelecionado, setMedicamentoSelecionado] = useState<IMedicamento | null>(null);
+  const [quantidadeMedicamento, setQuantidadeMedicamento] = useState<number>(1);
+  const [unidadeMedicamento, setUnidadeMedicamento] = useState<'comprimidos' | 'caixa'>('caixa');
+  const [quantidadeComprimidos, setQuantidadeComprimidos] = useState<number | ''>('');
+  const [empresas, setEmpresas] = useState<string[]>([]);
+  const [categorias, setCategorias] = useState<string[]>([]);
 
   const duracaoEsperadaMin = agendamento?.servico.duracaoMin || 0;
   const duracaoEsperadaSeg = duracaoEsperadaMin * 60;
@@ -329,6 +353,17 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
         window.clearTimeout(typingTimeoutRef.current);
         typingTimeoutRef.current = null;
       }
+      // Resetar estados de medicamentos
+      setOpenMedicamentoModal(false);
+      setBuscaMedicamento('');
+      setBuscaPrincipioAtivo('');
+      setBuscaEmpresa('');
+      setBuscaCategoria('');
+      setMedicamentosEncontrados([]);
+      setMedicamentoSelecionado(null);
+      setQuantidadeMedicamento(1);
+      setUnidadeMedicamento('caixa');
+      setQuantidadeComprimidos('');
     }
   }, [open]);
 
@@ -774,6 +809,150 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
     } finally {
       setSalvandoPaciente(false);
     }
+  };
+
+  // Carregar lista de empresas e categorias uma vez
+  useEffect(() => {
+    const loadOptions = async () => {
+      try {
+        const allData = await getMedicamentos({ skip: 0, take: 10000 });
+        const allEmpresas = new Set<string>();
+        const allCategorias = new Set<string>();
+        
+        allData.medicamentos.forEach((m) => {
+          if (m.empresaDetentoraRegistro) {
+            allEmpresas.add(m.empresaDetentoraRegistro);
+          }
+          if (m.categoriaRegulatoria) {
+            allCategorias.add(m.categoriaRegulatoria);
+          }
+        });
+
+        setEmpresas(Array.from(allEmpresas).sort());
+        setCategorias(Array.from(allCategorias).sort());
+      } catch (err) {
+        console.error('Erro ao carregar opções de empresas e categorias:', err);
+      }
+    };
+
+    if (openMedicamentoModal) {
+      loadOptions();
+    }
+  }, [openMedicamentoModal]);
+
+  // Buscar medicamentos com filtros
+  const buscarMedicamentos = async () => {
+    // Só busca se houver pelo menos um filtro preenchido
+    const temFiltro = buscaMedicamento.trim() || buscaPrincipioAtivo.trim() || buscaEmpresa.trim() || buscaCategoria.trim();
+    
+    if (!temFiltro) {
+      setMedicamentosEncontrados([]);
+      return;
+    }
+
+    try {
+      setLoadingMedicamentos(true);
+      const filters: any = {
+        take: 20, // Aumentar para 20 resultados
+      };
+
+      if (buscaMedicamento.trim()) {
+        filters.nomeProduto = buscaMedicamento.trim();
+      }
+      if (buscaPrincipioAtivo.trim()) {
+        filters.principioAtivo = buscaPrincipioAtivo.trim();
+      }
+      if (buscaEmpresa.trim()) {
+        filters.empresaDetentoraRegistro = buscaEmpresa.trim();
+      }
+      if (buscaCategoria.trim()) {
+        filters.categoriaRegulatoria = buscaCategoria.trim();
+      }
+
+      const resultado = await getMedicamentos(filters);
+      setMedicamentosEncontrados(resultado.medicamentos);
+    } catch (error: any) {
+      console.error('Erro ao buscar medicamentos:', error);
+      toast.error('Erro ao buscar medicamentos');
+    } finally {
+      setLoadingMedicamentos(false);
+    }
+  };
+
+  // Debounce para busca de medicamentos - quando qualquer filtro mudar
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      buscarMedicamentos();
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [buscaMedicamento, buscaPrincipioAtivo, buscaEmpresa, buscaCategoria]);
+
+  // Adicionar medicamento à prescrição
+  const handleAdicionarMedicamento = () => {
+    if (!medicamentoSelecionado) {
+      toast.error('Selecione um medicamento');
+      return;
+    }
+
+    if (quantidadeMedicamento <= 0) {
+      toast.error('A quantidade deve ser maior que zero');
+      return;
+    }
+
+    const nomeMedicamento = medicamentoSelecionado.nomeProduto;
+    let linhaMedicamento = '';
+    const larguraTotal = 100; // Largura total da linha (aumentado para melhor alinhamento)
+
+    if (unidadeMedicamento === 'caixa') {
+      if (quantidadeComprimidos && quantidadeComprimidos > 0) {
+        // Formato: Escitalopram................................................................................1caixa(60 comprimidos)
+        const sufixo = `${quantidadeMedicamento}caixa(${quantidadeComprimidos} comprimidos)`;
+        const tamanhoPontos = Math.max(1, larguraTotal - nomeMedicamento.length - sufixo.length);
+        linhaMedicamento = `${nomeMedicamento}${'.'.repeat(tamanhoPontos)}${sufixo}`;
+      } else {
+        // Formato: Escitalopram................................................................................1caixa
+        const sufixo = `${quantidadeMedicamento}caixa`;
+        const tamanhoPontos = Math.max(1, larguraTotal - nomeMedicamento.length - sufixo.length);
+        linhaMedicamento = `${nomeMedicamento}${'.'.repeat(tamanhoPontos)}${sufixo}`;
+      }
+    } else {
+      // Formato: Escitalopram................................................................................60 comprimidos
+      const sufixo = `${quantidadeMedicamento} comprimidos`;
+      const tamanhoPontos = Math.max(1, larguraTotal - nomeMedicamento.length - sufixo.length);
+      linhaMedicamento = `${nomeMedicamento}${'.'.repeat(tamanhoPontos)}${sufixo}`;
+    }
+
+    // Adicionar à prescrição
+    const novaPrescricao = textoPrescricao 
+      ? `${textoPrescricao}\n${linhaMedicamento}`
+      : linhaMedicamento;
+    
+    setTextoPrescricao(novaPrescricao);
+
+    // Limpar campos e fechar modal
+    setBuscaMedicamento('');
+    setMedicamentoSelecionado(null);
+    setMedicamentosEncontrados([]);
+    setQuantidadeMedicamento(1);
+    setUnidadeMedicamento('caixa');
+    setQuantidadeComprimidos('');
+    setOpenMedicamentoModal(false);
+
+    toast.success('Medicamento adicionado à prescrição');
+  };
+
+  const handleFecharModalMedicamento = () => {
+    setOpenMedicamentoModal(false);
+    setBuscaMedicamento('');
+    setBuscaPrincipioAtivo('');
+    setBuscaEmpresa('');
+    setBuscaCategoria('');
+    setMedicamentoSelecionado(null);
+    setMedicamentosEncontrados([]);
+    setQuantidadeMedicamento(1);
+    setUnidadeMedicamento('caixa');
+    setQuantidadeComprimidos('');
   };
 
   const handleVisualizarPrescricao = async (prescricaoProtocolo: string) => {
@@ -1666,40 +1845,49 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                                   </Typography>
                                   {prescricoesHistorico.map((prescricao) => {
                                     const primeiroMedicamento = extrairPrimeiroMedicamento(prescricao.conteudo || '');
+                                    const isPrescricaoAvulsa = !('agendamentoId' in prescricao) || prescricao.agendamentoId === null || prescricao.agendamentoId === undefined;
                                     const labelTexto = primeiroMedicamento 
                                       ? `#${prescricao.id} - ${primeiroMedicamento}`
                                       : `#${prescricao.id}`;
                                     
                                     return (
-                                      <Tooltip
-                                        key={prescricao.id}
-                                        title={
-                                          <Box component="div" sx={{ whiteSpace: 'pre-wrap', maxWidth: 400 }}>
-                                            {prescricao.conteudo || 'Sem conteúdo'}
-                                          </Box>
-                                        }
-                                        arrow
-                                        enterDelay={1000}
-                                        placement="top"
-                                      >
-                                        <Chip
-                                          label={labelTexto}
-                                          size="small"
-                                          variant="outlined"
-                                          color="success"
-                                          onClick={() => handleVisualizarPrescricao(prescricao.protocolo)}
-                                          sx={{ 
-                                            mr: 0.5, 
-                                            mb: 0.5,
-                                            cursor: 'pointer',
-                                            '&:hover': {
-                                              backgroundColor: 'primary.light',
-                                              color: 'primary.main',
-                                              borderColor: 'primary.main',
-                                            }
-                                          }}
-                                        />
-                                      </Tooltip>
+                                      <Box key={prescricao.id} sx={{ display: 'inline-block', mr: 0.5, mb: 0.5 }}>
+                                        <Tooltip
+                                          title={
+                                            <Box component="div" sx={{ whiteSpace: 'pre-wrap', maxWidth: 400 }}>
+                                              {prescricao.conteudo || 'Sem conteúdo'}
+                                            </Box>
+                                          }
+                                          arrow
+                                          enterDelay={1000}
+                                          placement="top"
+                                        >
+                                          <Chip
+                                            label={labelTexto}
+                                            size="small"
+                                            variant="outlined"
+                                            color="success"
+                                            onClick={() => handleVisualizarPrescricao(prescricao.protocolo)}
+                                            sx={{ 
+                                              cursor: 'pointer',
+                                              '&:hover': {
+                                                backgroundColor: 'primary.light',
+                                                color: 'primary.main',
+                                                borderColor: 'primary.main',
+                                              }
+                                            }}
+                                          />
+                                        </Tooltip>
+                                        {isPrescricaoAvulsa && (
+                                          <Chip
+                                            label="Prescrição Fora do Atendimento"
+                                            size="small"
+                                            color="warning"
+                                            variant="filled"
+                                            sx={{ ml: 0.5, fontSize: '0.65rem', height: '20px' }}
+                                          />
+                                        )}
+                                      </Box>
                                     );
                                   })}
                                 </Box>
@@ -2329,6 +2517,16 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
               Data: <strong>{moment().format('DD/MM/YYYY')}</strong>
             </Typography>
           </Box>
+
+          <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+            <Button
+              variant="outlined"
+              startIcon={<MedicationIcon />}
+              onClick={() => setOpenMedicamentoModal(true)}
+            >
+              Adicionar Medicamento
+            </Button>
+          </Box>
           
           <TextField
             label="Prescrição Médica"
@@ -2337,7 +2535,7 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
             fullWidth
             multiline
             rows={10}
-            placeholder="Digite a prescrição médica aqui..."
+            placeholder="Digite a prescrição médica aqui ou use a busca acima para adicionar medicamentos..."
             helperText="Digite os medicamentos, dosagens e orientações para o paciente"
             margin="normal"
           />
@@ -2367,14 +2565,21 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                   return;
                 }
 
+                if (!agendamento.paciente) {
+                  toast.error('Paciente não encontrado');
+                  console.error('Paciente não encontrado');
+                  return;
+                }
+
                 console.log('Todos os dados validados, salvando prescrição...');
                 // Salvar prescrição no banco de dados
+                // Se não houver agendamento, salvar como prescrição avulsa (agendamentoId = undefined)
                 try {
                   await createPrescricao({
                     conteudo: textoPrescricao.trim(),
                     pacienteId: agendamento.paciente.id,
                     doutorId: doutorAtual.id,
-                    agendamentoId: agendamento.id,
+                    agendamentoId: undefined, // Sempre salvar como prescrição avulsa quando criada pelo modal "Nova Prescrição"
                   });
                   console.log('Prescrição salva com sucesso');
                 } catch (error) {
@@ -2568,6 +2773,256 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
             }}
           >
             Cancelar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Modal de Adicionar Medicamento */}
+      <Dialog
+        open={openMedicamentoModal}
+        onClose={handleFecharModalMedicamento}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Box display="flex" alignItems="center" gap={1}>
+              <MedicationIcon />
+              <Typography variant="h6">Adicionar Medicamento</Typography>
+            </Box>
+            <IconButton onClick={handleFecharModalMedicamento}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers>
+          {/* Filtros de Busca */}
+          <Grid container spacing={2} sx={{ mb: 2 }}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                size="small"
+                value={buscaMedicamento}
+                onChange={(e) => setBuscaMedicamento(e.target.value)}
+                placeholder="Nome do Produto"
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchRoundedIcon fontSize="small" />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                size="small"
+                value={buscaPrincipioAtivo}
+                onChange={(e) => setBuscaPrincipioAtivo(e.target.value)}
+                placeholder="Princípio Ativo"
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <ScienceIcon fontSize="small" />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Autocomplete
+                freeSolo
+                size="small"
+                options={empresas}
+                value={buscaEmpresa}
+                onInputChange={(_, newValue) => setBuscaEmpresa(newValue)}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    placeholder="Empresa (Farmacêutica)"
+                    InputProps={{
+                      ...params.InputProps,
+                      startAdornment: (
+                        <>
+                          <InputAdornment position="start">
+                            <BusinessIcon fontSize="small" />
+                          </InputAdornment>
+                          {params.InputProps.startAdornment}
+                        </>
+                      ),
+                    }}
+                  />
+                )}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Autocomplete
+                freeSolo
+                size="small"
+                options={categorias}
+                value={buscaCategoria}
+                onInputChange={(_, newValue) => setBuscaCategoria(newValue)}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    placeholder="Categoria Regulatória"
+                    InputProps={{
+                      ...params.InputProps,
+                      startAdornment: (
+                        <>
+                          <InputAdornment position="start">
+                            <CategoryIcon fontSize="small" />
+                          </InputAdornment>
+                          {params.InputProps.startAdornment}
+                        </>
+                      ),
+                    }}
+                  />
+                )}
+              />
+            </Grid>
+            {(buscaMedicamento || buscaPrincipioAtivo || buscaEmpresa || buscaCategoria) && (
+              <Grid item xs={12}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => {
+                    setBuscaMedicamento('');
+                    setBuscaPrincipioAtivo('');
+                    setBuscaEmpresa('');
+                    setBuscaCategoria('');
+                  }}
+                >
+                  Limpar Filtros
+                </Button>
+              </Grid>
+            )}
+          </Grid>
+
+          {/* Lista de Resultados */}
+          {loadingMedicamentos ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+              <CircularProgress size={24} />
+            </Box>
+          ) : medicamentosEncontrados.length > 0 ? (
+            <Box sx={{ mb: 2, maxHeight: 300, overflowY: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1 }}>
+              {medicamentosEncontrados.map((medicamento) => (
+                <Box
+                  key={medicamento.id}
+                  onClick={() => {
+                    setMedicamentoSelecionado(medicamento);
+                    setBuscaMedicamento(medicamento.nomeProduto);
+                  }}
+                  sx={{
+                    p: 1.5,
+                    mb: 0.5,
+                    borderRadius: 1,
+                    cursor: 'pointer',
+                    bgcolor: medicamentoSelecionado?.id === medicamento.id ? 'primary.light' : 'transparent',
+                    '&:hover': {
+                      bgcolor: medicamentoSelecionado?.id === medicamento.id ? 'primary.light' : 'grey.100',
+                    },
+                    border: medicamentoSelecionado?.id === medicamento.id ? '2px solid' : '1px solid',
+                    borderColor: medicamentoSelecionado?.id === medicamento.id ? 'primary.main' : 'divider',
+                  }}
+                >
+                  <Typography variant="body2" fontWeight="bold">
+                    {medicamento.nomeProduto}
+                  </Typography>
+                  {medicamento.principioAtivo && (
+                    <Typography variant="caption" color="text.secondary" display="block">
+                      {medicamento.principioAtivo.substring(0, 80)}
+                      {medicamento.principioAtivo.length > 80 ? '...' : ''}
+                    </Typography>
+                  )}
+                  {medicamento.empresaDetentoraRegistro && (
+                    <Typography variant="caption" color="text.secondary" display="block">
+                      {medicamento.empresaDetentoraRegistro}
+                    </Typography>
+                  )}
+                </Box>
+              ))}
+            </Box>
+          ) : (buscaMedicamento || buscaPrincipioAtivo || buscaEmpresa || buscaCategoria) ? (
+            <Box sx={{ py: 2, textAlign: 'center' }}>
+              <Typography variant="body2" color="text.secondary">
+                Nenhum medicamento encontrado com os filtros aplicados.
+              </Typography>
+            </Box>
+          ) : (
+            <Box sx={{ py: 2, textAlign: 'center' }}>
+              <Typography variant="body2" color="text.secondary">
+                Use os filtros acima para buscar medicamentos.
+              </Typography>
+            </Box>
+          )}
+
+          {/* Campos para adicionar medicamento selecionado */}
+          {medicamentoSelecionado && (
+            <Box sx={{ mt: 3, p: 2, border: '1px solid', borderColor: 'primary.main', borderRadius: 2, bgcolor: 'grey.50' }}>
+              <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+                Medicamento Selecionado: {medicamentoSelecionado.nomeProduto}
+              </Typography>
+              <Grid container spacing={2} sx={{ mt: 1 }}>
+                <Grid item xs={12} sm={4}>
+                  <TextField
+                    label="Quantidade"
+                    type="number"
+                    value={quantidadeMedicamento}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value) || 1;
+                      setQuantidadeMedicamento(Math.max(1, value));
+                    }}
+                    fullWidth
+                    inputProps={{ min: 1 }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <FormControl fullWidth>
+                    <InputLabel>Unidade</InputLabel>
+                    <Select
+                      value={unidadeMedicamento}
+                      onChange={(e) => setUnidadeMedicamento(e.target.value as 'comprimidos' | 'caixa')}
+                      label="Unidade"
+                    >
+                      <MenuItem value="caixa">Caixa</MenuItem>
+                      <MenuItem value="comprimidos">Comprimidos</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                {unidadeMedicamento === 'caixa' && (
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      label="Comprimidos por caixa (opcional)"
+                      type="number"
+                      value={quantidadeComprimidos}
+                      onChange={(e) => {
+                        const value = e.target.value === '' ? '' : parseInt(e.target.value) || '';
+                        setQuantidadeComprimidos(value);
+                      }}
+                      fullWidth
+                      inputProps={{ min: 1 }}
+                      placeholder="Ex: 60"
+                      helperText="Opcional: quantidade de comprimidos na caixa"
+                    />
+                  </Grid>
+                )}
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleFecharModalMedicamento}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddCircleIcon />}
+            onClick={handleAdicionarMedicamento}
+            disabled={!medicamentoSelecionado}
+          >
+            Adicionar à Prescrição
           </Button>
         </DialogActions>
       </Dialog>

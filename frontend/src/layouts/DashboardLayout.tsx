@@ -16,10 +16,14 @@ import {
   ListItemIcon,
   ListItemText,
   Button,
+  Collapse,
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import ExpandLess from '@mui/icons-material/ExpandLess';
+import ExpandMore from '@mui/icons-material/ExpandMore';
+import SettingsIcon from '@mui/icons-material/Settings';
 import EventIcon from '@mui/icons-material/Event';
 import PeopleIcon from '@mui/icons-material/People';
 import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
@@ -28,6 +32,7 @@ import StoreIcon from '@mui/icons-material/Store';
 import ChatIcon from '@mui/icons-material/Chat';
 import TodayIcon from '@mui/icons-material/Today';
 import MedicationIcon from '@mui/icons-material/Medication';
+import DescriptionIcon from '@mui/icons-material/Description';
 import { useAuth } from '../hooks/useAuth';
 
 const drawerWidth = 240;
@@ -103,13 +108,22 @@ const Drawer = styled(MuiDrawer, { shouldForwardProp: (prop) => prop !== 'open' 
   }),
 );
 
+interface MenuItem {
+  text: string;
+  icon: React.ReactNode;
+  path: string;
+  role: string[];
+  subItems?: MenuItem[];
+}
+
 export const DashboardLayout: React.FC = () => {
   const theme = useTheme();
   const [open, setOpen] = useState(true);
+  const [gerenciarOpen, setGerenciarOpen] = useState(true);
   const { user, logout } = useAuth();
   const location = useLocation();
 
-  const menuItems = [
+  const menuItems: MenuItem[] = [
     { text: 'Agenda', icon: <EventIcon />, path: '/dashboard', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'] },
     {
       text: 'Atendimento do Dia',
@@ -123,9 +137,18 @@ export const DashboardLayout: React.FC = () => {
       path: '/atendimento',
       role: ['CLINICA_ADMIN', 'SUPER_ADMIN'],
     },
-    { text: 'Pacientes', icon: <PeopleIcon />, path: '/pacientes', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'] },
+    {
+      text: 'Gerenciar',
+      icon: <SettingsIcon />,
+      path: '#',
+      role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'],
+      subItems: [
+        { text: 'Pacientes', icon: <PeopleIcon />, path: '/pacientes', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'] },
+        { text: 'Medicamentos', icon: <MedicationIcon />, path: '/medicamentos', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'] },
+        { text: 'Prescrições', icon: <DescriptionIcon />, path: '/prescricoes', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'] },
+      ],
+    },
     { text: 'Serviços', icon: <MedicalServicesIcon />, path: '/servicos', role: ['CLINICA_ADMIN', 'SUPER_ADMIN'] },
-    { text: 'Medicamentos', icon: <MedicationIcon />, path: '/medicamentos', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'] },
     { text: 'Doutores', icon: <AccountCircleIcon />, path: '/doutores', role: ['CLINICA_ADMIN', 'SUPER_ADMIN'] },
     { text: 'Gerir Clínicas', icon: <StoreIcon />, path: '/clinicas', role: ['SUPER_ADMIN'] },
   ];
@@ -134,9 +157,39 @@ export const DashboardLayout: React.FC = () => {
     (item) => user && item.role.includes(user.role),
   );
 
-  const currentMenuItem =
-    menuItems.find((item) => location.pathname.startsWith(item.path)) ?? menuItems[0];
-  const headerTitle = currentMenuItem?.text ?? 'Agenda';
+  // Verificar se algum subitem está ativo para expandir o menu Gerenciar
+  React.useEffect(() => {
+    const gerenciarItem = menuItems.find((item) => item.text === 'Gerenciar');
+    if (gerenciarItem?.subItems) {
+      const hasActiveSubItem = gerenciarItem.subItems.some(
+        (subItem) => location.pathname.startsWith(subItem.path)
+      );
+      if (hasActiveSubItem) {
+        setGerenciarOpen(true);
+      }
+    }
+  }, [location.pathname]);
+
+  // Encontrar o item de menu ativo (incluindo subitens)
+  const findActiveMenuItem = (): string => {
+    for (const item of menuItems) {
+      if (item.subItems) {
+        const activeSubItem = item.subItems.find((subItem) => 
+          location.pathname.startsWith(subItem.path)
+        );
+        if (activeSubItem) {
+          return activeSubItem.text;
+        }
+      } else {
+        if (location.pathname.startsWith(item.path)) {
+          return item.text;
+        }
+      }
+    }
+    return 'Agenda';
+  };
+  
+  const headerTitle = findActiveMenuItem();
 
   const handleDrawerOpen = () => {
     setOpen(true);
@@ -185,30 +238,109 @@ export const DashboardLayout: React.FC = () => {
         </DrawerHeader>
         <Divider />
         <List>
-          {permittedMenuItems.map((item) => (
-            <ListItem key={item.text} disablePadding sx={{ display: 'block' }}>
-              <ListItemButton
-                component={RouterLink}
-                to={item.path}
-                sx={{
-                  minHeight: 48,
-                  justifyContent: open ? 'initial' : 'center',
-                  px: 2.5,
-                }}
-              >
-                <ListItemIcon
+          {permittedMenuItems.map((item) => {
+            if (item.subItems) {
+              // Menu expansível
+              const hasActiveSubItem = item.subItems.some(
+                (subItem) => user && subItem.role.includes(user.role) && location.pathname.startsWith(subItem.path)
+              );
+              const permittedSubItems = item.subItems.filter(
+                (subItem) => user && subItem.role.includes(user.role)
+              );
+
+              if (permittedSubItems.length === 0) return null;
+
+              return (
+                <React.Fragment key={item.text}>
+                  <ListItem disablePadding sx={{ display: 'block' }}>
+                    <ListItemButton
+                      onClick={() => setGerenciarOpen(!gerenciarOpen)}
+                      sx={{
+                        minHeight: 48,
+                        justifyContent: open ? 'initial' : 'center',
+                        px: 2.5,
+                        backgroundColor: hasActiveSubItem ? 'action.selected' : 'transparent',
+                      }}
+                    >
+                      <ListItemIcon
+                        sx={{
+                          minWidth: 0,
+                          mr: open ? 3 : 'auto',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        {item.icon}
+                      </ListItemIcon>
+                      <ListItemText primary={item.text} sx={{ opacity: open ? 1 : 0 }} />
+                      {open && (gerenciarOpen ? <ExpandLess /> : <ExpandMore />)}
+                    </ListItemButton>
+                  </ListItem>
+                  <Collapse in={gerenciarOpen && open} timeout="auto" unmountOnExit>
+                    <List component="div" disablePadding>
+                      {permittedSubItems.map((subItem) => {
+                        const isActive = location.pathname.startsWith(subItem.path);
+                        return (
+                          <ListItem key={subItem.text} disablePadding sx={{ display: 'block' }}>
+                            <ListItemButton
+                              component={RouterLink}
+                              to={subItem.path}
+                              sx={{
+                                minHeight: 48,
+                                pl: open ? 4 : 2.5,
+                                backgroundColor: isActive ? 'action.selected' : 'transparent',
+                                '&:hover': {
+                                  backgroundColor: 'action.hover',
+                                },
+                              }}
+                            >
+                              <ListItemIcon
+                                sx={{
+                                  minWidth: 0,
+                                  mr: open ? 3 : 'auto',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                {subItem.icon}
+                              </ListItemIcon>
+                              <ListItemText primary={subItem.text} sx={{ opacity: open ? 1 : 0 }} />
+                            </ListItemButton>
+                          </ListItem>
+                        );
+                      })}
+                    </List>
+                  </Collapse>
+                </React.Fragment>
+              );
+            }
+
+            // Menu item normal
+            const isActive = location.pathname.startsWith(item.path);
+            return (
+              <ListItem key={item.text} disablePadding sx={{ display: 'block' }}>
+                <ListItemButton
+                  component={RouterLink}
+                  to={item.path}
                   sx={{
-                    minWidth: 0,
-                    mr: open ? 3 : 'auto',
-                    justifyContent: 'center',
+                    minHeight: 48,
+                    justifyContent: open ? 'initial' : 'center',
+                    px: 2.5,
+                    backgroundColor: isActive ? 'action.selected' : 'transparent',
                   }}
                 >
-                  {item.icon}
-                </ListItemIcon>
-                <ListItemText primary={item.text} sx={{ opacity: open ? 1 : 0 }} />
-              </ListItemButton>
-            </ListItem>
-          ))}
+                  <ListItemIcon
+                    sx={{
+                      minWidth: 0,
+                      mr: open ? 3 : 'auto',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {item.icon}
+                  </ListItemIcon>
+                  <ListItemText primary={item.text} sx={{ opacity: open ? 1 : 0 }} />
+                </ListItemButton>
+              </ListItem>
+            );
+          })}
         </List>
       </Drawer>
       <Box

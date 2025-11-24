@@ -37,6 +37,11 @@ export const getDoutores = async () => {
   return response.data;
 };
 
+export const getDoutorById = async (id: number) => {
+  const response = await api.get<IDoutor>(`/doutores/${id}`);
+  return response.data;
+};
+
 export const createDoutor = async (data: DoutorCreateInput) => {
   const response = await api.post<IDoutor>('/doutores', data);
   return response.data;

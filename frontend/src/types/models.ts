@@ -98,6 +98,7 @@ export interface IHistoricoPaciente {
       protocolo: string;
       conteudo: string;
       createdAt: string;
+      agendamentoId?: number | null;
     }>;
   } | null;
   servico?: Pick<IServico, 'id' | 'nome' | 'duracaoMin'> | null;
@@ -107,6 +108,7 @@ export interface IHistoricoPaciente {
     protocolo: string;
     conteudo: string;
     createdAt: string;
+    agendamentoId?: number | null;
   }>;
 }
 
@@ -189,6 +191,7 @@ export interface IMedicamento {
   empresaDetentoraRegistro?: string | null;
   situacaoRegistro?: string | null;
   principioAtivo?: string | null;
+  ativo: boolean;
   createdAt: string;
   updatedAt: string;
 }

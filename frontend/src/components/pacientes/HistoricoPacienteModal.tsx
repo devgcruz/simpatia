@@ -446,40 +446,49 @@ export const HistoricoPacienteModal: React.FC<Props> = ({ open, onClose, pacient
                                       </Typography>
                                       {prescricoesHistorico.map((prescricao) => {
                                         const primeiroMedicamento = extrairPrimeiroMedicamento(prescricao.conteudo || '');
+                                        const isPrescricaoAvulsa = !('agendamentoId' in prescricao) || prescricao.agendamentoId === null || prescricao.agendamentoId === undefined;
                                         const labelTexto = primeiroMedicamento
                                           ? `#${prescricao.id} - ${primeiroMedicamento}`
                                           : `#${prescricao.id}`;
 
                                         return (
-                                          <Tooltip
-                                            key={prescricao.id}
-                                            title={
-                                              <Box component="div" sx={{ whiteSpace: 'pre-wrap', maxWidth: 400 }}>
-                                                {prescricao.conteudo || 'Sem conteúdo'}
-                                              </Box>
-                                            }
-                                            arrow
-                                            enterDelay={1000}
-                                            placement="top"
-                                          >
-                                            <Chip
-                                              label={labelTexto}
-                                              size="small"
-                                              variant="outlined"
-                                              color="success"
-                                              onClick={() => handleVisualizarPrescricao(prescricao.protocolo)}
-                                              sx={{
-                                                mr: 0.5,
-                                                mb: 0.5,
-                                                cursor: 'pointer',
-                                                '&:hover': {
-                                                  backgroundColor: 'primary.light',
-                                                  color: 'primary.main',
-                                                  borderColor: 'primary.main',
-                                                },
-                                              }}
-                                            />
-                                          </Tooltip>
+                                          <Box key={prescricao.id} sx={{ display: 'inline-block', mr: 0.5, mb: 0.5 }}>
+                                            <Tooltip
+                                              title={
+                                                <Box component="div" sx={{ whiteSpace: 'pre-wrap', maxWidth: 400 }}>
+                                                  {prescricao.conteudo || 'Sem conteúdo'}
+                                                </Box>
+                                              }
+                                              arrow
+                                              enterDelay={1000}
+                                              placement="top"
+                                            >
+                                              <Chip
+                                                label={labelTexto}
+                                                size="small"
+                                                variant="outlined"
+                                                color="success"
+                                                onClick={() => handleVisualizarPrescricao(prescricao.protocolo)}
+                                                sx={{
+                                                  cursor: 'pointer',
+                                                  '&:hover': {
+                                                    backgroundColor: 'primary.light',
+                                                    color: 'primary.main',
+                                                    borderColor: 'primary.main',
+                                                  },
+                                                }}
+                                              />
+                                            </Tooltip>
+                                            {isPrescricaoAvulsa && (
+                                              <Chip
+                                                label="Prescrição Fora do Atendimento"
+                                                size="small"
+                                                color="warning"
+                                                variant="filled"
+                                                sx={{ ml: 0.5, fontSize: '0.65rem', height: '20px' }}
+                                              />
+                                            )}
+                                          </Box>
                                         );
                                       })}
                                     </Box>
