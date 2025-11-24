@@ -98,6 +98,47 @@ class ProntuarioChatService {
     const agendamento = await this.getAgendamentoOrThrow(agendamentoId);
     this.ensureAccess(agendamento, user);
 
+    // Buscar todos os agendamentos do paciente para contexto
+    const todosAgendamentosRaw = await prisma.agendamento.findMany({
+      where: {
+        pacienteId: agendamento.pacienteId,
+      },
+      include: {
+        servico: {
+          select: {
+            nome: true,
+            duracaoMin: true,
+          },
+        },
+        doutor: {
+          select: {
+            nome: true,
+          },
+        },
+        historicos: {
+          orderBy: {
+            realizadoEm: 'desc',
+          },
+        },
+        prescricoes: {
+          select: {
+            id: true,
+            protocolo: true,
+            conteudo: true,
+            createdAt: true,
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+        },
+      },
+      orderBy: {
+        dataHora: 'desc',
+      },
+    });
+
+    const todosAgendamentos = todosAgendamentosRaw as any[];
+
     const existingMessages: ProntuarioChatMessageEntity[] = await prisma.prontuarioChatMessage.findMany({
       where: { agendamentoId },
       orderBy: { createdAt: 'asc' },
@@ -127,26 +168,99 @@ class ProntuarioChatService {
         ? pesoPaciente / Math.pow(alturaPacienteCm / 100, 2)
         : null;
 
+    // Formatar histórico de agendamentos para contexto (resumo muito conciso)
+    const historicoAgendamentos = todosAgendamentos.map((ag, index) => {
+      const dataHora = new Date(ag.dataHora);
+      const dataFormatada = dataHora.toLocaleDateString('pt-BR');
+      const historico = ag.historicos && ag.historicos.length > 0 ? ag.historicos[0] : null;
+      const prescricoes = ag.prescricoes && ag.prescricoes.length > 0 ? ag.prescricoes : [];
+      
+      let info = `\nAtendimento #${ag.id} (${dataFormatada}):\n`;
+      
+      if (historico) {
+        // Extrair primeiro medicamento da primeira prescrição para resumo
+        let primeiroMedicamento = '';
+        if (prescricoes.length > 0 && prescricoes[0].conteudo) {
+          const primeiraLinha = prescricoes[0].conteudo.split('\n')[0].trim();
+          primeiroMedicamento = primeiraLinha.length > 40 ? primeiraLinha.substring(0, 40) + '...' : primeiraLinha;
+        }
+        
+        // Criar resumo muito conciso da descrição (apenas primeiras 8 palavras para identificar o problema)
+        const palavrasDescricao = historico.descricao.split(/\s+/).slice(0, 8).join(' ');
+        const resumoDescricao = palavrasDescricao + '...';
+        
+        info += `- Prescrições: ${prescricoes.length > 0 ? `${prescricoes.length}x` : 'Nenhuma'}`;
+        if (primeiroMedicamento) {
+          info += ` (ex: ${primeiroMedicamento})`;
+        }
+        info += `\n`;
+        info += `- Tema: ${resumoDescricao}\n`;
+      } else {
+        info += `- Status: ${ag.status}\n`;
+        if (prescricoes.length > 0) {
+          info += `- Prescrições: ${prescricoes.length}x\n`;
+        }
+      }
+      
+      return info;
+    }).join('\n');
+
     const systemPrompt = [
       'Você é um agente clínico (Gemini) que auxilia médicos durante o atendimento.',
       'Responda sempre em Português do Brasil, de forma objetiva, técnica e cordial.',
       'Nunca faça diagnósticos definitivos ou prescrições sem orientação do médico.',
       'Forneça sugestões, referências e hipóteses com responsabilidade.',
-      'Contexto do agendamento:',
-      `- Paciente: ${agendamento.paciente.nome}${agendamento.paciente.cpf ? ` (CPF: ${agendamento.paciente.cpf})` : ''}`,
-      `- Serviço: ${agendamento.servico.nome} (${agendamento.servico.duracaoMin} min)`,
-      `- Data/Hora: ${agendamento.dataHora.toLocaleString('pt-BR')}`,
-      `- Alergias: ${alergias.length ? alergias.join(', ') : 'Nenhuma informada'}`,
-      agendamento.paciente.observacoes ? `- Observações do prontuário: ${agendamento.paciente.observacoes}` : '',
-      agendamento.relatoPaciente ? `- Relato do paciente: ${agendamento.relatoPaciente}` : '',
-      agendamento.entendimentoIA ? `- Análise inicial da IA: ${agendamento.entendimentoIA}` : '',
-      `- Dados antropométricos: Idade ${idadePaciente !== null ? `${idadePaciente} anos` : 'não informada'}, Sexo ${
+      '',
+      '⚠️ REGRA CRÍTICA - LEIA COM ATENÇÃO:',
+      'NUNCA, em nenhuma circunstância, forneça descrições completas de atendimentos anteriores.',
+      'Você tem acesso a um resumo muito curto dos atendimentos (apenas primeiras 8 palavras) para contexto.',
+      'Quando mencionar atendimentos anteriores, use APENAS o formato: "Atendimento #X em DD/MM/YYYY: [tema resumido em 1 frase]".',
+      'SEMPRE direcione o médico para o "Histórico de Atendimentos" no prontuário para ver descrições completas.',
+      '',
+      '=== CONTEXTO DO PACIENTE ===',
+      `Paciente: ${agendamento.paciente.nome}${agendamento.paciente.cpf ? ` (CPF: ${agendamento.paciente.cpf})` : ''}`,
+      `Alergias: ${alergias.length ? alergias.join(', ') : 'Nenhuma informada'}`,
+      agendamento.paciente.observacoes ? `Observações do prontuário: ${agendamento.paciente.observacoes}` : '',
+      `Dados antropométricos: Idade ${idadePaciente !== null ? `${idadePaciente} anos` : 'não informada'}, Sexo ${
         agendamento.paciente.genero || 'não informado'
       }, Peso ${pesoPaciente !== null ? `${pesoPaciente.toFixed(1)} kg` : 'não informado'}, Altura ${
         alturaPacienteCm !== null ? `${(alturaPacienteCm / 100).toFixed(2)} m` : 'não informada'
       }, IMC ${imcPaciente !== null ? imcPaciente.toFixed(1) : 'não calculado'}`,
       '',
-      'Utilize o histórico a seguir para manter o contexto do chat.',
+      '=== AGENDAMENTO ATUAL ===',
+      `Serviço: ${agendamento.servico.nome} (${agendamento.servico.duracaoMin} min)`,
+      `Data/Hora: ${agendamento.dataHora.toLocaleString('pt-BR')}`,
+      agendamento.relatoPaciente ? `Relato do paciente: ${agendamento.relatoPaciente}` : '',
+      agendamento.entendimentoIA ? `Análise inicial da IA: ${agendamento.entendimentoIA}` : '',
+      '',
+      '=== HISTÓRICO DE ATENDIMENTOS DO PACIENTE ===',
+      todosAgendamentos.length > 0 
+        ? `O paciente possui ${todosAgendamentos.length} agendamento(s) anterior(es). Resumo muito conciso:${historicoAgendamentos}`
+        : 'O paciente não possui agendamentos anteriores.',
+      '',
+      '=== REGRAS CRÍTICAS SOBRE HISTÓRICO DE ATENDIMENTOS ===',
+      '1. NUNCA, em hipótese alguma, forneça descrições completas de atendimentos anteriores no chat.',
+      '2. Quando mencionar atendimentos anteriores, use APENAS este formato resumido:',
+      '   Exemplo: "No dia 20/11/2025, atendimento #1: prescrito dipirona para dor de cabeça."',
+      '3. NUNCA copie ou transcreva a descrição completa do atendimento.',
+      '4. Se o médico perguntar sobre detalhes de um atendimento específico, responda:',
+      '   "Para ver a descrição completa do atendimento #X, consulte a aba \'Histórico de Atendimentos\' no prontuário do paciente."',
+      '5. Use o histórico apenas para dar contexto geral sobre a evolução do caso, nunca para fornecer detalhes completos.',
+      '6. Quando perguntarem "O que você sabe sobre o paciente?" ou similar, responda assim:',
+      '   "O paciente possui X atendimentos anteriores. Principais temas: [lista de 2-3 temas em 1 palavra cada].',
+      '   Exemplos de atendimentos:',
+      '   - Atendimento #1 em 20/11/2025: prescrito dipirona para dor de cabeça.',
+      '   - Atendimento #2 em 24/11/2025: atendimento sobre [tema resumido].',
+      '   Para ver as descrições completas de cada atendimento, consulte a aba \'Histórico de Atendimentos\' no prontuário."',
+      '',
+      '7. EXEMPLO DE RESPOSTA CORRETA quando perguntarem sobre o paciente:',
+      '   "O paciente possui 2 atendimentos anteriores. No dia 20/11/2025, atendimento #1: prescrito dipirona para dor de cabeça.',
+      '   No dia 24/11/2025, atendimento #2: atendimento sobre sintomas diversos.',
+      '   Para ver as descrições completas, consulte o Histórico de Atendimentos no prontuário."',
+      '',
+      '8. EXEMPLO DE RESPOSTA INCORRETA (NUNCA FAÇA ISSO):',
+      '   "No atendimento de 20/11/2025, a descrição completa foi: [copiar toda a descrição aqui]"',
+      '   ❌ NUNCA copie ou transcreva descrições completas.',
     ].filter(Boolean).join('\n');
 
     const history = existingMessages.map((message: ProntuarioChatMessageEntity) => {

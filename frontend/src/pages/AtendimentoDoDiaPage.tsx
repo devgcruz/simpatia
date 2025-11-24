@@ -531,10 +531,10 @@ export const AtendimentoDoDiaPage: React.FC = () => {
                 <Paper sx={{ p: 4, textAlign: 'center' }}>
                   <AccessTimeIcon sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
                   <Typography variant="h6" color="text.secondary" gutterBottom>
-                    Nenhum atendimento agendado para o futuro
+                    Nenhum atendimento agendado para hoje.
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Os próximos agendamentos aparecerão aqui.
+                    Os agendamentos aparecerão aqui.
                   </Typography>
                 </Paper>
               )}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, memo } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -202,6 +202,81 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
     ),
   }), []);
 
+  // Componente memoizado para mensagens do chat para evitar re-renderizações desnecessárias
+  const ChatMessage = memo(({ message, renderedContent, isDoctor }: { message: IProntuarioChatMessage; renderedContent: string; isDoctor: boolean }) => {
+    return (
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: isDoctor ? 'flex-end' : 'flex-start',
+        }}
+      >
+        <Box
+          sx={{
+            maxWidth: '80%',
+            bgcolor: isDoctor ? 'primary.main' : 'grey.100',
+            color: isDoctor ? 'primary.contrastText' : 'text.primary',
+            px: 1.5,
+            py: 1,
+            borderRadius: 2,
+            boxShadow: 1,
+            wordBreak: 'break-word',
+            overflowWrap: 'break-word',
+            overflow: 'hidden',
+          }}
+        >
+          <Typography
+            variant="caption"
+            sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}
+            color={isDoctor ? 'primary.contrastText' : 'text.secondary'}
+          >
+            {isDoctor ? 'Você' : 'Simpatia'}
+          </Typography>
+          <Box
+            sx={{
+              wordBreak: 'break-word',
+              overflowWrap: 'break-word',
+              '& p': {
+                margin: 0,
+                wordBreak: 'break-word',
+                overflowWrap: 'break-word',
+              },
+              '& pre': {
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                overflowWrap: 'break-word',
+                maxWidth: '100%',
+                overflow: 'auto',
+              },
+              '& code': {
+                wordBreak: 'break-word',
+                overflowWrap: 'break-word',
+                whiteSpace: 'pre-wrap',
+              },
+            }}
+          >
+            <ReactMarkdown components={markdownComponents}>
+              {renderedContent}
+            </ReactMarkdown>
+          </Box>
+          <Typography
+            variant="caption"
+            sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}
+            color={isDoctor ? 'primary.contrastText' : 'text.secondary'}
+          >
+            {moment(message.createdAt).format('DD/MM/YYYY HH:mm')}
+          </Typography>
+        </Box>
+      </Box>
+    );
+  }, (prevProps, nextProps) => {
+    // Só re-renderiza se o conteúdo mudou
+    return prevProps.renderedContent === nextProps.renderedContent && 
+           prevProps.message.id === nextProps.message.id;
+  });
+
+  ChatMessage.displayName = 'ChatMessage';
+
   // Iniciar/parar timer
   useEffect(() => {
     if (atendimentoIniciado && inicioAtendimento) {
@@ -264,9 +339,29 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
   }, [open, agendamento?.id]);
 
   useEffect(() => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-    }
+    // Usar requestAnimationFrame com debounce para evitar forced reflow
+    let rafId: number | null = null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    
+    const scrollToBottom = () => {
+      if (chatContainerRef.current) {
+        rafId = requestAnimationFrame(() => {
+          if (chatContainerRef.current) {
+            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+          }
+          rafId = null;
+        });
+      }
+    };
+    
+    // Debounce de 50ms para evitar múltiplos scrolls
+    if (timeoutId) clearTimeout(timeoutId);
+    timeoutId = setTimeout(scrollToBottom, 50);
+    
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
   }, [chatMessages]);
 
   useEffect(() => {
@@ -1256,11 +1351,14 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                   sx={{
                     flex: 1,
                     overflowY: 'auto',
+                    overflowX: 'hidden',
                     pr: 1,
                     mb: 1.5,
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 1,
+                    willChange: 'scroll-position',
+                    contain: 'layout style paint',
                   }}
                 >
                   {chatLoading ? (
@@ -1277,43 +1375,12 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                       const renderedContent = displayedChatText[message.id] ?? message.content;
 
                       return (
-                        <Box
+                        <ChatMessage
                           key={message.id}
-                          sx={{
-                            display: 'flex',
-                            justifyContent: isDoctor ? 'flex-end' : 'flex-start',
-                          }}
-                        >
-                          <Box
-                            sx={{
-                              maxWidth: '80%',
-                              bgcolor: isDoctor ? 'primary.main' : 'grey.100',
-                              color: isDoctor ? 'primary.contrastText' : 'text.primary',
-                              px: 1.5,
-                              py: 1,
-                              borderRadius: 2,
-                              boxShadow: 1,
-                            }}
-                          >
-                            <Typography
-                              variant="caption"
-                              sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}
-                              color={isDoctor ? 'primary.contrastText' : 'text.secondary'}
-                            >
-                              {isDoctor ? 'Você' : 'Simpatia'}
-                            </Typography>
-                            <ReactMarkdown components={markdownComponents}>
-                              {renderedContent}
-                            </ReactMarkdown>
-                            <Typography
-                              variant="caption"
-                              sx={{ display: 'block', textAlign: 'right', mt: 0.5 }}
-                              color={isDoctor ? 'primary.contrastText' : 'text.secondary'}
-                            >
-                              {moment(message.createdAt).format('DD/MM/YYYY HH:mm')}
-                            </Typography>
-                          </Box>
-                        </Box>
+                          message={message}
+                          renderedContent={renderedContent}
+                          isDoctor={isDoctor}
+                        />
                       );
                     })
                   )}
@@ -1350,6 +1417,9 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                     minRows={1}
                     maxRows={3}
                     fullWidth
+                    inputProps={{
+                      'data-testid': 'chat-input',
+                    }}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' && !event.shiftKey) {
                         event.preventDefault();
