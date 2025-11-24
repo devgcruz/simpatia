@@ -19,6 +19,7 @@ import { authMiddleware, isSuperAdmin } from './middleware/auth.middleware';
 import indisponibilidadeRoutes from './routes/indisponibilidade.routes';
 import pausaExcecaoRoutes from './routes/pausa-excecao.routes';
 import prescricaoRoutes from './routes/prescricao.routes';
+import medicamentoRoutes from './routes/medicamento.routes';
 import path from 'path';
 
 const app = express();
@@ -83,6 +84,7 @@ app.use('/api/pausa-excecoes', pausaExcecaoRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/prescricoes', prescricaoRoutes);
+app.use('/api/medicamentos', medicamentoRoutes);
 
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);

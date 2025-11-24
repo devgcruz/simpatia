@@ -9,7 +9,10 @@
     "create-admin": "ts-node-dev --transpile-only scripts/create-admin.ts",
     "update-admin-email": "ts-node-dev --transpile-only scripts/update-admin-email.ts",
     "test-login": "ts-node-dev --transpile-only scripts/test-login.ts",
-    "test-api-login": "ts-node-dev --transpile-only scripts/test-api-login.ts"
+    "test-api-login": "ts-node-dev --transpile-only scripts/test-api-login.ts",
+    "import-medicamentos": "ts-node-dev --transpile-only scripts/import-medicamentos.ts",
+    "fix-medicamentos-encoding": "ts-node-dev --transpile-only scripts/fix-medicamentos-encoding.ts",
+    "reimport-medicamentos": "ts-node-dev --transpile-only scripts/reimport-medicamentos-correct-encoding.ts"
   },
   "keywords": [],
   "author": "",

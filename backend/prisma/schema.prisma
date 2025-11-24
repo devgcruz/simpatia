@@ -66,13 +66,13 @@ model Doutor {
   senha         String
   especialidade String?
 
-  role Role @default(DOUTOR)
+  role  Role    @default(DOUTOR)
   ativo Boolean @default(true)
 
   // --- Dados Profissionais ---
-  crm           String? // Número do CRM (Conselho Regional de Medicina)
-  crmUf         String? // UF do CRM (ex: "SP", "RJ")
-  rqe           String? // RQE (Registro de Qualificação de Especialista)
+  crm   String? // Número do CRM (Conselho Regional de Medicina)
+  crmUf String? // UF do CRM (ex: "SP", "RJ")
+  rqe   String? // RQE (Registro de Qualificação de Especialista)
 
   // --- Horário de Almoço do Doutor ---
   pausaInicio String? // "12:00" - Início do intervalo de almoço (opcional)
@@ -87,13 +87,13 @@ model Doutor {
   clinicaId Int?
   clinica   Clinica? @relation(fields: [clinicaId], references: [id], onDelete: Cascade)
 
-  horarios       Horario[]
-  agendamentos   Agendamento[]
+  horarios           Horario[]
+  agendamentos       Agendamento[]
   indisponibilidades Indisponibilidade[]
-  pausaExcecoes  PausaExcecao[]
-  servicos       Servico[]
-  pacientes      Paciente[]
-  prescricoes    Prescricao[]
+  pausaExcecoes      PausaExcecao[]
+  servicos           Servico[]
+  pacientes          Paciente[]
+  prescricoes        Prescricao[]
 }
 
 // Horários que o doutor ATENDE (para a IA saber)
@@ -110,37 +110,37 @@ model Horario {
 }
 
 model Paciente {
-  id           Int           @id @default(autoincrement())
-  nome         String
-  telefone     String
-  ativo        Boolean       @default(true)
-  
+  id       Int     @id @default(autoincrement())
+  nome     String
+  telefone String
+  ativo    Boolean @default(true)
+
   // Dados de Identificação (Essenciais)
-  cpf          String?       // CPF como identificador único
-  dataNascimento DateTime?   // Data de nascimento
-  genero       String?       // Gênero/Sexo Biológico (ex: "Masculino", "Feminino", "Outro")
-  
+  cpf            String? // CPF como identificador único
+  dataNascimento DateTime? // Data de nascimento
+  genero         String? // Gênero/Sexo Biológico (ex: "Masculino", "Feminino", "Outro")
+
   // Dados de Contacto
-  email        String?       // E-mail para contato
-  cep          String?       // CEP
-  logradouro   String?       // Rua/Logradouro
-  numero       String?       // Número do endereço
-  bairro       String?       // Bairro
-  cidade       String?       // Cidade
-  estado       String?       // Estado (UF)
-  
+  email      String? // E-mail para contato
+  cep        String? // CEP
+  logradouro String? // Rua/Logradouro
+  numero     String? // Número do endereço
+  bairro     String? // Bairro
+  cidade     String? // Cidade
+  estado     String? // Estado (UF)
+
   // Dados Clínicos Básicos
-  convenio     String?       // Convênio/Plano de Saúde
-  numeroCarteirinha String?  // Número da carteirinha do convênio
-  alergias     String?       @db.Text // Alergias (campo de texto)
-  observacoes  String?       @db.Text // Histórico/Observações (campo de texto livre)
-  pesoKg       Float?
-  alturaCm     Float?
-  
+  convenio          String? // Convênio/Plano de Saúde
+  numeroCarteirinha String? // Número da carteirinha do convênio
+  alergias          String? @db.Text // Alergias (campo de texto)
+  observacoes       String? @db.Text // Histórico/Observações (campo de texto livre)
+  pesoKg            Float?
+  alturaCm          Float?
+
   agendamentos Agendamento[]
   historicos   HistoricoPaciente[]
   prescricoes  Prescricao[]
-  chatStatus   ChatStatus @default(BOT)
+  chatStatus   ChatStatus          @default(BOT)
   chatMessages ChatMessage[]
 
   clinicaId Int?
@@ -163,40 +163,40 @@ model Servico {
 
   clinicaId Int
   clinica   Clinica @relation(fields: [clinicaId], references: [id], onDelete: Cascade)
-  
+
   doutorId Int?
   doutor   Doutor? @relation(fields: [doutorId], references: [id], onDelete: Cascade)
 }
 
 model Agendamento {
-  id             Int      @id @default(autoincrement())
-  dataHora       DateTime
-  pacienteId     Int
-  paciente       Paciente @relation(fields: [pacienteId], references: [id], onDelete: Cascade)
-  doutorId       Int
-  doutor         Doutor   @relation(fields: [doutorId], references: [id])
-  servicoId      Int
-  servico        Servico  @relation(fields: [servicoId], references: [id])
-  status         String   // "confirmado", "pendente_ia", "cancelado"
-  ativo          Boolean  @default(true)
-  relatoPaciente String?  @db.Text // O que o paciente disse para realizar o agendamento
-  entendimentoIA String?  @db.Text // Resumo/análise da IA sobre o que o paciente relatou
-  historicos     HistoricoPaciente[]
-  prescricoes    Prescricao[]
+  id              Int                     @id @default(autoincrement())
+  dataHora        DateTime
+  pacienteId      Int
+  paciente        Paciente                @relation(fields: [pacienteId], references: [id], onDelete: Cascade)
+  doutorId        Int
+  doutor          Doutor                  @relation(fields: [doutorId], references: [id])
+  servicoId       Int
+  servico         Servico                 @relation(fields: [servicoId], references: [id])
+  status          String // "confirmado", "pendente_ia", "cancelado"
+  ativo           Boolean                 @default(true)
+  relatoPaciente  String?                 @db.Text // O que o paciente disse para realizar o agendamento
+  entendimentoIA  String?                 @db.Text // Resumo/análise da IA sobre o que o paciente relatou
+  historicos      HistoricoPaciente[]
+  prescricoes     Prescricao[]
   prontuarioChats ProntuarioChatMessage[]
 }
 
 model HistoricoPaciente {
-  id            Int          @id @default(autoincrement())
-  protocolo     String       @unique @default(uuid()) // Protocolo único do atendimento
-  descricao     String       @db.Text
-  realizadoEm   DateTime     @default(now())
-  duracaoMinutos Int?        // Duração do atendimento em minutos (quando iniciado e finalizado)
-  pacienteId    Int
-  agendamentoId Int?
-  createdAt     DateTime     @default(now())
+  id             Int      @id @default(autoincrement())
+  protocolo      String   @unique @default(uuid()) // Protocolo único do atendimento
+  descricao      String   @db.Text
+  realizadoEm    DateTime @default(now())
+  duracaoMinutos Int? // Duração do atendimento em minutos (quando iniciado e finalizado)
+  pacienteId     Int
+  agendamentoId  Int?
+  createdAt      DateTime @default(now())
 
-  paciente   Paciente    @relation(fields: [pacienteId], references: [id], onDelete: Cascade)
+  paciente    Paciente     @relation(fields: [pacienteId], references: [id], onDelete: Cascade)
   agendamento Agendamento? @relation(fields: [agendamentoId], references: [id], onDelete: SetNull)
 
   @@index([pacienteId, realizadoEm])
@@ -204,13 +204,13 @@ model HistoricoPaciente {
 }
 
 model Prescricao {
-  id            Int          @id @default(autoincrement())
-  protocolo     String       @unique @default(uuid()) // Protocolo único da prescrição
-  conteudo      String       @db.Text // Texto da prescrição
+  id            Int      @id @default(autoincrement())
+  protocolo     String   @unique @default(uuid()) // Protocolo único da prescrição
+  conteudo      String   @db.Text // Texto da prescrição
   pacienteId    Int
   doutorId      Int
   agendamentoId Int?
-  createdAt     DateTime     @default(now())
+  createdAt     DateTime @default(now())
 
   paciente    Paciente     @relation(fields: [pacienteId], references: [id], onDelete: Cascade)
   doutor      Doutor       @relation(fields: [doutorId], references: [id], onDelete: Cascade)
@@ -234,12 +234,12 @@ model ChatMessage {
 }
 
 model ProntuarioChatMessage {
-  id            Int        @id @default(autoincrement())
+  id            Int         @id @default(autoincrement())
   agendamentoId Int
   agendamento   Agendamento @relation(fields: [agendamentoId], references: [id], onDelete: Cascade)
   sender        SenderType
-  content       String     @db.Text
-  createdAt     DateTime   @default(now())
+  content       String      @db.Text
+  createdAt     DateTime    @default(now())
 
   @@index([agendamentoId, createdAt])
 }
@@ -260,12 +260,12 @@ model Indisponibilidade {
 
 // Exceções de horário de pausa para um dia específico (clínica ou doutor)
 model PausaExcecao {
-  id         Int      @id @default(autoincrement())
-  data       DateTime @db.Date // Apenas a data (sem hora)
-  pausaInicio String  // "12:00"
-  pausaFim    String  // "13:00"
-  clinicaId   Int?    // Se null, é exceção de doutor
-  doutorId    Int?    // Se null, é exceção de clínica
+  id          Int      @id @default(autoincrement())
+  data        DateTime @db.Date // Apenas a data (sem hora)
+  pausaInicio String // "12:00"
+  pausaFim    String // "13:00"
+  clinicaId   Int? // Se null, é exceção de doutor
+  doutorId    Int? // Se null, é exceção de clínica
   clinica     Clinica? @relation(fields: [clinicaId], references: [id], onDelete: Cascade)
   doutor      Doutor?  @relation(fields: [doutorId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
@@ -274,4 +274,25 @@ model PausaExcecao {
   @@unique([data, clinicaId, doutorId, ativo])
   @@index([clinicaId, data])
   @@index([doutorId, data])
+}
+
+model Medicamento {
+  id                       Int       @id @default(autoincrement())
+  tipoProduto              String? // TIPO_PRODUTO
+  nomeProduto              String // NOME_PRODUTO
+  dataFinalizacaoProcesso  DateTime? // DATA_FINALIZACAO_PROCESSO
+  categoriaRegulatoria     String? // CATEGORIA_REGULATORIA
+  numeroRegistroProduto    String? // NUMERO_REGISTRO_PRODUTO
+  dataVencimentoRegistro   DateTime? // DATA_VENCIMENTO_REGISTRO
+  numeroProcesso           String? // NUMERO_PROCESSO
+  classeTerapeutica        String? // CLASSE_TERAPEUTICA
+  empresaDetentoraRegistro String? // EMPRESA_DETENTORA_REGISTRO
+  situacaoRegistro         String? // SITUACAO_REGISTRO
+  principioAtivo           String?   @db.Text // PRINCIPIO_ATIVO
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  @@index([nomeProduto])
+  @@index([numeroRegistroProduto])
+  @@index([classeTerapeutica])
 }

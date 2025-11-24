@@ -175,3 +175,20 @@ export interface IClinica {
   pausaInicio?: string;
   pausaFim?: string;
 }
+
+export interface IMedicamento {
+  id: number;
+  tipoProduto?: string | null;
+  nomeProduto: string;
+  dataFinalizacaoProcesso?: string | null;
+  categoriaRegulatoria?: string | null;
+  numeroRegistroProduto?: string | null;
+  dataVencimentoRegistro?: string | null;
+  numeroProcesso?: string | null;
+  classeTerapeutica?: string | null;
+  empresaDetentoraRegistro?: string | null;
+  situacaoRegistro?: string | null;
+  principioAtivo?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
