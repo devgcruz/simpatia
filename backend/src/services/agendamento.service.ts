@@ -24,6 +24,7 @@ interface IUpdateAgendamento {
     servicoId?: number;
     isEncaixe?: boolean;
     confirmadoPorMedico?: boolean; // Permite médico confirmar encaixe
+    motivoCancelamento?: string; // Motivo do cancelamento (obrigatório ao cancelar)
 }
 
 // NOVA INTERFACE PARA A IA
@@ -709,13 +710,21 @@ class AgendamentoService {
             });
         }
 
-        const updateData: any = { ...data };
+        // Criar objeto de atualização apenas com campos válidos
+        const updateData: any = {};
         let novaDataHora: Date | null = null;
         
-        if (data.dataHora) {
+        // Copiar apenas campos válidos para atualização
+        if (data.dataHora !== undefined) {
             novaDataHora = typeof data.dataHora === 'string' ? new Date(data.dataHora) : data.dataHora;
             updateData.dataHora = novaDataHora;
         }
+        if (data.status !== undefined) updateData.status = data.status;
+        if (data.pacienteId !== undefined) updateData.pacienteId = data.pacienteId;
+        if (data.doutorId !== undefined) updateData.doutorId = data.doutorId;
+        if (data.servicoId !== undefined) updateData.servicoId = data.servicoId;
+        if (data.isEncaixe !== undefined) updateData.isEncaixe = data.isEncaixe;
+        if (data.motivoCancelamento !== undefined) updateData.motivoCancelamento = data.motivoCancelamento;
 
         // Se dataHora ou doutorId ou servicoId foram alterados, validar horário de almoço
         if (novaDataHora || data.doutorId || data.servicoId) {
@@ -783,6 +792,36 @@ class AgendamentoService {
                 throw new Error("Acesso negado. Você só pode confirmar seus próprios agendamentos.");
             }
             updateData.confirmadoPorMedico = data.confirmadoPorMedico;
+        }
+
+        // Validações para cancelamento
+        const estaCancelando = data.status === 'cancelado' && agendamentoExistente.status !== 'cancelado';
+        if (estaCancelando) {
+            // 1. Exigir motivo do cancelamento
+            if (!data.motivoCancelamento || !data.motivoCancelamento.trim()) {
+                throw new Error("O motivo do cancelamento é obrigatório.");
+            }
+
+            // 2. Verificar se o agendamento está no futuro (exceto para administradores)
+            const agora = new Date();
+            const dataHoraAgendamento = new Date(agendamentoExistente.dataHora);
+            const isAdmin = user.role === 'SUPER_ADMIN' || user.role === 'CLINICA_ADMIN';
+            
+            if (!isAdmin && dataHoraAgendamento < agora) {
+                throw new Error("Não é possível cancelar agendamentos retroativos. Apenas administradores podem cancelar agendamentos passados.");
+            }
+
+            // 3. Registrar motivo, responsável e data do cancelamento
+            updateData.motivoCancelamento = data.motivoCancelamento.trim();
+            updateData.canceladoPor = user.id;
+            updateData.canceladoEm = new Date();
+        }
+
+        // Se não está cancelando mas está mudando de cancelado para outro status, limpar campos de cancelamento
+        if (agendamentoExistente.status === 'cancelado' && data.status && data.status !== 'cancelado') {
+            updateData.motivoCancelamento = undefined;
+            updateData.canceladoPor = undefined;
+            updateData.canceladoEm = undefined;
         }
 
         const agendamentoAtualizado = await prisma.agendamento.update({

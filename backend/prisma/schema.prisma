@@ -186,6 +186,9 @@ model Agendamento {
   entendimentoIA     String?                 @db.Text // Resumo/análise da IA sobre o que o paciente relatou
   isEncaixe          Boolean                 @default(false) // Indica se é um agendamento em horário parcialmente ocupado
   confirmadoPorMedico Boolean                @default(false) // Indica se o médico confirmou o encaixe (só relevante quando isEncaixe=true)
+  motivoCancelamento String?                 @db.Text // Motivo do cancelamento
+  canceladoPor       Int? // ID do usuário que cancelou o agendamento
+  canceladoEm        DateTime? // Data e hora do cancelamento
   historicos         HistoricoPaciente[]
   prescricoes        Prescricao[]
   prontuarioChats    ProntuarioChatMessage[]

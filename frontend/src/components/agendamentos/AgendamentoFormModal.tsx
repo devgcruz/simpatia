@@ -85,6 +85,9 @@ export const AgendamentoFormModal: React.FC<Props> = ({
   const [form, setForm] = useState<FormState>(initialState);
   const [loading, setLoading] = useState(false);
   const [openConfirmModal, setOpenConfirmModal] = useState(false);
+  const [openCancelModal, setOpenCancelModal] = useState(false);
+  const [motivoCancelamento, setMotivoCancelamento] = useState('');
+  const [statusAnterior, setStatusAnterior] = useState<string>('');
 
   const [doutores, setDoutores] = useState<IDoutor[]>([]);
   const [pacientes, setPacientes] = useState<IPaciente[]>([]);
@@ -140,6 +143,9 @@ export const AgendamentoFormModal: React.FC<Props> = ({
     setHistoricoSelecionado(null);
     setDescricaoEditando('');
     setOpenHistoricoModal(false);
+    setOpenCancelModal(false);
+    setMotivoCancelamento('');
+    setStatusAnterior('');
 
     if (agendamento) {
       setForm({
@@ -220,6 +226,39 @@ export const AgendamentoFormModal: React.FC<Props> = ({
   const handleSelectChange = (event: SelectChangeEvent<string>) => {
     const { name, value } = event.target;
     if (!name) return;
+    
+    // Se está tentando cancelar, interceptar e mostrar modal
+    if (name === 'status' && value === 'cancelado' && form.status !== 'cancelado') {
+      // Verificar se é admin
+      const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'CLINICA_ADMIN';
+      
+      // Verificar se o agendamento está no futuro (exceto para admin)
+      if (agendamento) {
+        const agora = moment();
+        const dataHoraAgendamento = moment(agendamento.dataHora);
+        const isFuturo = dataHoraAgendamento.isAfter(agora);
+        
+        if (!isAdmin && !isFuturo) {
+          toast.error('Não é possível cancelar agendamentos retroativos. Apenas administradores podem cancelar agendamentos passados.');
+          return;
+        }
+      } else if (!isAdmin && form.dataHora) {
+        const agora = moment();
+        const dataHoraAgendamento = moment(form.dataHora);
+        const isFuturo = dataHoraAgendamento.isAfter(agora);
+        
+        if (!isFuturo) {
+          toast.error('Não é possível cancelar agendamentos retroativos. Apenas administradores podem cancelar agendamentos passados.');
+          return;
+        }
+      }
+      
+      // Salvar status anterior e abrir modal de cancelamento
+      setStatusAnterior(form.status);
+      setOpenCancelModal(true);
+      return;
+    }
+    
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
@@ -481,6 +520,45 @@ export const AgendamentoFormModal: React.FC<Props> = ({
     onSubmit(dataToSend);
   };
 
+  const handleConfirmCancelamento = () => {
+    if (!motivoCancelamento.trim()) {
+      toast.error('Por favor, informe o motivo do cancelamento.');
+      return;
+    }
+
+    setOpenCancelModal(false);
+    
+    // Atualizar o form com status cancelado e motivo
+    setForm((prev) => ({ ...prev, status: 'cancelado' }));
+    
+    // Para SECRETARIA, garantir que o doutorId seja do doutor selecionado
+    const doutorIdFinal = user?.role === 'SECRETARIA' && doutorSelecionado
+      ? doutorSelecionado.id
+      : Number(form.doutorId || user?.id || 0);
+    
+    const dataToSend: AgendamentoCreateInput = {
+      ...form,
+      status: 'cancelado',
+      motivoCancelamento: motivoCancelamento.trim(),
+      pacienteId: Number(form.pacienteId),
+      doutorId: doutorIdFinal,
+      servicoId: Number(form.servicoId),
+      dataHora: new Date(form.dataHora).toISOString(),
+      isEncaixe: form.isEncaixe,
+    };
+    onSubmit(dataToSend);
+    
+    // Limpar motivo após enviar
+    setMotivoCancelamento('');
+  };
+
+  const handleCancelCancelamento = () => {
+    setOpenCancelModal(false);
+    setMotivoCancelamento('');
+    // Restaurar status anterior
+    setForm((prev) => ({ ...prev, status: statusAnterior }));
+  };
+
   const handleTabChange = (_event: React.SyntheticEvent, value: 'dados' | 'historico') => {
     setActiveTab(value);
   };
@@ -707,6 +785,24 @@ export const AgendamentoFormModal: React.FC<Props> = ({
                         {agendamento.confirmadoPorMedico || agendamento.status === 'confirmado'
                           ? "✓ Encaixe confirmado pelo médico"
                           : "⚠ Este é um agendamento de encaixe pendente de confirmação do médico"}
+                      </Alert>
+                    </Grid>
+                  )}
+
+                  {agendamento && agendamento.status === 'cancelado' && agendamento.motivoCancelamento && (
+                    <Grid item xs={12}>
+                      <Alert severity="error" sx={{ mt: 1 }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                          Agendamento Cancelado
+                        </Typography>
+                        <Typography variant="body2">
+                          <strong>Motivo:</strong> {agendamento.motivoCancelamento}
+                        </Typography>
+                        {agendamento.canceladoEm && (
+                          <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
+                            Cancelado em: {moment(agendamento.canceladoEm).format('DD/MM/YYYY [às] HH:mm')}
+                          </Typography>
+                        )}
                       </Alert>
                     </Grid>
                   )}
@@ -1126,6 +1222,61 @@ export const AgendamentoFormModal: React.FC<Props> = ({
             <Button onClick={() => setOpenConfirmModal(false)}>Cancelar</Button>
             <Button onClick={handleConfirmSubmit} variant="contained" color="primary">
               Confirmar
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Modal de cancelamento */}
+        <Dialog
+          open={openCancelModal}
+          onClose={handleCancelCancelamento}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <WarningIcon color="error" />
+              <Typography variant="h6">Cancelar Agendamento</Typography>
+            </Box>
+          </DialogTitle>
+          <DialogContent>
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Você está prestes a cancelar este agendamento. Esta ação requer um motivo.
+            </Alert>
+            {agendamento && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  <strong>Paciente:</strong> {agendamento.paciente.nome}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  <strong>Data/Hora:</strong> {moment(agendamento.dataHora).format('DD/MM/YYYY [às] HH:mm')}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  <strong>Serviço:</strong> {agendamento.servico.nome}
+                </Typography>
+              </Box>
+            )}
+            <TextField
+              label="Motivo do Cancelamento"
+              placeholder="Informe o motivo do cancelamento..."
+              value={motivoCancelamento}
+              onChange={(e) => setMotivoCancelamento(e.target.value)}
+              fullWidth
+              multiline
+              minRows={4}
+              required
+              autoFocus
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCancelCancelamento}>Voltar</Button>
+            <Button 
+              onClick={handleConfirmCancelamento} 
+              variant="contained" 
+              color="error"
+              disabled={!motivoCancelamento.trim()}
+            >
+              Confirmar Cancelamento
             </Button>
           </DialogActions>
         </Dialog>

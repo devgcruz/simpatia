@@ -75,6 +75,9 @@ export interface IAgendamento {
   entendimentoIA?: string | null;
   isEncaixe?: boolean;
   confirmadoPorMedico?: boolean;
+  motivoCancelamento?: string | null;
+  canceladoPor?: number | null;
+  canceladoEm?: string | null;
   paciente: IPaciente;
   doutor: IDoutor;
   servico: IServico;

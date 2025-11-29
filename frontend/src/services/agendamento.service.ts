@@ -9,6 +9,7 @@ export type AgendamentoCreateInput = {
   doutorId: number;
   servicoId: number;
   isEncaixe?: boolean; // Permite agendar em horário parcialmente ocupado
+  motivoCancelamento?: string; // Motivo do cancelamento (obrigatório ao cancelar)
 };
 
 // Tipo para Atualizar (tudo opcional)
