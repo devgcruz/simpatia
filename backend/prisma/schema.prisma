@@ -172,21 +172,23 @@ model Servico {
 }
 
 model Agendamento {
-  id              Int                     @id @default(autoincrement())
-  dataHora        DateTime
-  pacienteId      Int
-  paciente        Paciente                @relation(fields: [pacienteId], references: [id], onDelete: Cascade)
-  doutorId        Int
-  doutor          Doutor                  @relation(fields: [doutorId], references: [id])
-  servicoId       Int
-  servico         Servico                 @relation(fields: [servicoId], references: [id])
-  status          String // "confirmado", "pendente_ia", "cancelado"
-  ativo           Boolean                 @default(true)
-  relatoPaciente  String?                 @db.Text // O que o paciente disse para realizar o agendamento
-  entendimentoIA  String?                 @db.Text // Resumo/análise da IA sobre o que o paciente relatou
-  historicos      HistoricoPaciente[]
-  prescricoes     Prescricao[]
-  prontuarioChats ProntuarioChatMessage[]
+  id                 Int                     @id @default(autoincrement())
+  dataHora           DateTime
+  pacienteId         Int
+  paciente           Paciente                @relation(fields: [pacienteId], references: [id], onDelete: Cascade)
+  doutorId           Int
+  doutor             Doutor                  @relation(fields: [doutorId], references: [id])
+  servicoId          Int
+  servico            Servico                 @relation(fields: [servicoId], references: [id])
+  status             String // "confirmado", "pendente_ia", "cancelado"
+  ativo              Boolean                 @default(true)
+  relatoPaciente     String?                 @db.Text // O que o paciente disse para realizar o agendamento
+  entendimentoIA     String?                 @db.Text // Resumo/análise da IA sobre o que o paciente relatou
+  isEncaixe          Boolean                 @default(false) // Indica se é um agendamento em horário parcialmente ocupado
+  confirmadoPorMedico Boolean                @default(false) // Indica se o médico confirmou o encaixe (só relevante quando isEncaixe=true)
+  historicos         HistoricoPaciente[]
+  prescricoes        Prescricao[]
+  prontuarioChats    ProntuarioChatMessage[]
 }
 
 model HistoricoPaciente {

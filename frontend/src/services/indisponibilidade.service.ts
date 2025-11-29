@@ -27,8 +27,9 @@ export const listarIndisponibilidadesDoDoutor = async (doutorId: number) => {
   return res.data;
 };
 
-export const criarIndisponibilidade = async (input: CreateIndisponibilidadeInput) => {
-  const res = await api.post<Indisponibilidade>('/indisponibilidades', input);
+export const criarIndisponibilidade = async (input: CreateIndisponibilidadeInput, ignorarConflitos: boolean = false) => {
+  const params = ignorarConflitos ? { ignorarConflitos: 'true' } : {};
+  const res = await api.post<Indisponibilidade>('/indisponibilidades', input, { params });
   return res.data;
 };
 
@@ -39,13 +40,38 @@ export interface UpdateIndisponibilidadeInput {
   motivo?: string;
 }
 
-export const atualizarIndisponibilidade = async (id: number, input: UpdateIndisponibilidadeInput) => {
-  const res = await api.put<Indisponibilidade>(`/indisponibilidades/${id}`, input);
+export const atualizarIndisponibilidade = async (id: number, input: UpdateIndisponibilidadeInput, ignorarConflitos: boolean = false) => {
+  const params = ignorarConflitos ? { ignorarConflitos: 'true' } : {};
+  const res = await api.put<Indisponibilidade>(`/indisponibilidades/${id}`, input, { params });
   return res.data;
 };
 
 export const excluirIndisponibilidade = async (id: number) => {
   await api.delete(`/indisponibilidades/${id}`);
 };
+
+// Interfaces para conflitos de agendamentos
+export interface AgendamentoConflitante {
+  id: number;
+  dataHora: string;
+  pacienteId: number;
+  pacienteNome: string;
+  servicoId: number;
+  servicoNome: string;
+  servicoDuracaoMin: number;
+  status: string;
+}
+
+export interface SugestaoReagendamento {
+  data: string; // YYYY-MM-DD
+  horariosDisponiveis: string[]; // Array de horários no formato HH:mm
+}
+
+export interface ConflitoIndisponibilidade {
+  message: string;
+  code: 'CONFLITO_AGENDAMENTOS';
+  agendamentosConflitantes: AgendamentoConflitante[];
+  sugestoesReagendamento: Record<string, SugestaoReagendamento[]>; // Mapa: agendamentoId -> sugestões
+}
 
 

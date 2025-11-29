@@ -8,6 +8,7 @@ export type AgendamentoCreateInput = {
   pacienteId: number;
   doutorId: number;
   servicoId: number;
+  isEncaixe?: boolean; // Permite agendar em horário parcialmente ocupado
 };
 
 // Tipo para Atualizar (tudo opcional)
@@ -45,5 +46,11 @@ export const deleteAgendamento = async (id: number) => {
 
 export const finalizeAgendamento = async (id: number, data: AgendamentoFinalizeInput) => {
   const response = await api.post<IAgendamento>(`/agendamentos/${id}/finalizar`, data);
+  return response.data;
+};
+
+// Rota: POST /api/agendamentos/:id/confirmar-encaixe
+export const confirmarEncaixe = async (id: number) => {
+  const response = await api.post<IAgendamento>(`/agendamentos/${id}/confirmar-encaixe`);
   return response.data;
 };

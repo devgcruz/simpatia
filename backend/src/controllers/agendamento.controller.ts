@@ -45,7 +45,7 @@ class AgendamentoController {
 
     async handleCreate(req: Request, res: Response) {
         try {
-            const { dataHora, status, pacienteId, doutorId, servicoId } = req.body;
+            const { dataHora, status, pacienteId, doutorId, servicoId, isEncaixe } = req.body;
 
             const user = req.user!;
 
@@ -55,6 +55,7 @@ class AgendamentoController {
                 pacienteId,
                 doutorId,
                 servicoId,
+                isEncaixe,
             }, user);
 
             return res.status(201).json(novoAgendamento);
@@ -118,6 +119,28 @@ class AgendamentoController {
             }
 
             if (error.message === "Acesso negado.") {
+                return res.status(403).json({ message: error.message });
+            }
+
+            return res.status(400).json({ message: error.message });
+        }
+    }
+
+    async handleConfirmarEncaixe(req: Request, res: Response) {
+        try {
+            const id = Number(req.params.id);
+
+            const user = req.user!;
+
+            const agendamentoConfirmado = await agendamentoService.confirmarEncaixe(id, user);
+            return res.status(200).json(agendamentoConfirmado);
+
+        } catch (error: any) {
+            if (error.message === "Agendamento não encontrado.") {
+                return res.status(404).json({ message: error.message });
+            }
+
+            if (error.message === "Acesso negado." || error.message.includes("Acesso negado")) {
                 return res.status(403).json({ message: error.message });
             }
 

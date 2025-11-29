@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "Agendamento" ADD COLUMN IF NOT EXISTS "isEncaixe" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "Agendamento" ADD COLUMN IF NOT EXISTS "confirmadoPorMedico" BOOLEAN NOT NULL DEFAULT false;
+

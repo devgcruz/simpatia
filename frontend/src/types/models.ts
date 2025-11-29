@@ -73,6 +73,8 @@ export interface IAgendamento {
   status: string;
   relatoPaciente?: string | null;
   entendimentoIA?: string | null;
+  isEncaixe?: boolean;
+  confirmadoPorMedico?: boolean;
   paciente: IPaciente;
   doutor: IDoutor;
   servico: IServico;

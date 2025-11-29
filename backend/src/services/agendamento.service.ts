@@ -13,6 +13,7 @@ interface ICreateAgendamento {
     pacienteId: number;
     doutorId: number;
     servicoId: number;
+    isEncaixe?: boolean; // Permite agendar em horário parcialmente ocupado
 }
 
 interface IUpdateAgendamento {
@@ -21,6 +22,8 @@ interface IUpdateAgendamento {
     pacienteId?: number;
     doutorId?: number;
     servicoId?: number;
+    isEncaixe?: boolean;
+    confirmadoPorMedico?: boolean; // Permite médico confirmar encaixe
 }
 
 // NOVA INTERFACE PARA A IA
@@ -33,6 +36,7 @@ interface ICreateAgendamentoIA {
     status?: string;
     relatoPaciente?: string | undefined; // O que o paciente disse para realizar o agendamento
     entendimentoIA?: string | undefined; // Resumo/análise da IA sobre o que o paciente relatou
+    isEncaixe?: boolean; // Permite agendar em horário parcialmente ocupado
 }
 
 interface AuthUser {
@@ -70,6 +74,75 @@ const agendamentoInclude = {
 };
 
 class AgendamentoService {
+
+    /**
+     * Verifica se há conflito de horário com agendamentos existentes
+     * Retorna true se há conflito, false caso contrário
+     */
+    private async verificarConflitoHorario(
+        dataHora: Date,
+        duracaoMin: number,
+        doutorId: number,
+        agendamentoIdExcluir?: number // Para permitir atualização de agendamento existente
+    ): Promise<{ temConflito: boolean; agendamentosConflitantes: any[] }> {
+        const agendamentoInicioMinutos = dataHora.getHours() * 60 + dataHora.getMinutes();
+        const agendamentoFimMinutos = agendamentoInicioMinutos + duracaoMin;
+
+        // Buscar dia do agendamento
+        const dayStart = new Date(dataHora);
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(dataHora);
+        dayEnd.setHours(23, 59, 59, 999);
+
+        // Buscar agendamentos do doutor no mesmo dia
+        const whereClause: any = {
+            doutorId: doutorId,
+            dataHora: {
+                gte: dayStart,
+                lte: dayEnd,
+            },
+            status: {
+                not: 'cancelado',
+            },
+            ativo: true,
+        };
+
+        // Excluir o próprio agendamento se estiver atualizando
+        if (agendamentoIdExcluir) {
+            whereClause.id = { not: agendamentoIdExcluir };
+        }
+
+        const agendamentos = await prisma.agendamento.findMany({
+            where: whereClause,
+            include: {
+                servico: true,
+            },
+        });
+
+        const conflitantes: any[] = [];
+
+        for (const agendamento of agendamentos) {
+            const agendamentoDataHora = new Date(agendamento.dataHora);
+            const agendamentoHora = agendamentoDataHora.getHours();
+            const agendamentoMin = agendamentoDataHora.getMinutes();
+            const agendamentoStartMin = agendamentoHora * 60 + agendamentoMin;
+            const agendamentoDuracao = agendamento.servico.duracaoMin;
+            const agendamentoEndMin = agendamentoStartMin + agendamentoDuracao;
+
+            // Verificar sobreposição
+            if (
+                agendamentoInicioMinutos < agendamentoEndMin &&
+                agendamentoFimMinutos > agendamentoStartMin
+            ) {
+                conflitantes.push(agendamento);
+            }
+        }
+
+        return {
+            temConflito: conflitantes.length > 0,
+            agendamentosConflitantes: conflitantes,
+        };
+    }
 
     /**
      * Valida se o horário do agendamento não conflita com o horário de almoço do doutor
@@ -301,13 +374,29 @@ class AgendamentoService {
             throw new Error(error.message || "Não é possível agendar neste horário.");
         }
 
+        const isEncaixe = data.isEncaixe || false;
+
+        // Verificar conflitos com agendamentos existentes
+        // Se não for encaixe, não permite conflitos
+        if (!isEncaixe) {
+            const conflito = await this.verificarConflitoHorario(dataHoraDate, servico.duracaoMin, targetDoutorId);
+            if (conflito.temConflito) {
+                throw new Error("Este horário já está ocupado por outro agendamento. Marque como 'Encaixe' se desejar agendar mesmo assim.");
+            }
+        }
+
+        // Se for encaixe, usar status específico para encaixe pendente de confirmação
+        const statusFinal = isEncaixe ? 'encaixe_pendente' : status;
+
         const novoAgendamento = await prisma.agendamento.create({
             data: {
                 dataHora: dataHoraDate,
-                status,
+                status: statusFinal,
                 pacienteId,
                 doutorId: targetDoutorId,
                 servicoId,
+                isEncaixe,
+                confirmadoPorMedico: isEncaixe ? false : undefined, // Encaixe precisa de confirmação do médico
             },
             include: agendamentoInclude,
         });
@@ -386,16 +475,34 @@ class AgendamentoService {
             throw new Error(erro);
         }
 
+        const isEncaixe = data.isEncaixe || false;
+
+        // Verificar conflitos com agendamentos existentes
+        // Se não for encaixe, não permite conflitos
+        if (!isEncaixe) {
+            const conflito = await this.verificarConflitoHorario(dataHoraDate, servico.duracaoMin, doutorId);
+            if (conflito.temConflito) {
+                const erro = "Este horário já está ocupado por outro agendamento. A IA não pode criar encaixes automaticamente.";
+                console.error(`[AgendamentoService.createParaIA] ❌ ${erro}`);
+                throw new Error(erro);
+            }
+        }
+
+        // Se for encaixe, usar status específico para encaixe pendente de confirmação
+        const statusFinal = isEncaixe ? 'encaixe_pendente' : (status || 'pendente_ia');
+
         console.log(`[AgendamentoService.createParaIA] Criando agendamento no banco de dados...`);
         const novoAgendamento = await prisma.agendamento.create({
             data: {
                 dataHora: dataHoraDate,
-                status: status || 'pendente_ia', // Status padrão para agendamentos da IA
+                status: statusFinal, // Status padrão para agendamentos da IA ou encaixe_pendente para encaixes
                 pacienteId,
                 doutorId,
                 servicoId,
                 relatoPaciente: relatoPaciente || undefined, // Salva o relato do paciente
                 entendimentoIA: entendimentoIA || undefined, // Salva o entendimento da IA
+                isEncaixe,
+                confirmadoPorMedico: isEncaixe ? false : undefined, // Encaixe precisa de confirmação do médico
             } as any, // Type assertion temporária até regenerar Prisma Client
             include: agendamentoInclude,
         });
@@ -648,6 +755,34 @@ class AgendamentoService {
             } catch (error: any) {
                 throw new Error(error.message || "Não é possível agendar neste horário.");
             }
+
+            // Verificar conflitos com agendamentos existentes
+            const isEncaixe = data.isEncaixe ?? agendamentoExistente.isEncaixe ?? false;
+            if (!isEncaixe) {
+                const conflito = await this.verificarConflitoHorario(
+                    dataHoraParaValidar,
+                    duracaoParaValidar,
+                    targetDoutorId,
+                    id // Excluir o próprio agendamento da verificação
+                );
+                if (conflito.temConflito) {
+                    throw new Error("Este horário já está ocupado por outro agendamento. Marque como 'Encaixe' se desejar agendar mesmo assim.");
+                }
+            }
+        }
+
+        // Se confirmadoPorMedico foi passado e o agendamento é encaixe
+        if (data.confirmadoPorMedico !== undefined) {
+            if (!agendamentoExistente.isEncaixe) {
+                throw new Error("Apenas agendamentos de encaixe podem ser confirmados pelo médico.");
+            }
+            if (user.role !== 'DOUTOR' && user.role !== 'SUPER_ADMIN') {
+                throw new Error("Apenas o médico pode confirmar agendamentos de encaixe.");
+            }
+            if (user.role === 'DOUTOR' && agendamentoExistente.doutorId !== user.id) {
+                throw new Error("Acesso negado. Você só pode confirmar seus próprios agendamentos.");
+            }
+            updateData.confirmadoPorMedico = data.confirmadoPorMedico;
         }
 
         const agendamentoAtualizado = await prisma.agendamento.update({
@@ -711,6 +846,53 @@ class AgendamentoService {
         });
 
         const { doutor, ...rest } = agendamentoFinalizado;
+        return {
+            ...rest,
+            doutor: {
+                id: doutor.id,
+                nome: doutor.nome,
+                email: doutor.email,
+            },
+        };
+    }
+
+    /**
+     * Confirma um agendamento de encaixe pelo médico
+     */
+    async confirmarEncaixe(id: number, user: AuthUser) {
+        const agendamento = await prisma.agendamento.findUnique({
+            where: { id },
+            include: agendamentoInclude,
+        });
+
+        if (!agendamento) {
+            throw new Error("Agendamento não encontrado.");
+        }
+
+        if (!agendamento.isEncaixe) {
+            throw new Error("Este agendamento não é um encaixe.");
+        }
+
+        // Verificar acesso - apenas o médico dono do agendamento pode confirmar
+        if (user.role === 'DOUTOR') {
+            if (agendamento.doutorId !== user.id) {
+                throw new Error("Acesso negado.");
+            }
+        } else if (user.role !== 'SUPER_ADMIN') {
+            throw new Error("Apenas o médico pode confirmar agendamentos de encaixe.");
+        }
+
+        // Quando confirma encaixe, mudar status para "confirmado"
+        const agendamentoAtualizado = await prisma.agendamento.update({
+            where: { id },
+            data: { 
+                confirmadoPorMedico: true,
+                status: 'confirmado', // Mudar status de encaixe_pendente para confirmado
+            },
+            include: agendamentoInclude,
+        });
+
+        const { doutor, ...rest } = agendamentoAtualizado;
         return {
             ...rest,
             doutor: {

@@ -750,57 +750,60 @@ export const DashboardPage: React.FC = () => {
     }
 
     // 3 e 5. Verificar se está livre e não conflita com outra consulta
-    // Buscar agendamentos do doutor no mesmo dia
-    const inicioDia = dataHora.clone().startOf('day').toDate();
-    const fimDia = dataHora.clone().endOf('day').toDate();
-    
-    try {
-      const agendamentosDoDia = await getAgendamentos({ 
-        doutorId,
-        dataInicio: inicioDia.toISOString(),
-        dataFim: fimDia.toISOString(),
-      });
+    // Se for encaixe, não precisa verificar conflitos (permite agendar em horário ocupado)
+    if (!data.isEncaixe) {
+      // Buscar agendamentos do doutor no mesmo dia
+      const inicioDia = dataHora.clone().startOf('day').toDate();
+      const fimDia = dataHora.clone().endOf('day').toDate();
       
-      // Buscar serviço para saber a duração
-      // Como não temos acesso direto ao serviço aqui, vamos verificar conflitos com todos os agendamentos
-      for (const agendamento of agendamentosDoDia) {
-        // Pular se for o mesmo agendamento (caso de edição)
-        if (selectedEvent && agendamento.id === selectedEvent.id) {
-          continue;
+      try {
+        const agendamentosDoDia = await getAgendamentos({ 
+          doutorId,
+          dataInicio: inicioDia.toISOString(),
+          dataFim: fimDia.toISOString(),
+        });
+        
+        // Buscar serviço para saber a duração
+        // Como não temos acesso direto ao serviço aqui, vamos verificar conflitos com todos os agendamentos
+        for (const agendamento of agendamentosDoDia) {
+          // Pular se for o mesmo agendamento (caso de edição)
+          if (selectedEvent && agendamento.id === selectedEvent.id) {
+            continue;
+          }
+          
+          // Pular cancelados
+          if (agendamento.status === 'cancelado') {
+            continue;
+          }
+          
+          const agendamentoInicio = moment(agendamento.dataHora).tz(BRAZIL_TZ);
+          // Usar duração real do serviço do agendamento existente
+          const duracaoAgendamento = agendamento.servico?.duracaoMin || 30; // minutos, padrão 30 se não tiver
+          const agendamentoFim = agendamentoInicio.clone().add(duracaoAgendamento, 'minutes');
+          
+          // Usar a duração do serviço já buscada anteriormente
+          const novoAgendamentoFim = dataHora.clone().add(duracaoServico, 'minutes');
+          
+          // Verificar sobreposição: se o novo agendamento começa durante o existente
+          if (dataHora.isSameOrAfter(agendamentoInicio, 'minute') && dataHora.isBefore(agendamentoFim, 'minute')) {
+            return { 
+              valido: false, 
+              mensagem: `Este horário conflita com outro agendamento às ${agendamentoInicio.format('HH:mm')}. Marque como "Encaixe" se desejar agendar mesmo assim.` 
+            };
+          }
+          
+          // Verificar sobreposição: se o agendamento existente começa durante o novo
+          if (agendamentoInicio.isSameOrAfter(dataHora, 'minute') && agendamentoInicio.isBefore(novoAgendamentoFim, 'minute')) {
+            return { 
+              valido: false, 
+              mensagem: `Este horário conflita com outro agendamento às ${agendamentoInicio.format('HH:mm')}. Marque como "Encaixe" se desejar agendar mesmo assim.` 
+            };
+          }
         }
-        
-        // Pular cancelados
-        if (agendamento.status === 'cancelado') {
-          continue;
-        }
-        
-        const agendamentoInicio = moment(agendamento.dataHora).tz(BRAZIL_TZ);
-        // Usar duração real do serviço do agendamento existente
-        const duracaoAgendamento = agendamento.servico?.duracaoMin || 30; // minutos, padrão 30 se não tiver
-        const agendamentoFim = agendamentoInicio.clone().add(duracaoAgendamento, 'minutes');
-        
-        // Usar a duração do serviço já buscada anteriormente
-        const novoAgendamentoFim = dataHora.clone().add(duracaoServico, 'minutes');
-        
-        // Verificar sobreposição: se o novo agendamento começa durante o existente
-        if (dataHora.isSameOrAfter(agendamentoInicio, 'minute') && dataHora.isBefore(agendamentoFim, 'minute')) {
-          return { 
-            valido: false, 
-            mensagem: `Este horário conflita com outro agendamento às ${agendamentoInicio.format('HH:mm')}.` 
-          };
-        }
-        
-        // Verificar sobreposição: se o agendamento existente começa durante o novo
-        if (agendamentoInicio.isSameOrAfter(dataHora, 'minute') && agendamentoInicio.isBefore(novoAgendamentoFim, 'minute')) {
-          return { 
-            valido: false, 
-            mensagem: `Este horário conflita com outro agendamento às ${agendamentoInicio.format('HH:mm')}.` 
-          };
-        }
+      } catch (err) {
+        console.error('Erro ao verificar conflitos com outros agendamentos:', err);
+        // Continuar mesmo com erro, mas logar
       }
-    } catch (err) {
-      console.error('Erro ao verificar conflitos com outros agendamentos:', err);
-      // Continuar mesmo com erro, mas logar
     }
 
     return { valido: true };

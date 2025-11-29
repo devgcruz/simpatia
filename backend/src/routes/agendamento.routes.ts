@@ -14,6 +14,8 @@ router.put('/:id', agendamentoController.handleUpdate);
 
 router.post('/:id/finalizar', agendamentoController.handleFinalize);
 
+router.post('/:id/confirmar-encaixe', agendamentoController.handleConfirmarEncaixe);
+
 router.get('/:id/prontuario-chat', prontuarioChatController.handleList);
 router.post('/:id/prontuario-chat', prontuarioChatController.handleSend);
 

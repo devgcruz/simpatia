@@ -22,18 +22,19 @@ import {
   Typography,
   Chip,
   Alert,
+  FormControlLabel,
+  Checkbox,
 } from '@mui/material';
 import { SelectChangeEvent } from '@mui/material/Select';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import InfoIcon from '@mui/icons-material/Info';
 import DescriptionIcon from '@mui/icons-material/Description';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { toast } from 'sonner';
-import { AgendamentoCreateInput } from '../../services/agendamento.service';
+import { AgendamentoCreateInput, confirmarEncaixe } from '../../services/agendamento.service';
 import { IDoutor, IPaciente, IServico, IAgendamento, IHistoricoPaciente } from '../../types/models';
 import { getDoutores } from '../../services/doutor.service';
 import { getPacientes, getPacienteHistoricos, updateHistoricoPaciente } from '../../services/paciente.service';
@@ -64,6 +65,7 @@ const initialState = {
   pacienteId: '',
   doutorId: '',
   servicoId: '',
+  isEncaixe: false,
 };
 
 type FormState = typeof initialState;
@@ -146,6 +148,7 @@ export const AgendamentoFormModal: React.FC<Props> = ({
         pacienteId: String(agendamento.paciente.id),
         doutorId: String(agendamento.doutor.id),
         servicoId: String(agendamento.servico.id),
+        isEncaixe: agendamento.isEncaixe || false,
       });
       return;
     }
@@ -224,6 +227,12 @@ export const AgendamentoFormModal: React.FC<Props> = ({
     const { name, value } = event.target;
     if (!name) return;
     setForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleCheckboxChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, checked } = event.target;
+    if (!name) return;
+    setForm((prev) => ({ ...prev, [name]: checked }));
   };
 
   const extrairPrimeiroMedicamento = (conteudo: string): string => {
@@ -435,12 +444,17 @@ export const AgendamentoFormModal: React.FC<Props> = ({
       ? doutorSelecionado.id
       : Number(form.doutorId || user?.id || 0);
     
+    // Se for encaixe novo (não edição), definir status automaticamente
+    const statusFinal = (!agendamento && form.isEncaixe) ? 'encaixe_pendente' : form.status;
+    
     const dataToSend: AgendamentoCreateInput = {
       ...form,
       pacienteId: Number(form.pacienteId),
       doutorId: doutorIdFinal,
       servicoId: Number(form.servicoId),
       dataHora: new Date(form.dataHora).toISOString(),
+      isEncaixe: form.isEncaixe,
+      status: statusFinal,
     };
     onSubmit(dataToSend);
   };
@@ -452,12 +466,17 @@ export const AgendamentoFormModal: React.FC<Props> = ({
       ? doutorSelecionado.id
       : Number(form.doutorId || user?.id || 0);
     
+    // Se for encaixe novo, definir status automaticamente
+    const statusFinal = form.isEncaixe ? 'encaixe_pendente' : form.status;
+    
     const dataToSend: AgendamentoCreateInput = {
       ...form,
       pacienteId: Number(form.pacienteId),
       doutorId: doutorIdFinal,
       servicoId: Number(form.servicoId),
       dataHora: new Date(form.dataHora).toISOString(),
+      isEncaixe: form.isEncaixe,
+      status: statusFinal,
     };
     onSubmit(dataToSend);
   };
@@ -633,14 +652,64 @@ export const AgendamentoFormModal: React.FC<Props> = ({
                         value={form.status}
                         label="Status"
                         onChange={handleSelectChange}
+                        disabled={form.isEncaixe && !agendamento} // Desabilitar se for encaixe novo (será definido automaticamente)
                       >
                         <MenuItem value="confirmado">Confirmado</MenuItem>
                         <MenuItem value="pendente_ia">Pendente (IA)</MenuItem>
+                        {form.isEncaixe && !agendamento && (
+                          <MenuItem value="encaixe_pendente">Encaixe Pendente</MenuItem>
+                        )}
                         <MenuItem value="cancelado">Cancelado</MenuItem>
                         <MenuItem value="finalizado">Finalizado</MenuItem>
                       </Select>
+                      {form.isEncaixe && !agendamento && (
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, ml: 1.75 }}>
+                          Status será automaticamente definido como "Encaixe Pendente"
+                        </Typography>
+                      )}
                     </FormControl>
                   </Grid>
+
+                  {!agendamento && (
+                    <Grid item xs={12}>
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={form.isEncaixe}
+                            onChange={handleCheckboxChange}
+                            name="isEncaixe"
+                            color="warning"
+                          />
+                        }
+                        label={
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography variant="body2">Agendar como Encaixe</Typography>
+                            <Tooltip title="Permite agendar em horário parcialmente ocupado. O médico precisará confirmar manualmente.">
+                              <InfoIcon fontSize="small" color="action" />
+                            </Tooltip>
+                          </Box>
+                        }
+                      />
+                      {form.isEncaixe && (
+                        <Alert severity="warning" sx={{ mt: 1 }}>
+                          Este agendamento será marcado como encaixe e precisará ser confirmado pelo médico.
+                        </Alert>
+                      )}
+                    </Grid>
+                  )}
+
+                  {agendamento && agendamento.isEncaixe && (
+                    <Grid item xs={12}>
+                      <Alert 
+                        severity={agendamento.confirmadoPorMedico || agendamento.status === 'confirmado' ? "success" : "warning"} 
+                        sx={{ mt: 1 }}
+                      >
+                        {agendamento.confirmadoPorMedico || agendamento.status === 'confirmado'
+                          ? "✓ Encaixe confirmado pelo médico"
+                          : "⚠ Este é um agendamento de encaixe pendente de confirmação do médico"}
+                      </Alert>
+                    </Grid>
+                  )}
 
                   {agendamento && agendamento.relatoPaciente && (
                     <Grid item xs={12}>
@@ -938,6 +1007,31 @@ export const AgendamentoFormModal: React.FC<Props> = ({
           )}
         </DialogContent>
         <DialogActions>
+          {agendamento?.isEncaixe && !agendamento?.confirmadoPorMedico && user?.role === 'DOUTOR' && (
+            <Button
+              variant="outlined"
+              color="warning"
+              onClick={async () => {
+                try {
+                  setLoading(true);
+                  await confirmarEncaixe(agendamento.id);
+                  toast.success('Encaixe confirmado com sucesso!');
+                  // Recarregar dados do agendamento ou fechar modal
+                  onClose();
+                  // Forçar atualização da lista de agendamentos
+                  window.location.reload(); // Pode ser melhorado com um callback
+                } catch (error: any) {
+                  toast.error(error?.response?.data?.message || 'Erro ao confirmar encaixe.');
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              disabled={loading}
+              sx={{ mr: 'auto' }}
+            >
+              Confirmar Encaixe
+            </Button>
+          )}
           <Button type="submit" variant="contained" disabled={loading}>
             {agendamento ? 'Atualizar' : 'Salvar'}
           </Button>

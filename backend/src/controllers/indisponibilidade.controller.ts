@@ -25,9 +25,25 @@ class IndisponibilidadeController {
   async handleCreate(req: Request, res: Response) {
     try {
       const { clinicaId } = req.user!;
-      const created = await indisponibilidadeService.create(req.body, { clinicaId: clinicaId! });
+      const ignorarConflitos = req.query.ignorarConflitos === 'true' || req.body.ignorarConflitos === true;
+      
+      const created = await indisponibilidadeService.create(
+        req.body,
+        { clinicaId: clinicaId! },
+        { ignorarConflitos }
+      );
+      
       return res.status(201).json(created);
     } catch (error: any) {
+      // Tratar erro de conflito com agendamentos
+      if (error.code === 'CONFLITO_AGENDAMENTOS') {
+        return res.status(409).json({
+          message: error.message,
+          code: error.code,
+          agendamentosConflitantes: error.agendamentosConflitantes,
+          sugestoesReagendamento: error.sugestoesReagendamento,
+        });
+      }
       return res.status(400).json({ message: error.message });
     }
   }
@@ -36,11 +52,28 @@ class IndisponibilidadeController {
     try {
       const { clinicaId } = req.user!;
       const id = Number(req.params.id);
-      const updated = await indisponibilidadeService.update(id, req.body, { clinicaId: clinicaId! });
+      const ignorarConflitos = req.query.ignorarConflitos === 'true' || req.body.ignorarConflitos === true;
+      
+      const updated = await indisponibilidadeService.update(
+        id,
+        req.body,
+        { clinicaId: clinicaId! },
+        { ignorarConflitos }
+      );
+      
       return res.status(200).json(updated);
     } catch (error: any) {
       if (error.message?.includes('não encontrada')) {
         return res.status(404).json({ message: error.message });
+      }
+      // Tratar erro de conflito com agendamentos
+      if (error.code === 'CONFLITO_AGENDAMENTOS') {
+        return res.status(409).json({
+          message: error.message,
+          code: error.code,
+          agendamentosConflitantes: error.agendamentosConflitantes,
+          sugestoesReagendamento: error.sugestoesReagendamento,
+        });
       }
       return res.status(400).json({ message: error.message });
     }

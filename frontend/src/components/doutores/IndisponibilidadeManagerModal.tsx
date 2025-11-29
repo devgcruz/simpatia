@@ -6,7 +6,8 @@ import {
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
-import { criarIndisponibilidade, atualizarIndisponibilidade, excluirIndisponibilidade, listarIndisponibilidadesDoDoutor, Indisponibilidade } from '../../services/indisponibilidade.service';
+import { criarIndisponibilidade, atualizarIndisponibilidade, excluirIndisponibilidade, listarIndisponibilidadesDoDoutor, Indisponibilidade, ConflitoIndisponibilidade } from '../../services/indisponibilidade.service';
+import { ConflitoIndisponibilidadeModal } from './ConflitoIndisponibilidadeModal';
 import { useAuth } from '../../hooks/useAuth';
 import { useDoutorSelecionado } from '../../context/DoutorSelecionadoContext';
 import { toast } from 'sonner';
@@ -56,6 +57,15 @@ export const IndisponibilidadeManagerModal: React.FC<Props> = ({ open, onClose, 
   const [loading, setLoading] = useState<boolean>(false);
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [apenasUmHorario, setApenasUmHorario] = useState<boolean>(false);
+  const [conflito, setConflito] = useState<ConflitoIndisponibilidade | null>(null);
+  const [mostrarModalConflito, setMostrarModalConflito] = useState<boolean>(false);
+  const [dadosPendentes, setDadosPendentes] = useState<{
+    doutorId: number;
+    inicio: string;
+    fim: string;
+    motivo?: string;
+    editandoId?: number | null;
+  } | null>(null);
 
   const load = async () => {
     if (!selectedDoutorId || selectedDoutorId === '') {
@@ -162,8 +172,61 @@ export const IndisponibilidadeManagerModal: React.FC<Props> = ({ open, onClose, 
       setMotivo('');
       setEditandoId(null);
       await load();
+      setDadosPendentes(null);
+      onClose(); // Fechar modal após sucesso
     } catch (err: any) {
-      toast.error(err.response?.data?.message || `Erro ao ${editandoId ? 'atualizar' : 'criar'} indisponibilidade`);
+      // Verificar se é um erro de conflito de agendamentos
+      if (err.response?.status === 409 && err.response?.data?.code === 'CONFLITO_AGENDAMENTOS') {
+        // Salvar dados da indisponibilidade que estava sendo criada
+        setDadosPendentes({
+          doutorId: selectedDoutorId as number,
+          inicio: toISOStringLocal(inicio),
+          fim: toISOStringLocal(fimFinal),
+          motivo: motivo || undefined,
+          editandoId: editandoId,
+        });
+        // Exibir modal de conflitos
+        setConflito(err.response.data);
+        setMostrarModalConflito(true);
+      } else {
+        toast.error(err.response?.data?.message || `Erro ao ${editandoId ? 'atualizar' : 'criar'} indisponibilidade`);
+      }
+    }
+  };
+
+  const criarIndisponibilidadeIgnorandoConflitos = async () => {
+    if (!dadosPendentes) return;
+
+    try {
+      if (dadosPendentes.editandoId) {
+        await atualizarIndisponibilidade(dadosPendentes.editandoId, {
+          doutorId: dadosPendentes.doutorId,
+          inicio: dadosPendentes.inicio,
+          fim: dadosPendentes.fim,
+          motivo: dadosPendentes.motivo,
+        }, true); // ignorarConflitos = true
+        toast.success('Indisponibilidade atualizada (conflitos ignorados)');
+      } else {
+        await criarIndisponibilidade({
+          doutorId: dadosPendentes.doutorId,
+          inicio: dadosPendentes.inicio,
+          fim: dadosPendentes.fim,
+          motivo: dadosPendentes.motivo,
+        }, true); // ignorarConflitos = true
+        toast.success('Indisponibilidade criada (conflitos ignorados)');
+      }
+      
+      setInicio('');
+      setFim('');
+      setMotivo('');
+      setEditandoId(null);
+      setDadosPendentes(null);
+      await load();
+      setMostrarModalConflito(false);
+      setConflito(null);
+      onClose();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Erro ao criar indisponibilidade');
     }
   };
 
@@ -320,6 +383,58 @@ export const IndisponibilidadeManagerModal: React.FC<Props> = ({ open, onClose, 
       <DialogActions>
         <Button onClick={onClose}>Fechar</Button>
       </DialogActions>
+
+      <ConflitoIndisponibilidadeModal
+        open={mostrarModalConflito}
+        onClose={() => {
+          setMostrarModalConflito(false);
+          setConflito(null);
+          setDadosPendentes(null);
+        }}
+        conflito={conflito}
+        onReagendamentoConcluido={async () => {
+          // Após reagendamento, tentar criar a indisponibilidade novamente
+          if (dadosPendentes) {
+            try {
+              if (dadosPendentes.editandoId) {
+                await atualizarIndisponibilidade(dadosPendentes.editandoId, {
+                  doutorId: dadosPendentes.doutorId,
+                  inicio: dadosPendentes.inicio,
+                  fim: dadosPendentes.fim,
+                  motivo: dadosPendentes.motivo,
+                });
+                toast.success('Indisponibilidade atualizada com sucesso!');
+              } else {
+                await criarIndisponibilidade({
+                  doutorId: dadosPendentes.doutorId,
+                  inicio: dadosPendentes.inicio,
+                  fim: dadosPendentes.fim,
+                  motivo: dadosPendentes.motivo,
+                });
+                toast.success('Indisponibilidade criada com sucesso!');
+              }
+              
+              setInicio('');
+              setFim('');
+              setMotivo('');
+              setEditandoId(null);
+              setDadosPendentes(null);
+              await load();
+              setMostrarModalConflito(false);
+              setConflito(null);
+              onClose();
+            } catch (err: any) {
+              // Se ainda houver conflitos após reagendar, mostrar novamente
+              if (err.response?.status === 409 && err.response?.data?.code === 'CONFLITO_AGENDAMENTOS') {
+                setConflito(err.response.data);
+              } else {
+                toast.error(err.response?.data?.message || 'Erro ao criar indisponibilidade');
+              }
+            }
+          }
+        }}
+        onIgnorarConflitos={criarIndisponibilidadeIgnorandoConflitos}
+      />
     </Dialog>
   );
 };
