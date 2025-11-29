@@ -52,19 +52,26 @@ export const DoutoresPage: React.FC = () => {
     setIsModalOpen(false);
   };
 
-  const handleSubmitForm = async (data: DoutorCreateInput | DoutorUpdateInput) => {
+  const handleSubmitForm = async (data: DoutorCreateInput | DoutorUpdateInput): Promise<IDoutor | void> => {
     try {
+      let doutorSalvo: IDoutor;
+      
       if (editingDoutor) {
         await updateDoutor(editingDoutor.id, data as DoutorUpdateInput);
         toast.success('Doutor atualizado com sucesso!');
+        doutorSalvo = editingDoutor; // Para edição, retornar o doutor existente
       } else {
-        await createDoutor(data as DoutorCreateInput);
+        doutorSalvo = await createDoutor(data as DoutorCreateInput);
         toast.success('Doutor criado com sucesso!');
       }
+      
       await fetchDoutores();
       handleCloseModal();
+      
+      return doutorSalvo;
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Erro ao salvar doutor');
+      throw err; // Re-throw para que o modal possa tratar
     }
   };
 

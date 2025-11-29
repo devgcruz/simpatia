@@ -1,4 +1,8 @@
 import { prisma } from '../lib/prisma';
+import moment from 'moment-timezone';
+import { BRAZIL_TZ, parseBrazilDate, BrazilMoment } from '../utils/timezone';
+
+const MINUTES_IN_DAY = 24 * 60;
 
 class DisponibilidadeService {
 
@@ -56,9 +60,10 @@ class DisponibilidadeService {
             throw new Error("Serviço ou Doutor não encontrado ou não pertence à esta clínica.");
         }
 
-        // Converter string de data para Date
-        const dataObj = new Date(data);
-        const diaSemana = dataObj.getDay(); // 0 = Domingo, 1 = Segunda, etc.
+        const dataMoment = parseBrazilDate(data);
+        const diaSemana = dataMoment.day(); // 0 = Domingo, 1 = Segunda, etc.
+        const dayStart = dataMoment.clone().startOf('day');
+        const dayEnd = dayStart.clone().endOf('day');
 
         const duracaoMin = servico.duracaoMin;
 
@@ -82,11 +87,8 @@ class DisponibilidadeService {
         const pausaFimMin = horario.pausaFim ? this.timeToMinutes(horario.pausaFim) : null;
 
         // Buscar agendamentos do doutor nesse dia
-        const inicioDia = new Date(dataObj);
-        inicioDia.setHours(0, 0, 0, 0);
-        
-        const fimDia = new Date(dataObj);
-        fimDia.setHours(23, 59, 59, 999);
+        const inicioDia = dayStart.toDate();
+        const fimDia = dayEnd.toDate();
 
         const agendamentos = await prisma.agendamento.findMany({
             where: {
@@ -105,6 +107,8 @@ class DisponibilidadeService {
                 servico: true,
             },
         });
+
+        const bloqueiosIndisponibilidade = await this.getIndisponibilidadeBloqueios(doutorId, inicioDia, fimDia, dayStart);
 
         // Gerar lista de slots possíveis
         const slots: string[] = [];
@@ -142,6 +146,10 @@ class DisponibilidadeService {
                     disponivel = false;
                     break;
                 }
+            }
+
+            if (disponivel && this.isSlotBlocked(currentMin, bloqueiosIndisponibilidade)) {
+                disponivel = false;
             }
 
             if (disponivel) {
@@ -211,22 +219,11 @@ class DisponibilidadeService {
             throw new Error("Serviço ou Doutor não encontrado ou não pertence à esta clínica.");
         }
 
-        // Parse manual da data para evitar problemas de fuso horário
-        // A data vem no formato AAAA-MM-DD
-        const partes = data.split('-');
-        if (partes.length !== 3) {
-          console.error(`[DisponibilidadeService] Data inválida: ${data}`);
-          throw new Error('Data inválida. Use o formato AAAA-MM-DD.');
-        }
-        const ano = Number(partes[0]);
-        const mes = Number(partes[1]) - 1; // getMonth() retorna 0-11
-        const dia = Number(partes[2]);
-        
-        // Cria data em hora local (meio-dia para evitar problemas de fuso)
-        const dataObj = new Date(ano, mes, dia, 12, 0, 0);
-        const diaSemana = dataObj.getDay();
-        
-        console.log(`[DisponibilidadeService] Data processada: entrada="${data}", parseada como ${ano}/${mes + 1}/${dia}, dia da semana: ${diaSemana} (0=Domingo, 1=Segunda, ..., 5=Sexta, 6=Sábado)`);
+        const dataMoment = parseBrazilDate(data);
+        const diaSemana = dataMoment.day();
+        const dayStart = dataMoment.clone().startOf('day');
+        const dayEnd = dayStart.clone().endOf('day');
+        console.log(`[DisponibilidadeService] Data processada: entrada="${data}", interpretada como ${dayStart.format('DD/MM/YYYY')} (dia da semana: ${diaSemana})`);
 
         const duracaoMin = servico.duracaoMin;
         console.log(`[DisponibilidadeService] Duração do serviço: ${duracaoMin} minutos`);
@@ -261,11 +258,8 @@ class DisponibilidadeService {
             pausaFimMin = horario.pausaFim ? this.timeToMinutes(horario.pausaFim) : null;
         }
 
-        const inicioDia = new Date(dataObj);
-        inicioDia.setHours(0, 0, 0, 0);
-
-        const fimDia = new Date(dataObj);
-        fimDia.setHours(23, 59, 59, 999);
+        const inicioDia = dayStart.toDate();
+        const fimDia = dayEnd.toDate();
 
         const agendamentos = await prisma.agendamento.findMany({
             where: {
@@ -285,6 +279,8 @@ class DisponibilidadeService {
         });
 
         console.log(`[DisponibilidadeService] Agendamentos encontrados para o dia: ${agendamentos.length}`);
+        const bloqueiosIndisponibilidade = await this.getIndisponibilidadeBloqueios(doutorId, inicioDia, fimDia, dayStart);
+        console.log(`[DisponibilidadeService] Indisponibilidades encontradas para o dia: ${bloqueiosIndisponibilidade.length}`);
         if (agendamentos.length > 0) {
             console.log(`[DisponibilidadeService] Agendamentos:`, agendamentos.map(a => ({
                 hora: new Date(a.dataHora).toLocaleTimeString('pt-BR'),
@@ -335,6 +331,10 @@ class DisponibilidadeService {
                 }
             }
 
+            if (disponivel && this.isSlotBlocked(currentMin, bloqueiosIndisponibilidade)) {
+                disponivel = false;
+            }
+
             if (disponivel) {
                 slots.push(slotTime);
             }
@@ -354,33 +354,20 @@ class DisponibilidadeService {
             return (hA * 60 + mA) - (hB * 60 + mB);
         });
 
-        // FILTRAR HORÁRIOS QUE JÁ PASSARAM (especialmente se a data é hoje)
-        const agora = new Date();
-        const hoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
-        const dataVerificacao = new Date(ano, mes, dia);
-        
-        // Se estamos verificando para hoje, remover horários que já passaram
+        const agora = moment().tz(BRAZIL_TZ);
         const slotsFuturos = slots.filter((slot) => {
             const [horaStr, minutoStr] = slot.split(':');
             const horaSlot = parseInt(horaStr || '0', 10);
             const minutoSlot = parseInt(minutoStr || '0', 10);
-            
-            // Se a data verificada é hoje
-            if (dataVerificacao.getTime() === hoje.getTime()) {
-                const horaAtual = agora.getHours();
-                const minutoAtual = agora.getMinutes();
-                const minutosAtuais = horaAtual * 60 + minutoAtual;
-                const minutosSlot = horaSlot * 60 + minutoSlot;
-                
-                // Adiciona um buffer de 30 minutos para dar tempo de agendar
-                const bufferMinutos = 30;
-                const minutosLimite = minutosAtuais + bufferMinutos;
-                
-                if (minutosSlot < minutosLimite) {
-                    console.log(`[DisponibilidadeService] ⏰ Filtrando horário no passado: ${slot} (hora atual: ${agora.toLocaleTimeString('pt-BR')})`);
+            const minutosSlot = horaSlot * 60 + minutoSlot;
+
+            if (dayStart.isSame(agora, 'day')) {
+                const minutosAtuais = agora.hours() * 60 + agora.minutes();
+                if (minutosSlot < minutosAtuais + 30) {
                     return false;
                 }
             }
+
             return true;
         });
 
@@ -400,6 +387,55 @@ class DisponibilidadeService {
         }
 
         return slotsFuturos;
+    }
+    
+    private async getIndisponibilidadeBloqueios(
+        doutorId: number,
+        inicioDia: Date,
+        fimDia: Date,
+        dayStart: BrazilMoment
+    ): Promise<Array<{ start: number; end: number }>> {
+        const indisponibilidades = await prisma.indisponibilidade.findMany({
+            where: {
+                doutorId,
+                ativo: true,
+                inicio: { lte: fimDia },
+                fim: { gte: inicioDia },
+            },
+            select: {
+                inicio: true,
+                fim: true,
+            },
+        });
+
+        const dayEnd = dayStart.clone().endOf('day');
+
+        return indisponibilidades.reduce<Array<{ start: number; end: number }>>((acc, indisponibilidade) => {
+            const inicio = moment(indisponibilidade.inicio).tz(BRAZIL_TZ);
+            const fim = moment(indisponibilidade.fim).tz(BRAZIL_TZ);
+
+            const intervaloInicio = moment.max(inicio, dayStart);
+            const intervaloFim = moment.min(fim, dayEnd);
+
+            if (!intervaloFim.isAfter(intervaloInicio)) {
+                return acc;
+            }
+
+            const startMinutes = Math.max(0, intervaloInicio.diff(dayStart, 'minutes'));
+            const fimHourInclusive = intervaloFim.hour();
+            const endExclusive = Math.min((fimHourInclusive + 1) * 60, MINUTES_IN_DAY);
+
+            acc.push({
+                start: startMinutes,
+                end: endExclusive,
+            });
+
+            return acc;
+        }, []);
+    }
+
+    private isSlotBlocked(slotStartMin: number, bloqueios: Array<{ start: number; end: number }>): boolean {
+        return bloqueios.some(({ start, end }) => slotStartMin >= start && slotStartMin < end);
     }
 }
 

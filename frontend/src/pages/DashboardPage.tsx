@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Calendar, momentLocalizer } from 'react-big-calendar';
-import moment from 'moment';
+import moment from 'moment-timezone';
 import 'moment/locale/pt-br';
-import { Box, CircularProgress, useMediaQuery, useTheme, IconButton, Tooltip, Typography, Button } from '@mui/material';
+import { Box, CircularProgress, useMediaQuery, useTheme, IconButton, Tooltip, Typography } from '@mui/material';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import { toast } from 'sonner';
 
@@ -28,6 +28,11 @@ import { SelectDoutorModal } from '../components/common/SelectDoutorModal';
 import { listarIndisponibilidadesDoDoutor } from '../services/indisponibilidade.service';
 import { AlterarPausaModal } from '../components/common/AlterarPausaModal';
 import { listarExcecoesDoDoutor, PausaExcecao } from '../services/pausa-excecao.service';
+import { getServicos } from '../services/servico.service';
+import { getHorariosByDoutor } from '../services/horario.service';
+
+const BRAZIL_TZ = 'America/Sao_Paulo';
+moment.tz.setDefault(BRAZIL_TZ);
 
 moment.updateLocale('pt-br', {
   week: { dow: 0, doy: 4 }, // dow: 0 = Domingo (0 = Domingo, 1 = Segunda, ..., 6 = Sábado)
@@ -141,7 +146,7 @@ export const DashboardPage: React.FC = () => {
       resource: ag,
     }));
 
-  const criarEventosPausa = async (doutorId?: number): Promise<CalendarEvent[]> => {
+  const criarEventosPausa = async (doutorId?: number, horariosDoutorData?: Record<number, { inicio: string; fim: string; pausaInicio?: string | null; pausaFim?: string | null }>): Promise<CalendarEvent[]> => {
     const eventosPausa: CalendarEvent[] = [];
     const hoje = moment().startOf('day');
     // Data inicial: 1 ano atrás para mostrar eventos retroativos
@@ -164,42 +169,8 @@ export const DashboardPage: React.FC = () => {
       }
     }
     
-    // Eventos de pausa da clínica (se configurado) - sempre mostrar desde data inicial
-    if (clinica?.pausaInicio && clinica?.pausaFim) {
-      for (let i = 0; i <= totalDias; i++) {
-        const data = dataInicial.clone().add(i, 'days');
-        
-        // Verificar se há exceção de pausa para esta data da clínica
-        // (Por enquanto, não implementamos exceções de clínica, apenas de doutor)
-        
-        const [inicioHora, inicioMinuto] = clinica.pausaInicio.split(':').map(Number);
-        const [fimHora, fimMinuto] = clinica.pausaFim.split(':').map(Number);
-        
-        const inicioPausa = data.clone().hour(inicioHora).minute(inicioMinuto).second(0).toDate();
-        const fimPausa = data.clone().hour(fimHora).minute(fimMinuto).second(0).toDate();
-        const dataStr = data.format('YYYY-MM-DD');
-        
-        eventosPausa.push({
-          id: -1000000 - indexCounter++,
-          title: 'Horário da Pausa',
-          start: inicioPausa,
-          end: fimPausa,
-          resource: {
-            id: 0,
-            dataHora: inicioPausa.toISOString(),
-            status: 'pausa',
-            paciente: { id: 0, nome: 'Pausa', telefone: '', clinicaId: 0 },
-            doutor: { id: 0, nome: '', email: '', role: 'DOUTOR' as const, clinicaId: 0 },
-            servico: { id: 0, nome: 'Pausa', descricao: '', duracaoMin: 0, preco: 0, clinicaId: 0 },
-            pausaData: dataStr,
-            pausaInicio: clinica.pausaInicio,
-            pausaFim: clinica.pausaFim,
-          } as any,
-        });
-      }
-    }
-    
-    // Se não houver doutor selecionado, não mostrar eventos de pausa dos doutores
+    // A agenda agora é baseada no horário do doutor, não da clínica
+    // Se não houver doutor selecionado, não mostrar eventos de pausa
     if (!doutorId) {
       return eventosPausa;
     }
@@ -228,99 +199,114 @@ export const DashboardPage: React.FC = () => {
       // Eventos de dias bloqueados do doutor (dia inteiro) - verificar primeiro
       const diasBloqueadosDoutor = doutor.diasBloqueados || [];
 
-      // Eventos de horário de almoço do doutor (apenas em dias não bloqueados)
-      const pausaInicioDefault = doutor.pausaInicio;
-      const pausaFimDefault = doutor.pausaFim;
+      // Buscar horários do doutor da tabela Horario se não foram passados
+      let horariosDoDoutor: Record<number, { inicio: string; fim: string; pausaInicio?: string | null; pausaFim?: string | null }> | undefined = horariosDoutorData;
       
-      if (pausaInicioDefault && pausaFimDefault) {
+      // Se não temos horários ou se o objeto está vazio, buscar do backend
+      if ((!horariosDoDoutor || Object.keys(horariosDoDoutor).length === 0) && doutorId) {
+        try {
+          const horariosArray = await getHorariosByDoutor(doutorId);
+          horariosDoDoutor = {};
+          horariosArray.forEach(h => {
+            if (h.ativo) {
+              horariosDoDoutor![h.diaSemana] = {
+                inicio: h.inicio,
+                fim: h.fim,
+                pausaInicio: h.pausaInicio || null,
+                pausaFim: h.pausaFim || null,
+              };
+            }
+          });
+        } catch (err) {
+          console.error('Erro ao buscar horários do doutor para eventos de pausa:', err);
+        }
+      }
+
+      // Eventos de horário de almoço do doutor (apenas em dias não bloqueados e que tenham horário configurado)
+      console.log('Verificando horários para criar eventos de pausa:', {
+        horariosDoDoutor,
+        diasBloqueadosDoutor,
+        totalDias,
+        doutorId,
+        doutorNome: doutor?.nome
+      });
+
+      if (horariosDoDoutor && Object.keys(horariosDoDoutor).length > 0) {
+        console.log(`Total de dias a processar: ${totalDias + 1}, Horários disponíveis:`, Object.keys(horariosDoDoutor));
+        
         for (let i = 0; i <= totalDias; i++) {
           const data = dataInicial.clone().add(i, 'days');
           const diaSemana = data.day(); // 0 = Domingo, 6 = Sábado
           const dataStr = data.format('YYYY-MM-DD');
 
-          // Só criar evento de horário de almoço se o dia NÃO estiver bloqueado
-          if (!diasBloqueadosDoutor.includes(diaSemana)) {
-            // Verificar se há exceção de pausa para esta data
-            // Formatar data da exceção para comparar (usar UTC para evitar problemas de fuso horário)
-            // Se houver múltiplas exceções para a mesma data (não deveria acontecer), pegar a mais recente
-            const excecoesParaData = excecoesDoutor
-              .map((ex) => ({
-                ...ex,
-                // Usar UTC para formatar a data corretamente (evitar problemas de fuso horário)
-                excecaoDataStr: moment.utc(ex.data).format('YYYY-MM-DD'),
-              }))
-              .filter((ex) => ex.excecaoDataStr === dataStr)
-              .sort((a, b) => {
-                // Ordenar por createdAt desc para pegar a mais recente
-                const dateA = new Date(a.createdAt || 0).getTime();
-                const dateB = new Date(b.createdAt || 0).getTime();
-                return dateB - dateA;
-              });
+          // Só criar evento de horário de almoço se o dia NÃO estiver bloqueado E tiver horário configurado
+          if (!diasBloqueadosDoutor.includes(diaSemana) && horariosDoDoutor[diaSemana]) {
+            const horario = horariosDoDoutor[diaSemana];
             
-            const excecao = excecoesParaData[0]; // Pegar a primeira (mais recente)
-            const pausaInicio = excecao ? excecao.pausaInicio : pausaInicioDefault;
-            const pausaFim = excecao ? excecao.pausaFim : pausaFimDefault;
+            // Verificar se há pausa configurada para este dia
+            // Verificar se pausaInicio e pausaFim não são null, undefined ou string vazia
+            const pausaInicioValida = horario.pausaInicio && typeof horario.pausaInicio === 'string' && horario.pausaInicio.trim() !== '';
+            const pausaFimValida = horario.pausaFim && typeof horario.pausaFim === 'string' && horario.pausaFim.trim() !== '';
+            const temPausa = pausaInicioValida && pausaFimValida;
             
-            const [inicioHora, inicioMinuto] = pausaInicio.split(':').map(Number);
-            const [fimHora, fimMinuto] = pausaFim.split(':').map(Number);
-            
-            const inicioPausa = data.clone().hour(inicioHora).minute(inicioMinuto).second(0).toDate();
-            const fimPausa = data.clone().hour(fimHora).minute(fimMinuto).second(0).toDate();
-            
-            eventosPausa.push({
-              id: -1000000 - indexCounter++,
-              title: `Pausa \n (${doutor.nome})`,
-              start: inicioPausa,
-              end: fimPausa,
-              resource: {
-                id: 0,
-                dataHora: inicioPausa.toISOString(),
-                status: 'pausa',
-                paciente: { id: 0, nome: 'Pausa', telefone: '', clinicaId: 0 },
-                doutor: { id: doutor.id, nome: doutor.nome, email: doutor.email, role: doutor.role, clinicaId: doutor.clinicaId || 0 },
-                servico: { id: 0, nome: 'Pausa', descricao: '', duracaoMin: 0, preco: 0, clinicaId: 0 },
-                pausaData: dataStr,
-                pausaInicio,
-                pausaFim,
-              } as any,
-            });
+            if (temPausa) {
+              console.log(`Criando evento de pausa para ${dataStr} (dia ${diaSemana}): ${horario.pausaInicio} - ${horario.pausaFim}`);
+              // Verificar se há exceção de pausa para esta data
+              const excecoesParaData = excecoesDoutor
+                .map((ex) => ({
+                  ...ex,
+                  excecaoDataStr: moment.utc(ex.data).format('YYYY-MM-DD'),
+                }))
+                .filter((ex) => ex.excecaoDataStr === dataStr)
+                .sort((a, b) => {
+                  const dateA = new Date(a.createdAt || 0).getTime();
+                  const dateB = new Date(b.createdAt || 0).getTime();
+                  return dateB - dateA;
+                });
+              
+              const excecao = excecoesParaData[0]; // Pegar a primeira (mais recente)
+              const pausaInicio = excecao ? excecao.pausaInicio : (horario.pausaInicio || '');
+              const pausaFim = excecao ? excecao.pausaFim : (horario.pausaFim || '');
+              
+              // Garantir que temos valores válidos
+              if (pausaInicio && pausaFim && pausaInicio.trim() !== '' && pausaFim.trim() !== '') {
+                const [inicioHora, inicioMinuto] = pausaInicio.split(':').map(Number);
+                const [fimHora, fimMinuto] = pausaFim.split(':').map(Number);
+                
+                const inicioPausa = data.clone().hour(inicioHora).minute(inicioMinuto).second(0).toDate();
+                const fimPausa = data.clone().hour(fimHora).minute(fimMinuto).second(0).toDate();
+                
+                const eventoPausa = {
+                  id: -1000000 - indexCounter++,
+                  title: `Pausa \n (${doutor.nome})`,
+                  start: inicioPausa,
+                  end: fimPausa,
+                  resource: {
+                    id: 0,
+                    dataHora: inicioPausa.toISOString(),
+                    status: 'pausa',
+                    paciente: { id: 0, nome: 'Pausa', telefone: '', clinicaId: 0 },
+                    doutor: { id: doutor.id, nome: doutor.nome, email: doutor.email, role: doutor.role, clinicaId: doutor.clinicaId || 0 },
+                    servico: { id: 0, nome: 'Pausa', descricao: '', duracaoMin: 0, preco: 0, clinicaId: 0 },
+                    pausaData: dataStr,
+                    pausaInicio,
+                    pausaFim,
+                  } as any,
+                };
+                eventosPausa.push(eventoPausa);
+                console.log('Evento de pausa criado:', eventoPausa);
+              }
+            }
           }
         }
       }
 
-      // Eventos de dias bloqueados do doutor (dia inteiro)
-      if (diasBloqueadosDoutor.length > 0) {
-        for (let i = 0; i <= totalDias; i++) {
-          const data = dataInicial.clone().add(i, 'days');
-          const diaSemana = data.day(); // 0 = Domingo, 6 = Sábado
-
-          // Se este dia da semana está bloqueado para este doutor
-          if (diasBloqueadosDoutor.includes(diaSemana)) {
-            const inicioDia = data.clone().hour(0).minute(0).second(0).toDate();
-            const fimDia = data.clone().hour(23).minute(59).second(59).toDate();
-
-            eventosPausa.push({
-              id: -2000000 - indexCounter++,
-              title: `Não há expediente \n\n (${doutor.nome})`,
-              start: inicioDia,
-              end: fimDia,
-              resource: {
-                id: 0,
-                dataHora: inicioDia.toISOString(),
-                status: 'pausa',
-                isDiaBloqueado: true, // Flag específica para identificar dias bloqueados
-                paciente: { id: 0, nome: 'Dia Bloqueado', telefone: '', clinicaId: 0 },
-                doutor: { id: doutor.id, nome: doutor.nome, email: doutor.email, role: doutor.role, clinicaId: doutor.clinicaId || 0 },
-                servico: { id: 0, nome: 'Dia Bloqueado', descricao: '', duracaoMin: 0, preco: 0, clinicaId: 0 },
-              } as any,
-            });
-          }
-        }
-      }
+      // NÃO criar eventos de dias bloqueados - eles não devem aparecer na agenda de forma alguma
     } catch (err) {
       console.error('Erro ao buscar doutor para eventos de pausa:', err);
     }
     
+    console.log(`Total de eventos de pausa criados: ${eventosPausa.length}`);
     return eventosPausa;
   };
 
@@ -337,25 +323,88 @@ export const DashboardPage: React.FC = () => {
       
       // Buscar indisponibilidades do doutor selecionado
       const indisps = await listarIndisponibilidadesDoDoutor(doutorAtual.id);
-      const eventosIndisp: CalendarEvent[] = indisps.map((i) => ({
-        id: -i.id, // ids negativos para diferenciar
-        title: `Indisponível${i.motivo ? ` (${i.motivo})` : ''}`,
-        start: new Date(i.inicio),
-        end: new Date(i.fim),
-        resource: {
-          id: 0,
-          dataHora: i.inicio,
-          status: 'indisponivel',
-          paciente: { id: 0, nome: 'Indisponibilidade', telefone: '', clinicaId: 0 },
-          doutor: { id: doutorAtual.id, nome: doutorAtual.nome, email: '', role: 'DOUTOR', clinicaId: 0 },
-          servico: { id: 0, nome: 'Indisponibilidade', descricao: '', duracaoMin: 0, preco: 0, clinicaId: 0 },
-        } as any,
-      }));
+      const eventosIndisp: CalendarEvent[] = indisps.map((i) => {
+        const inicio = moment(i.inicio).tz(BRAZIL_TZ);
+        const fim = moment(i.fim).tz(BRAZIL_TZ);
+        // Exibir exatamente o horário cadastrado no card
+        // O backend já cuida de bloquear até o final da hora final (até 10:59 se cadastrado 10:00)
+
+        return {
+          id: -i.id,
+          title: `Indisponível${i.motivo ? ` (${i.motivo})` : ''}`,
+          start: inicio.toDate(),
+          end: fim.toDate(),
+          resource: {
+            id: 0,
+            dataHora: inicio.toISOString(),
+            status: 'indisponivel',
+            paciente: { id: 0, nome: 'Indisponibilidade', telefone: '', clinicaId: 0 },
+            doutor: { id: doutorAtual.id, nome: doutorAtual.nome, email: '', role: 'DOUTOR', clinicaId: 0 },
+            servico: { id: 0, nome: 'Indisponibilidade', descricao: '', duracaoMin: 0, preco: 0, clinicaId: 0 },
+          } as any,
+        };
+      });
       
-      // Adicionar eventos de pausa (clínica + doutor selecionado)
-      const eventosPausa = await criarEventosPausa(doutorAtual.id);
+      // Adicionar eventos de pausa do doutor selecionado
+      // Buscar horários completos do doutor para passar para criarEventosPausa
+      let horariosCompletos: Record<number, { inicio: string; fim: string; pausaInicio?: string | null; pausaFim?: string | null }> | undefined;
+      try {
+        const horariosArray = await getHorariosByDoutor(doutorAtual.id);
+        horariosCompletos = {};
+          console.log('Horários do doutor recebidos do backend:', horariosArray);
+          console.log('Total de horários retornados:', horariosArray.length);
+          
+          if (horariosArray.length === 0) {
+            console.warn('⚠️ NENHUM horário encontrado no backend para o doutor ID:', doutorAtual.id);
+            console.warn('Verifique se há horários cadastrados na aba "Expediente" do cadastro do doutor.');
+          }
+          
+          horariosArray.forEach(h => {
+            console.log(`Processando horário: diaSemana=${h.diaSemana}, ativo=${h.ativo}, pausaInicio=${h.pausaInicio}, pausaFim=${h.pausaFim}`);
+            
+            if (h.ativo) {
+              horariosCompletos![h.diaSemana] = {
+                inicio: h.inicio,
+                fim: h.fim,
+                pausaInicio: h.pausaInicio,
+                pausaFim: h.pausaFim,
+              };
+              console.log(`✅ Horário ATIVO configurado para dia ${h.diaSemana}:`, {
+                inicio: h.inicio,
+                fim: h.fim,
+                pausaInicio: h.pausaInicio,
+                pausaFim: h.pausaFim,
+                temPausa: !!(h.pausaInicio && h.pausaFim)
+              });
+            } else {
+              console.log(`❌ Horário INATIVO ignorado para dia ${h.diaSemana}`);
+            }
+          });
+          console.log('Horários completos mapeados:', horariosCompletos);
+          console.log('Chaves dos horários mapeados:', Object.keys(horariosCompletos || {}));
+      } catch (err) {
+        console.error('Erro ao buscar horários completos do doutor:', err);
+      }
+      const eventosPausa = await criarEventosPausa(doutorAtual.id, horariosCompletos);
+      console.log('Eventos de pausa retornados:', eventosPausa.length, eventosPausa);
       
-      setEventos([...eventosFormatados, ...eventosIndisp, ...eventosPausa]);
+      // Filtrar eventos que estão em dias bloqueados - não devem aparecer na agenda
+      const diasBloqueados = doutorAtual.diasBloqueados || [];
+      const eventosFiltrados = [...eventosFormatados, ...eventosIndisp, ...eventosPausa].filter(evento => {
+        // Verificar se o evento está em um dia bloqueado
+        const diaSemanaEvento = moment(evento.start).tz(BRAZIL_TZ).day();
+        if (diasBloqueados.includes(diaSemanaEvento)) {
+          return false;
+        }
+        
+        return true;
+      });
+      
+      console.log('Total de eventos antes de filtrar:', eventosFormatados.length + eventosIndisp.length + eventosPausa.length);
+      console.log('Total de eventos após filtrar:', eventosFiltrados.length);
+      console.log('Eventos de pausa no array final:', eventosFiltrados.filter(e => (e.resource as any)?.status === 'pausa').length);
+      
+      setEventos(eventosFiltrados);
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Erro ao buscar agendamentos');
     } finally {
@@ -538,6 +587,15 @@ export const DashboardPage: React.FC = () => {
   };
 
   const handleSelectSlot = (slotInfo: { start: Date; end: Date }) => {
+    // Verificar se o dia está bloqueado
+    if (doutorAtual?.diasBloqueados) {
+      const diaSemana = moment(slotInfo.start).tz(BRAZIL_TZ).day();
+      if (doutorAtual.diasBloqueados.includes(diaSemana)) {
+        toast.error('Este dia está bloqueado para este doutor.');
+        return;
+      }
+    }
+
     setSelectedEvent(null);
     setSelectedSlot({ dataHora: slotInfo.start });
     setIsFormModalOpen(true);
@@ -558,7 +616,206 @@ export const DashboardPage: React.FC = () => {
     setIsDeleteModalOpen(false);
   };
 
+  /**
+   * Valida se um agendamento pode ser criado antes de confirmar
+   * Verifica todas as regras de negócio
+   */
+  const validarAgendamento = async (data: AgendamentoCreateInput): Promise<{ valido: boolean; mensagem?: string }> => {
+    const doutorId = data.doutorId || doutorAtual?.id;
+    if (!doutorId) {
+      return { valido: false, mensagem: 'Doutor não selecionado.' };
+    }
+
+    // 1. Verificar se horário existe e é válido
+    const dataHora = moment(data.dataHora).tz(BRAZIL_TZ);
+    if (!dataHora.isValid()) {
+      return { valido: false, mensagem: 'Data/hora inválida.' };
+    }
+
+    // 6. Verificar se não está no passado (com buffer de 30 minutos)
+    const agora = moment().tz(BRAZIL_TZ);
+    const bufferMinutos = 30;
+    if (dataHora.isBefore(agora.add(bufferMinutos, 'minutes'))) {
+      return { valido: false, mensagem: 'Não é possível agendar no passado. Escolha um horário futuro.' };
+    }
+
+    // Buscar doutor completo para verificar horários de trabalho
+    let doutor: IDoutor | undefined = doutorAtual || undefined;
+    if (!doutor || doutor.id !== doutorId) {
+      doutor = doutores.find(d => d.id === doutorId);
+    }
+    if (!doutor) {
+      return { valido: false, mensagem: 'Doutor não encontrado.' };
+    }
+
+    // Buscar duração do serviço uma única vez para usar em múltiplas validações
+    let duracaoServico = 30; // padrão conservador
+    try {
+      const servicos = await getServicos(doutorId);
+      const servicoSelecionado = servicos.find(s => s.id === Number(data.servicoId));
+      if (servicoSelecionado?.duracaoMin) {
+        duracaoServico = servicoSelecionado.duracaoMin;
+      }
+    } catch (err) {
+      console.warn('Não foi possível buscar duração do serviço:', err);
+    }
+
+    // 2. Verificar se horário pertence ao expediente do médico
+    const diaSemana = dataHora.day(); // 0 = Domingo, 6 = Sábado
+    
+    // Verificar se o dia está bloqueado
+    if (doutor.diasBloqueados?.includes(diaSemana)) {
+      return { valido: false, mensagem: `Não há expediente neste dia da semana (${moment.weekdaysShort(diaSemana)}).` };
+    }
+
+    // Buscar horário de trabalho do doutor para este dia da semana
+    let horarioTrabalho;
+    try {
+      const horarios = await getHorariosByDoutor(doutorId);
+      horarioTrabalho = horarios.find(h => h.diaSemana === diaSemana && h.ativo);
+    } catch (err) {
+      console.error('Erro ao buscar horários do doutor:', err);
+      // Se não conseguir buscar, usar horários padrão do doutor (se existirem)
+    }
+
+    // Se não tem horário cadastrado para este dia, não permitir agendamento
+    if (!horarioTrabalho) {
+      return { valido: false, mensagem: `Não há horário de expediente cadastrado para ${moment.weekdays(diaSemana)}.` };
+    }
+
+    // Converter horários para minutos para facilitar comparação
+    const horaInicioAgendamento = dataHora.hours() * 60 + dataHora.minutes();
+    const horaFimAgendamento = horaInicioAgendamento + duracaoServico;
+    const [inicioHora, inicioMin] = horarioTrabalho.inicio.split(':').map(Number);
+    const [fimHora, fimMin] = horarioTrabalho.fim.split(':').map(Number);
+    const inicioExpedienteMin = inicioHora * 60 + inicioMin;
+    const fimExpedienteMin = fimHora * 60 + fimMin;
+
+    // Verificar se o início está dentro do horário de expediente
+    if (horaInicioAgendamento < inicioExpedienteMin) {
+      return { 
+        valido: false, 
+        mensagem: `Este horário está antes do início do expediente (${horarioTrabalho.inicio}).` 
+      };
+    }
+
+    // Verificar se o término do agendamento (considerando duração) está dentro do expediente
+    if (horaFimAgendamento > fimExpedienteMin) {
+      return { 
+        valido: false, 
+        mensagem: `Este horário com duração de ${duracaoServico} minutos ultrapassa o fim do expediente (${horarioTrabalho.fim}).` 
+      };
+    }
+
+    // Verificar se está na pausa de almoço (se existir)
+    // Verificar se o agendamento se sobrepõe com a pausa
+    if (horarioTrabalho.pausaInicio && horarioTrabalho.pausaFim) {
+      const [pausaInicioHora, pausaInicioMinuto] = horarioTrabalho.pausaInicio.split(':').map(Number);
+      const [pausaFimHora, pausaFimMinuto] = horarioTrabalho.pausaFim.split(':').map(Number);
+      const pausaInicioMin = pausaInicioHora * 60 + pausaInicioMinuto;
+      const pausaFimMin = pausaFimHora * 60 + pausaFimMinuto;
+      
+      // Verificar sobreposição: agendamento começa durante a pausa ou pausa começa durante o agendamento
+      if ((horaInicioAgendamento >= pausaInicioMin && horaInicioAgendamento < pausaFimMin) ||
+          (pausaInicioMin >= horaInicioAgendamento && pausaInicioMin < horaFimAgendamento)) {
+        return { 
+          valido: false, 
+          mensagem: `Este horário conflita com o período de pausa (${horarioTrabalho.pausaInicio} - ${horarioTrabalho.pausaFim}).` 
+        };
+      }
+    }
+
+    // 4. Verificar se está fora de bloqueios (indisponibilidades)
+    try {
+      const indisponibilidades = await listarIndisponibilidadesDoDoutor(doutorId);
+      for (const indisponibilidade of indisponibilidades) {
+        const inicioIndisp = moment(indisponibilidade.inicio).tz(BRAZIL_TZ);
+        const fimIndisp = moment(indisponibilidade.fim).tz(BRAZIL_TZ);
+        
+        // Verificar se o agendamento está dentro do período de indisponibilidade
+        // Considera bloqueio até o final da hora final (até 10:59 se cadastrado 10:00)
+        const fimIndispCompleto = fimIndisp.clone().endOf('hour');
+        
+        if (dataHora.isSameOrAfter(inicioIndisp, 'minute') && dataHora.isBefore(fimIndispCompleto, 'minute')) {
+          const motivo = indisponibilidade.motivo ? ` (${indisponibilidade.motivo})` : '';
+          return { 
+            valido: false, 
+            mensagem: `Este horário está bloqueado por indisponibilidade${motivo}.` 
+          };
+        }
+      }
+    } catch (err) {
+      console.error('Erro ao verificar indisponibilidades:', err);
+      // Continuar mesmo com erro, mas logar
+    }
+
+    // 3 e 5. Verificar se está livre e não conflita com outra consulta
+    // Buscar agendamentos do doutor no mesmo dia
+    const inicioDia = dataHora.clone().startOf('day').toDate();
+    const fimDia = dataHora.clone().endOf('day').toDate();
+    
+    try {
+      const agendamentosDoDia = await getAgendamentos({ 
+        doutorId,
+        dataInicio: inicioDia.toISOString(),
+        dataFim: fimDia.toISOString(),
+      });
+      
+      // Buscar serviço para saber a duração
+      // Como não temos acesso direto ao serviço aqui, vamos verificar conflitos com todos os agendamentos
+      for (const agendamento of agendamentosDoDia) {
+        // Pular se for o mesmo agendamento (caso de edição)
+        if (selectedEvent && agendamento.id === selectedEvent.id) {
+          continue;
+        }
+        
+        // Pular cancelados
+        if (agendamento.status === 'cancelado') {
+          continue;
+        }
+        
+        const agendamentoInicio = moment(agendamento.dataHora).tz(BRAZIL_TZ);
+        // Usar duração real do serviço do agendamento existente
+        const duracaoAgendamento = agendamento.servico?.duracaoMin || 30; // minutos, padrão 30 se não tiver
+        const agendamentoFim = agendamentoInicio.clone().add(duracaoAgendamento, 'minutes');
+        
+        // Usar a duração do serviço já buscada anteriormente
+        const novoAgendamentoFim = dataHora.clone().add(duracaoServico, 'minutes');
+        
+        // Verificar sobreposição: se o novo agendamento começa durante o existente
+        if (dataHora.isSameOrAfter(agendamentoInicio, 'minute') && dataHora.isBefore(agendamentoFim, 'minute')) {
+          return { 
+            valido: false, 
+            mensagem: `Este horário conflita com outro agendamento às ${agendamentoInicio.format('HH:mm')}.` 
+          };
+        }
+        
+        // Verificar sobreposição: se o agendamento existente começa durante o novo
+        if (agendamentoInicio.isSameOrAfter(dataHora, 'minute') && agendamentoInicio.isBefore(novoAgendamentoFim, 'minute')) {
+          return { 
+            valido: false, 
+            mensagem: `Este horário conflita com outro agendamento às ${agendamentoInicio.format('HH:mm')}.` 
+          };
+        }
+      }
+    } catch (err) {
+      console.error('Erro ao verificar conflitos com outros agendamentos:', err);
+      // Continuar mesmo com erro, mas logar
+    }
+
+    return { valido: true };
+  };
+
   const handleSubmitForm = async (data: AgendamentoCreateInput) => {
+    // Validações antes de criar novo agendamento
+    if (!selectedEvent) {
+      const validacao = await validarAgendamento(data);
+      if (!validacao.valido) {
+        toast.error(validacao.mensagem || 'Não é possível criar este agendamento.');
+        return;
+      }
+    }
+
     try {
       const doutorIdEvento = data.doutorId || doutorAtual?.id;
       
@@ -643,7 +900,7 @@ export const DashboardPage: React.FC = () => {
           border: '0px',
           textDecoration,
           cursor: isDiaBloqueado ? 'not-allowed' : 'default',
-          pointerEvents: isDiaBloqueado ? 'none' : 'auto', // Dias bloqueados não são clicáveis
+          pointerEvents: (isDiaBloqueado ? 'none' : 'auto') as React.CSSProperties['pointerEvents'], // Dias bloqueados não são clicáveis
         },
       };
     }
@@ -676,20 +933,93 @@ export const DashboardPage: React.FC = () => {
     return { style };
   };
 
-  // Calcular horários mínimos e máximos do calendário baseado no horário de funcionamento
+  // PropGetter para desabilitar e ocultar dias bloqueados
+  const dayPropGetter = (date: Date) => {
+    if (!doutorAtual) {
+      return {};
+    }
+
+    const diasBloqueados = doutorAtual.diasBloqueados || [];
+    const diaSemana = moment(date).tz(BRAZIL_TZ).day();
+
+    if (diasBloqueados.includes(diaSemana)) {
+      return {
+        className: 'rbc-day-blocked',
+        style: {
+          opacity: 0.15,
+          pointerEvents: 'none' as const,
+          backgroundColor: '#f5f5f5',
+          cursor: 'not-allowed',
+        },
+      };
+    }
+
+    return {};
+  };
+
+
+  // Estado para armazenar horários do doutor
+  const [horariosDoutor, setHorariosDoutor] = useState<Record<number, { inicio: string; fim: string }>>({});
+
+  // Carregar horários do doutor
+  useEffect(() => {
+    const loadHorarios = async () => {
+      if (doutorAtual?.id) {
+        try {
+          const horarios = await getHorariosByDoutor(doutorAtual.id);
+          const horariosMap: Record<number, { inicio: string; fim: string }> = {};
+          horarios.forEach(h => {
+            if (h.ativo && h.inicio && h.fim) {
+              horariosMap[h.diaSemana] = { inicio: h.inicio, fim: h.fim };
+            }
+          });
+          setHorariosDoutor(horariosMap);
+        } catch (err) {
+          console.error('Erro ao carregar horários do doutor:', err);
+        }
+      } else {
+        setHorariosDoutor({});
+      }
+    };
+    loadHorarios();
+  }, [doutorAtual]);
+
+  // Calcular horários mínimos e máximos do calendário baseado no horário do doutor
   const getCalendarMinMax = () => {
-    if (!clinica?.horarioInicio || !clinica?.horarioFim) {
-      // Se não houver horário configurado, usar horários padrão
+    // Se não houver doutor selecionado ou horários, usar horários padrão
+    if (!doutorAtual || Object.keys(horariosDoutor).length === 0) {
       return { min: new Date(2024, 0, 1, 8, 0, 0), max: new Date(2024, 0, 1, 20, 0, 0) };
     }
 
-    // Parse dos horários (formato "HH:MM")
-    const [inicioHora, inicioMinuto] = clinica.horarioInicio.split(':').map(Number);
-    const [fimHora, fimMinuto] = clinica.horarioFim.split(':').map(Number);
+    // Encontrar o menor horário de início e o maior horário de fim entre todos os dias
+    let minHora = 23;
+    let minMinuto = 59;
+    let maxHora = 0;
+    let maxMinuto = 0;
+
+    Object.values(horariosDoutor).forEach(horario => {
+      const [inicioHora, inicioMinuto] = horario.inicio.split(':').map(Number);
+      const [fimHora, fimMinuto] = horario.fim.split(':').map(Number);
+
+      if (inicioHora < minHora || (inicioHora === minHora && inicioMinuto < minMinuto)) {
+        minHora = inicioHora;
+        minMinuto = inicioMinuto;
+      }
+
+      if (fimHora > maxHora || (fimHora === maxHora && fimMinuto > maxMinuto)) {
+        maxHora = fimHora;
+        maxMinuto = fimMinuto;
+      }
+    });
+
+    // Se não encontrou nenhum horário válido, usar padrão
+    if (minHora === 23 && minMinuto === 59) {
+      return { min: new Date(2024, 0, 1, 8, 0, 0), max: new Date(2024, 0, 1, 20, 0, 0) };
+    }
 
     // Criar datas base para calcular min/max (usar uma data fixa como referência)
-    const min = new Date(2024, 0, 1, inicioHora, inicioMinuto, 0);
-    const max = new Date(2024, 0, 1, fimHora, fimMinuto, 0);
+    const min = new Date(2024, 0, 1, minHora, minMinuto, 0);
+    const max = new Date(2024, 0, 1, maxHora, maxMinuto, 0);
 
     return { min, max };
   };
@@ -811,6 +1141,28 @@ export const DashboardPage: React.FC = () => {
             overflowY: 'auto',
             pb: 3,
           },
+          // Ocultar completamente dias bloqueados
+          '& .rbc-day-blocked': {
+            display: 'none !important',
+            visibility: 'hidden !important',
+            width: '0 !important',
+            minWidth: '0 !important',
+            maxWidth: '0 !important',
+            padding: '0 !important',
+            margin: '0 !important',
+            border: 'none !important',
+          },
+          // Na visualização de semana/mês, ocultar colunas de dias bloqueados
+          '& .rbc-header.rbc-day-blocked': {
+            display: 'none !important',
+            visibility: 'hidden !important',
+            width: '0 !important',
+            minWidth: '0 !important',
+          },
+          // Ocultar células de background de dias bloqueados
+          '& .rbc-day-bg.rbc-day-blocked': {
+            display: 'none !important',
+          },
         }}
       >
         <Calendar
@@ -830,6 +1182,7 @@ export const DashboardPage: React.FC = () => {
           onSelectEvent={handleSelectEvent}
           onSelectSlot={handleSelectSlot}
           eventPropGetter={eventStyleGetter}
+          dayPropGetter={dayPropGetter}
           dayLayoutAlgorithm="no-overlap"
           min={min}
           max={max}

@@ -6,6 +6,8 @@ export interface Indisponibilidade {
   fim: string;
   motivo?: string | null;
   doutor?: { id: number; nome: string };
+  inicioFormatado?: string;
+  fimFormatado?: string;
 }
 
 export interface CreateIndisponibilidadeInput {

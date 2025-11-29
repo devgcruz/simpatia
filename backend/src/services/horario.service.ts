@@ -71,7 +71,10 @@ class HorarioService {
             }
 
             return prisma.horario.findMany({
-                where: { doutorId: user.id },
+                where: { 
+                    doutorId: user.id,
+                    ativo: true 
+                },
             });
         }
 
@@ -85,13 +88,40 @@ class HorarioService {
             }
 
             return prisma.horario.findMany({
-                where: { doutorId },
+                where: { 
+                    doutorId,
+                    ativo: true 
+                },
             });
         }
 
         if (user.role === 'SUPER_ADMIN') {
             return prisma.horario.findMany({
-                where: { doutorId },
+                where: { 
+                    doutorId,
+                    ativo: true 
+                },
+            });
+        }
+
+        if (user.role === 'SECRETARIA') {
+            // Verificar se o doutor está vinculado à secretária
+            const vinculo = await prisma.secretariaDoutor.findFirst({
+                where: {
+                    secretariaId: user.id,
+                    doutorId: doutorId,
+                },
+            });
+
+            if (!vinculo) {
+                throw new Error("Acesso negado. Doutor não está vinculado a esta secretária.");
+            }
+
+            return prisma.horario.findMany({
+                where: { 
+                    doutorId,
+                    ativo: true 
+                },
             });
         }
 

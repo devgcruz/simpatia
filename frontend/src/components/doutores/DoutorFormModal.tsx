@@ -26,6 +26,7 @@ import {
   Card,
   CardContent,
   IconButton,
+  CircularProgress,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
@@ -36,11 +37,12 @@ import { getClinicas } from '../../services/clinica.service';
 import { uploadLogo } from '../../services/upload.service';
 import { toast } from 'sonner';
 import { IModeloPrescricaoPDF, modeloPrescricaoPadrao } from '../../types/prescricao';
+import { getHorariosByDoutor, createHorario, updateHorario, deleteHorario, Horario } from '../../services/horario.service';
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: Partial<IDoutor> & { senha?: string }) => void;
+  onSubmit: (data: Partial<IDoutor> & { senha?: string }) => void | Promise<IDoutor | void>;
   initialData?: IDoutor | null;
   user: IUser | null;
 }
@@ -68,6 +70,10 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
+  // Horários de expediente por dia da semana
+  const [horarios, setHorarios] = useState<Record<number, Partial<Horario & { diaSemana: number }>>>({});
+  const [loadingHorarios, setLoadingHorarios] = useState(false);
+
   const isEditing = !!initialData;
   const [clinicas, setClinicas] = useState<IClinica[]>([]);
   let roles: DoutorRole[] = ['DOUTOR', 'CLINICA_ADMIN', 'SECRETARIA'];
@@ -82,6 +88,42 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
   if (!roleOptions.includes(form.role)) {
     roleOptions.push(form.role);
   }
+
+  // Carregar horários quando estiver editando
+  useEffect(() => {
+    const loadHorarios = async () => {
+      if (initialData && initialData.id && open) {
+        setLoadingHorarios(true);
+        try {
+          const horariosExistentes = await getHorariosByDoutor(initialData.id);
+          const horariosPorDia: Record<number, Partial<Horario & { diaSemana: number }>> = {};
+          horariosExistentes.forEach(h => {
+            if (h.ativo) {
+              horariosPorDia[h.diaSemana] = {
+                id: h.id,
+                diaSemana: h.diaSemana,
+                inicio: h.inicio,
+                fim: h.fim,
+                pausaInicio: h.pausaInicio,
+                pausaFim: h.pausaFim,
+                doutorId: h.doutorId,
+                ativo: h.ativo,
+              };
+            }
+          });
+          setHorarios(horariosPorDia);
+        } catch (err: any) {
+          console.error('Erro ao carregar horários:', err);
+          toast.error('Erro ao carregar horários de expediente');
+        } finally {
+          setLoadingHorarios(false);
+        }
+      } else {
+        setHorarios({});
+      }
+    };
+    loadHorarios();
+  }, [initialData, open]);
 
   useEffect(() => {
     if (initialData) {
@@ -166,6 +208,39 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
     });
   };
 
+  const handleHorarioChange = (diaSemana: number, field: string, value: string) => {
+    setHorarios((prev) => ({
+      ...prev,
+      [diaSemana]: {
+        ...prev[diaSemana],
+        diaSemana,
+        [field]: value || null,
+      },
+    }));
+  };
+
+  const handleHorarioToggle = (diaSemana: number, enabled: boolean) => {
+    if (enabled) {
+      // Ativar horário com valores padrão se não existir
+      setHorarios((prev) => ({
+        ...prev,
+        [diaSemana]: {
+          ...prev[diaSemana],
+          diaSemana,
+          inicio: prev[diaSemana]?.inicio || '08:00',
+          fim: prev[diaSemana]?.fim || '18:00',
+        },
+      }));
+    } else {
+      // Remover horário do estado (será deletado ao salvar)
+      setHorarios((prev) => {
+        const newHorarios = { ...prev };
+        delete newHorarios[diaSemana];
+        return newHorarios;
+      });
+    }
+  };
+
   const diasSemana = [
     { valor: 0, label: 'Domingo' },
     { valor: 1, label: 'Segunda-feira' },
@@ -176,22 +251,95 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
     { valor: 6, label: 'Sábado' },
   ];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Converter modelo PDF para JSON antes de salvar
-    const modeloPrescricaoJson = JSON.stringify(modeloPrescricaoPDF);
-    
-    const formData = {
-      ...form,
-      clinicaId: form.clinicaId ? Number(form.clinicaId) : undefined,
-      modeloPrescricao: modeloPrescricaoJson,
-    };
+    try {
+      // Converter modelo PDF para JSON antes de salvar
+      const modeloPrescricaoJson = JSON.stringify(modeloPrescricaoPDF);
+      
+      const formData = {
+        ...form,
+        clinicaId: form.clinicaId ? Number(form.clinicaId) : undefined,
+        modeloPrescricao: modeloPrescricaoJson,
+      };
 
-    if (isEditing && formData.senha === '') {
-      const { senha, ...dataToSend } = formData;
-      onSubmit(dataToSend);
-    } else {
-      onSubmit(formData);
+      // Salvar o doutor primeiro e obter o ID
+      let doutorId: number | null = null;
+      
+      if (isEditing && initialData?.id) {
+        doutorId = initialData.id;
+        if (formData.senha === '') {
+          const { senha, ...dataToSend } = formData;
+          const resultado = await onSubmit(dataToSend);
+          // Se retornou um doutor, usar o ID (caso contrário já temos initialData.id)
+          if (resultado && typeof resultado === 'object' && 'id' in resultado) {
+            doutorId = resultado.id as number;
+          }
+        } else {
+          const resultado = await onSubmit(formData);
+          if (resultado && typeof resultado === 'object' && 'id' in resultado) {
+            doutorId = resultado.id as number;
+          }
+        }
+      } else {
+        // Para criação, precisamos obter o ID do doutor criado
+        const resultado = await onSubmit(formData);
+        // Se o onSubmit retornar o doutor, usar o ID
+        if (resultado && typeof resultado === 'object' && 'id' in resultado) {
+          doutorId = resultado.id as number;
+        }
+      }
+
+      // Salvar/atualizar horários se temos um doutorId válido
+      if (doutorId) {
+        try {
+          // Buscar horários existentes para comparar
+          const horariosExistentes = await getHorariosByDoutor(doutorId);
+          const horariosExistentesMap = new Map(horariosExistentes.map(h => [h.diaSemana, h]));
+
+          // Processar cada dia da semana
+          for (let dia = 0; dia <= 6; dia++) {
+            const horarioAtual = horarios[dia];
+            const horarioExistente = horariosExistentesMap.get(dia);
+
+            if (horarioAtual && horarioAtual.inicio && horarioAtual.fim) {
+              // Tem horário configurado
+              if (horarioExistente) {
+                // Atualizar horário existente
+                await updateHorario(horarioExistente.id, {
+                  inicio: horarioAtual.inicio,
+                  fim: horarioAtual.fim,
+                  pausaInicio: horarioAtual.pausaInicio || null,
+                  pausaFim: horarioAtual.pausaFim || null,
+                });
+              } else {
+                // Criar novo horário
+                await createHorario({
+                  diaSemana: dia,
+                  inicio: horarioAtual.inicio,
+                  fim: horarioAtual.fim,
+                  pausaInicio: horarioAtual.pausaInicio || null,
+                  pausaFim: horarioAtual.pausaFim || null,
+                  doutorId: doutorId,
+                });
+              }
+            } else if (horarioExistente) {
+              // Remover horário (inativar)
+              await deleteHorario(horarioExistente.id);
+            }
+          }
+          toast.success('Horários de expediente salvos com sucesso!');
+        } catch (err: any) {
+          console.error('Erro ao salvar horários:', err);
+          toast.error('Doutor salvo, mas houve erro ao salvar horários de expediente');
+        }
+      } else if (!isEditing) {
+        // Se não conseguimos o ID na criação, informar que os horários precisam ser configurados depois
+        toast.warning('Doutor criado. Configure os horários de expediente através da edição.');
+      }
+    } catch (err: any) {
+      console.error('Erro ao salvar doutor:', err);
+      toast.error(err.response?.data?.message || 'Erro ao salvar doutor');
     }
   };
 
@@ -253,6 +401,7 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
         <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}>
           <Tabs value={activeTab} onChange={(_e, newValue) => setActiveTab(newValue)}>
             <Tab label="Dados Gerais" />
+            <Tab label="Expediente" />
             <Tab label="Modelo de Prescrição" />
           </Tabs>
         </Box>
@@ -426,8 +575,142 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
           />
             </Box>
           )}
-          
+
           {activeTab === 1 && (
+            <Box>
+              <Typography variant="h6" sx={{ mb: 2 }}>
+                Horário de Expediente
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                Configure o horário de funcionamento do doutor para cada dia da semana. Os dias bloqueados não serão exibidos na agenda.
+              </Typography>
+
+              {loadingHorarios ? (
+                <CircularProgress />
+              ) : (
+                <>
+                  {diasSemana.map((dia) => {
+                    const horario = horarios[dia.valor];
+                    const diaBloqueado = form.diasBloqueados.includes(dia.valor);
+                    const temHorario = !!horario && !!horario.inicio && !!horario.fim;
+
+                    return (
+                      <Accordion key={dia.valor} defaultExpanded={temHorario}>
+                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
+                            <Typography variant="subtitle1" fontWeight="bold">
+                              {dia.label}
+                            </Typography>
+                            {diaBloqueado && (
+                              <Typography variant="caption" color="error" sx={{ ml: 'auto' }}>
+                                DIA BLOQUEADO
+                              </Typography>
+                            )}
+                            {!diaBloqueado && temHorario && (
+                              <Typography variant="caption" color="success.main">
+                                {horario.inicio} - {horario.fim}
+                                {horario.pausaInicio && horario.pausaFim && ` (Pausa: ${horario.pausaInicio} - ${horario.pausaFim})`}
+                              </Typography>
+                            )}
+                          </Box>
+                        </AccordionSummary>
+                        <AccordionDetails>
+                          <Box>
+                            <FormControlLabel
+                              control={
+                                <Checkbox
+                                  checked={!diaBloqueado && temHorario}
+                                  onChange={(e) => {
+                                    if (!diaBloqueado) {
+                                      handleHorarioToggle(dia.valor, e.target.checked);
+                                    }
+                                  }}
+                                  disabled={diaBloqueado}
+                                />
+                              }
+                              label="Trabalha neste dia"
+                            />
+                            {!diaBloqueado && (
+                              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                Marque os dias bloqueados na aba "Dados Gerais" para que não apareçam na agenda.
+                              </Typography>
+                            )}
+
+                            {!diaBloqueado && temHorario && (
+                              <Grid container spacing={2} sx={{ mt: 1 }}>
+                                <Grid item xs={12} sm={6}>
+                                  <TextField
+                                    label="Horário de Início"
+                                    type="time"
+                                    value={horario.inicio || ''}
+                                    onChange={(e) => handleHorarioChange(dia.valor, 'inicio', e.target.value)}
+                                    fullWidth
+                                    required
+                                    InputLabelProps={{ shrink: true }}
+                                    helperText="Ex: 08:00"
+                                  />
+                                </Grid>
+                                <Grid item xs={12} sm={6}>
+                                  <TextField
+                                    label="Horário de Fim"
+                                    type="time"
+                                    value={horario.fim || ''}
+                                    onChange={(e) => handleHorarioChange(dia.valor, 'fim', e.target.value)}
+                                    fullWidth
+                                    required
+                                    InputLabelProps={{ shrink: true }}
+                                    helperText="Ex: 18:00"
+                                  />
+                                </Grid>
+                                <Grid item xs={12}>
+                                  <Divider sx={{ my: 2 }} />
+                                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                                    Pausa de Almoço (Opcional)
+                                  </Typography>
+                                </Grid>
+                                <Grid item xs={12} sm={6}>
+                                  <TextField
+                                    label="Início da Pausa"
+                                    type="time"
+                                    value={horario.pausaInicio || ''}
+                                    onChange={(e) => handleHorarioChange(dia.valor, 'pausaInicio', e.target.value)}
+                                    fullWidth
+                                    InputLabelProps={{ shrink: true }}
+                                    helperText="Ex: 12:00"
+                                  />
+                                </Grid>
+                                <Grid item xs={12} sm={6}>
+                                  <TextField
+                                    label="Fim da Pausa"
+                                    type="time"
+                                    value={horario.pausaFim || ''}
+                                    onChange={(e) => handleHorarioChange(dia.valor, 'pausaFim', e.target.value)}
+                                    fullWidth
+                                    InputLabelProps={{ shrink: true }}
+                                    helperText="Ex: 13:00"
+                                  />
+                                </Grid>
+                              </Grid>
+                            )}
+
+                            {diaBloqueado && (
+                              <Box sx={{ p: 2, bgcolor: 'warning.light', borderRadius: 1 }}>
+                                <Typography variant="body2" color="warning.dark">
+                                  Este dia está bloqueado. Desmarque na aba "Dados Gerais" para configurar o horário.
+                                </Typography>
+                              </Box>
+                            )}
+                          </Box>
+                        </AccordionDetails>
+                      </Accordion>
+                    );
+                  })}
+                </>
+              )}
+            </Box>
+          )}
+          
+          {activeTab === 2 && (
             <Box>
               <Typography variant="h6" sx={{ mb: 2 }}>
                 Modelo de Prescrição PDF
