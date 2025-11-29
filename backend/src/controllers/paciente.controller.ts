@@ -5,8 +5,9 @@ class PacienteController {
 
     async handleGetAll(req: Request, res: Response) {
         try {
-            const { clinicaId } = req.user!;
-            const paciente = await pacienteService.getAll(clinicaId);
+            const { clinicaId, id: userId, role } = req.user!;
+            const doutorId = req.query.doutorId ? Number(req.query.doutorId) : undefined;
+            const paciente = await pacienteService.getAll(clinicaId, userId, role, doutorId);
             return res.status(200).json(paciente);
         } catch (error: any) {
             return res.status(500).json({ message: error.message })
@@ -37,7 +38,12 @@ class PacienteController {
         try {
             const id = Number(req.params.id);
 
-            const { clinicaId } = req.user!;
+            const { clinicaId, role } = req.user!;
+
+            // SECRETARIA não pode acessar histórico
+            if (role === 'SECRETARIA') {
+                return res.status(403).json({ message: 'Você não tem permissão para visualizar o histórico do paciente.' });
+            }
 
             const historicos = await pacienteService.getHistoricos(id, clinicaId);
             return res.status(200).json(historicos);
@@ -152,7 +158,12 @@ class PacienteController {
         try {
             const id = Number(req.params.id);
 
-            const { clinicaId } = req.user!;
+            const { clinicaId, role } = req.user!;
+
+            // SECRETARIA não pode deletar pacientes
+            if (role === 'SECRETARIA') {
+                return res.status(403).json({ message: 'Você não tem permissão para deletar pacientes.' });
+            }
 
             await pacienteService.delete(id, clinicaId);
             return res.status(204).send();

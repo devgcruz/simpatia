@@ -120,6 +120,30 @@ class DoutorService {
             return doutor ? [doutor] : [];
         }
 
+        if (user.role === 'SECRETARIA') {
+            if (!user.clinicaId) {
+                throw new Error("SECRETARIA logada não possui clínica associada.");
+            }
+            // Buscar IDs dos doutores vinculados à secretária
+            const vinculos = await prisma.secretariaDoutor.findMany({
+                where: { secretariaId: user.id },
+                select: { doutorId: true },
+            });
+            const doutorIds = vinculos.map((v) => v.doutorId);
+            
+            if (doutorIds.length === 0) {
+                return []; // Secretária sem vínculos não vê nenhum doutor
+            }
+            
+            return prisma.doutor.findMany({
+                where: { 
+                    id: { in: doutorIds },
+                    ativo: true 
+                },
+                select: this.adminSelect,
+            });
+        }
+
         return [];
     }
 

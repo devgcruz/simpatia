@@ -4,7 +4,7 @@
 export interface IUser {
   id: number;
   email: string;
-  role: 'SUPER_ADMIN' | 'CLINICA_ADMIN' | 'DOUTOR';
+  role: 'SUPER_ADMIN' | 'CLINICA_ADMIN' | 'DOUTOR' | 'SECRETARIA';
   clinicaId: number | null;
 }
 

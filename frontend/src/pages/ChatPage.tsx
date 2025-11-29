@@ -20,14 +20,20 @@ import {
 } from '../services/chat.service';
 import { ChatHistory } from '../components/chat/ChatHistory';
 import { ChatInput } from '../components/chat/ChatInput';
+import { useAuth } from '../hooks/useAuth';
+import { useDoutorSelecionado } from '../context/DoutorSelecionadoContext';
 
 export const ChatPage: React.FC = () => {
+  const { user } = useAuth();
+  const { doutorSelecionado, isLoading: isLoadingDoutor } = useDoutorSelecionado();
   const [handoffQueue, setHandoffQueue] = useState<HandoffPaciente[]>([]);
   const [loadingQueue, setLoadingQueue] = useState(true);
   const [selectedPaciente, setSelectedPaciente] = useState<HandoffPaciente | null>(null);
   const [newMessages, setNewMessages] = useState<IChatMessage[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+
+  const isSecretaria = user?.role === 'SECRETARIA';
 
   const fetchHandoffQueue = async () => {
     try {
@@ -43,7 +49,7 @@ export const ChatPage: React.FC = () => {
 
   useEffect(() => {
     fetchHandoffQueue();
-  }, []);
+  }, [doutorSelecionado]); // Recarregar quando o doutor selecionado mudar
 
   const handleSelectPaciente = (paciente: HandoffPaciente) => {
     setSelectedPaciente(paciente);
@@ -84,6 +90,26 @@ export const ChatPage: React.FC = () => {
       setIsClosing(false);
     }
   };
+
+  // Se for SECRETARIA e ainda estiver carregando o contexto, mostrar loading
+  if (isSecretaria && isLoadingDoutor) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 96px)' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  // Se for SECRETARIA e não houver doutor selecionado, mostrar mensagem
+  if (isSecretaria && !doutorSelecionado) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 96px)' }}>
+        <Typography variant="h6" color="text.secondary">
+          Selecione um doutor no menu lateral para visualizar os atendimentos.
+        </Typography>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ display: 'flex', height: 'calc(100vh - 96px)', width: '100%' }}>

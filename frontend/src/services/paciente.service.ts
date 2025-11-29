@@ -3,8 +3,9 @@ import { IPaciente, IHistoricoPaciente } from '../types/models';
 
 type PacienteInput = Omit<IPaciente, 'id' | 'clinicaId'>;
 
-export const getPacientes = async () => {
-  const response = await api.get<IPaciente[]>('/pacientes');
+export const getPacientes = async (doutorId?: number) => {
+  const params = doutorId ? { doutorId } : {};
+  const response = await api.get<IPaciente[]>('/pacientes', { params });
   return response.data;
 };
 

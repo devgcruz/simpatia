@@ -70,9 +70,9 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
 
   const isEditing = !!initialData;
   const [clinicas, setClinicas] = useState<IClinica[]>([]);
-  let roles: DoutorRole[] = ['DOUTOR', 'CLINICA_ADMIN'];
+  let roles: DoutorRole[] = ['DOUTOR', 'CLINICA_ADMIN', 'SECRETARIA'];
   if (user?.role === 'SUPER_ADMIN') {
-    roles = ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'];
+    roles = ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN', 'SECRETARIA'];
   }
 
   const roleOptions: DoutorRole[] = [...roles];

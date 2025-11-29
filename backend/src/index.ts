@@ -20,6 +20,7 @@ import indisponibilidadeRoutes from './routes/indisponibilidade.routes';
 import pausaExcecaoRoutes from './routes/pausa-excecao.routes';
 import prescricaoRoutes from './routes/prescricao.routes';
 import medicamentoRoutes from './routes/medicamento.routes';
+import secretariaRoutes from './routes/secretaria.routes';
 import path from 'path';
 
 const app = express();
@@ -85,6 +86,7 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/prescricoes', prescricaoRoutes);
 app.use('/api/medicamentos', medicamentoRoutes);
+app.use('/api/secretarias', secretariaRoutes);
 
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);

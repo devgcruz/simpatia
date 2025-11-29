@@ -41,7 +41,7 @@ export interface IPaciente {
   };
 }
 
-export type DoutorRole = 'DOUTOR' | 'CLINICA_ADMIN' | 'SUPER_ADMIN';
+export type DoutorRole = 'DOUTOR' | 'CLINICA_ADMIN' | 'SUPER_ADMIN' | 'SECRETARIA';
 
 export interface IDoutor {
   id: number;

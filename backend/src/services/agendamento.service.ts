@@ -145,6 +145,29 @@ class AgendamentoService {
 
         if (user.role === 'DOUTOR') {
             where.doutorId = user.id;
+        } else if (user.role === 'SECRETARIA') {
+            // Buscar IDs dos doutores vinculados à secretária
+            const vinculos = await prisma.secretariaDoutor.findMany({
+                where: { secretariaId: user.id },
+                select: { doutorId: true },
+            });
+            const doutorIds = vinculos.map((v) => v.doutorId);
+            
+            if (doutorIds.length === 0) {
+                return []; // Secretária sem vínculos não vê nada
+            }
+            
+            // Se filtro de doutor específico, verificar se está nos vínculos
+            if (filtros.doutorId) {
+                const doutorIdFiltro = Number(filtros.doutorId);
+                if (doutorIds.includes(doutorIdFiltro)) {
+                    where.doutorId = doutorIdFiltro;
+                } else {
+                    return []; // Doutor não vinculado
+                }
+            } else {
+                where.doutorId = { in: doutorIds };
+            }
         } else if (user.role === 'CLINICA_ADMIN') {
             where.doutor = { clinicaId: user.clinicaId };
 
@@ -158,6 +181,9 @@ class AgendamentoService {
         } else {
             return [];
         }
+
+        // Filtrar apenas agendamentos ativos
+        where.ativo = true;
 
         const agendamentos = await prisma.agendamento.findMany({
             where,
@@ -212,6 +238,20 @@ class AgendamentoService {
         } else if (user.role === 'CLINICA_ADMIN') {
             if (!targetDoutorId) {
                 throw new Error("doutorId é obrigatório.");
+            }
+        } else if (user.role === 'SECRETARIA') {
+            if (!targetDoutorId) {
+                throw new Error("doutorId é obrigatório.");
+            }
+            // Verificar se o doutor está vinculado à secretária
+            const vinculo = await prisma.secretariaDoutor.findFirst({
+                where: {
+                    secretariaId: user.id,
+                    doutorId: targetDoutorId,
+                },
+            });
+            if (!vinculo) {
+                throw new Error("Acesso negado. Doutor não vinculado à secretária.");
             }
         } else if (user.role !== 'SUPER_ADMIN') {
             throw new Error("Acesso negado.");
@@ -529,6 +569,17 @@ class AgendamentoService {
         if (data.doutorId && data.doutorId !== agendamentoExistente.doutorId) {
             if (user.role === 'DOUTOR') {
                 throw new Error("Acesso negado.");
+            } else if (user.role === 'SECRETARIA') {
+                // Verificar se o novo doutor está vinculado à secretária
+                const vinculo = await prisma.secretariaDoutor.findFirst({
+                    where: {
+                        secretariaId: user.id,
+                        doutorId: data.doutorId,
+                    },
+                });
+                if (!vinculo) {
+                    throw new Error("Acesso negado. Doutor não vinculado à secretária.");
+                }
             }
         }
 
@@ -699,6 +750,22 @@ class AgendamentoService {
             if (agendamento.doutor.clinicaId !== user.clinicaId) {
                 throw new Error("Acesso negado.");
             }
+        } else if (user.role === 'SECRETARIA') {
+            // Verificar se o doutor do agendamento está vinculado à secretária
+            if (!agendamento.doutorId) {
+                throw new Error("Acesso negado. Agendamento sem doutor associado.");
+            }
+            const vinculo = await prisma.secretariaDoutor.findFirst({
+                where: {
+                    secretariaId: user.id,
+                    doutorId: agendamento.doutorId,
+                },
+            });
+            if (!vinculo) {
+                throw new Error("Acesso negado. Doutor não vinculado à secretária.");
+            }
+        } else if (user.role !== 'SUPER_ADMIN') {
+            throw new Error("Acesso negado.");
         }
     }
 

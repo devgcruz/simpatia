@@ -34,6 +34,9 @@ import TodayIcon from '@mui/icons-material/Today';
 import MedicationIcon from '@mui/icons-material/Medication';
 import DescriptionIcon from '@mui/icons-material/Description';
 import { useAuth } from '../hooks/useAuth';
+import { useDoutorSelecionado } from '../context/DoutorSelecionadoContext';
+import { SelectDoutorModal } from '../components/common/SelectDoutorModal';
+import PersonIcon from '@mui/icons-material/Person';
 
 const drawerWidth = 240;
 
@@ -122,9 +125,11 @@ export const DashboardLayout: React.FC = () => {
   const [gerenciarOpen, setGerenciarOpen] = useState(true);
   const { user, logout } = useAuth();
   const location = useLocation();
+  const { doutorSelecionado, setDoutorSelecionado, doutoresDisponiveis, isLoading: isLoadingDoutor } = useDoutorSelecionado();
+  const [isSelectDoutorModalOpen, setIsSelectDoutorModalOpen] = useState(false);
 
   const menuItems: MenuItem[] = [
-    { text: 'Agenda', icon: <EventIcon />, path: '/dashboard', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'] },
+    { text: 'Agenda', icon: <EventIcon />, path: '/dashboard', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN', 'SECRETARIA'] },
     {
       text: 'Atendimento do Dia',
       icon: <TodayIcon />,
@@ -135,21 +140,22 @@ export const DashboardLayout: React.FC = () => {
       text: 'Atendimento',
       icon: <ChatIcon />,
       path: '/atendimento',
-      role: ['CLINICA_ADMIN', 'SUPER_ADMIN'],
+      role: ['CLINICA_ADMIN', 'SUPER_ADMIN', 'SECRETARIA'],
     },
     {
       text: 'Gerenciar',
       icon: <SettingsIcon />,
       path: '#',
-      role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'],
+      role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN', 'SECRETARIA'],
       subItems: [
-        { text: 'Pacientes', icon: <PeopleIcon />, path: '/pacientes', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'] },
+        { text: 'Pacientes', icon: <PeopleIcon />, path: '/pacientes', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN', 'SECRETARIA'] },
         { text: 'Medicamentos', icon: <MedicationIcon />, path: '/medicamentos', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'] },
         { text: 'Prescrições', icon: <DescriptionIcon />, path: '/prescricoes', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'] },
       ],
     },
     { text: 'Serviços', icon: <MedicalServicesIcon />, path: '/servicos', role: ['CLINICA_ADMIN', 'SUPER_ADMIN'] },
     { text: 'Doutores', icon: <AccountCircleIcon />, path: '/doutores', role: ['CLINICA_ADMIN', 'SUPER_ADMIN'] },
+    { text: 'Secretárias', icon: <AccountCircleIcon />, path: '/secretarias', role: ['CLINICA_ADMIN', 'SUPER_ADMIN'] },
     { text: 'Gerir Clínicas', icon: <StoreIcon />, path: '/clinicas', role: ['SUPER_ADMIN'] },
   ];
 
@@ -172,21 +178,30 @@ export const DashboardLayout: React.FC = () => {
 
   // Encontrar o item de menu ativo (incluindo subitens)
   const findActiveMenuItem = (): string => {
+    let title = 'Agenda';
     for (const item of menuItems) {
       if (item.subItems) {
         const activeSubItem = item.subItems.find((subItem) => 
           location.pathname.startsWith(subItem.path)
         );
         if (activeSubItem) {
-          return activeSubItem.text;
+          title = activeSubItem.text;
+          break;
         }
       } else {
         if (location.pathname.startsWith(item.path)) {
-          return item.text;
+          title = item.text;
+          break;
         }
       }
     }
-    return 'Agenda';
+    
+    // Se for SECRETARIA e houver doutor selecionado, adicionar o nome do doutor
+    if (user?.role === 'SECRETARIA' && doutorSelecionado) {
+      return `${title} (Dr. ${doutorSelecionado.nome})`;
+    }
+    
+    return title;
   };
   
   const headerTitle = findActiveMenuItem();
@@ -228,16 +243,17 @@ export const DashboardLayout: React.FC = () => {
         </Toolbar>
       </AppBar>
       <Drawer variant="permanent" open={open}>
-        <DrawerHeader>
-          <Typography variant="h6" sx={{ mr: 'auto', ml: 1 }}>
-            Simpatia IA
-          </Typography>
-          <IconButton onClick={handleDrawerClose}>
-            {theme.direction === 'rtl' ? <ChevronRightIcon /> : <ChevronLeftIcon />}
-          </IconButton>
-        </DrawerHeader>
-        <Divider />
-        <List>
+        <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <DrawerHeader>
+            <Typography variant="h6" sx={{ mr: 'auto', ml: 1 }}>
+              Simpatia IA
+            </Typography>
+            <IconButton onClick={handleDrawerClose}>
+              {theme.direction === 'rtl' ? <ChevronRightIcon /> : <ChevronLeftIcon />}
+            </IconButton>
+          </DrawerHeader>
+          <Divider />
+          <List sx={{ flexGrow: 1, overflowY: open ? 'auto' : 'hidden', overflowX: 'hidden' }}>
           {permittedMenuItems.map((item) => {
             if (item.subItems) {
               // Menu expansível
@@ -254,7 +270,16 @@ export const DashboardLayout: React.FC = () => {
                 <React.Fragment key={item.text}>
                   <ListItem disablePadding sx={{ display: 'block' }}>
                     <ListItemButton
-                      onClick={() => setGerenciarOpen(!gerenciarOpen)}
+                      onClick={() => {
+                        if (!open) {
+                          // Se o menu estiver fechado, abrir o menu primeiro
+                          setOpen(true);
+                          setGerenciarOpen(true);
+                        } else {
+                          // Se o menu estiver aberto, apenas expandir/colapsar
+                          setGerenciarOpen(!gerenciarOpen);
+                        }
+                      }}
                       sx={{
                         minHeight: 48,
                         justifyContent: open ? 'initial' : 'center',
@@ -341,8 +366,105 @@ export const DashboardLayout: React.FC = () => {
               </ListItem>
             );
           })}
-        </List>
+          </List>
+          {user?.role === 'SECRETARIA' && (
+            <>
+              <Divider />
+              <Box
+                sx={{
+                  p: 1.5,
+                  borderTop: '1px solid',
+                  borderColor: 'divider',
+                  flexShrink: 0,
+                }}
+              >
+                <ListItemButton
+                  onClick={() => setIsSelectDoutorModalOpen(true)}
+                  sx={{
+                    minHeight: 40,
+                    height: 40,
+                    justifyContent: open ? 'initial' : 'center',
+                    px: open ? 2.5 : 1,
+                    borderRadius: 1,
+                    backgroundColor: doutorSelecionado ? 'primary.main' : 'error.main',
+                    color: 'white',
+                    position: 'relative',
+                    overflow: 'hidden',
+                    '@keyframes shimmer': {
+                      '0%': {
+                        left: '-100%',
+                      },
+                      '100%': {
+                        left: '100%',
+                      },
+                    },
+                    '&::before': {
+                      content: '""',
+                      position: 'absolute',
+                      top: 0,
+                      left: '-100%',
+                      width: '100%',
+                      height: '100%',
+                      background: 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent)',
+                      animation: 'shimmer 2.5s infinite',
+                    },
+                    '&:hover': {
+                      backgroundColor: doutorSelecionado ? 'primary.dark' : 'error.dark',
+                    },
+                    '&:disabled': {
+                      backgroundColor: 'action.disabledBackground',
+                      color: 'action.disabled',
+                      '&::before': {
+                        animation: 'none',
+                      },
+                    },
+                  }}
+                  disabled={isLoadingDoutor || doutoresDisponiveis.length === 0}
+                >
+                  <ListItemIcon
+                    sx={{
+                      minWidth: 0,
+                      mr: open ? 1.5 : 0,
+                      justifyContent: 'center',
+                      color: 'white',
+                    }}
+                  >
+                    <PersonIcon />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={
+                      doutorSelecionado
+                        ? `Dr. ${doutorSelecionado.nome}`
+                        : 'Nenhum Doutor Selecionado'
+                    }
+                    sx={{
+                      opacity: open ? 1 : 0,
+                      '& .MuiListItemText-primary': {
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        pr: 1,
+                      },
+                    }}
+                  />
+                </ListItemButton>
+              </Box>
+            </>
+          )}
+        </Box>
       </Drawer>
+      {user?.role === 'SECRETARIA' && (
+        <SelectDoutorModal
+          open={isSelectDoutorModalOpen}
+          onClose={() => setIsSelectDoutorModalOpen(false)}
+          onSelect={(doutor) => {
+            setDoutorSelecionado(doutor);
+            setIsSelectDoutorModalOpen(false);
+          }}
+          doutores={doutoresDisponiveis}
+          title="Trocar Doutor"
+        />
+      )}
       <Box
         component="main"
         sx={{

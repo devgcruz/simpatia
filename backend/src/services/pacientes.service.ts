@@ -45,9 +45,42 @@ interface IUpdatePaciente {
 }
 class PacienteService {
 
-    async getAll(clinicaId: number) {
+    async getAll(clinicaId: number, userId?: number, userRole?: string, doutorId?: number) {
+        const where: any = { clinicaId, ativo: true };
+        
+        // Se for DOUTOR, filtrar apenas pacientes do doutor logado
+        if (userRole === 'DOUTOR' && userId) {
+            where.doutorId = userId;
+        }
+        // Se for SECRETARIA, filtrar apenas pacientes dos doutores vinculados
+        else if (userRole === 'SECRETARIA' && userId) {
+            const vinculos = await prisma.secretariaDoutor.findMany({
+                where: { secretariaId: userId },
+                select: { doutorId: true },
+            });
+            const doutorIds = vinculos.map((v) => v.doutorId);
+            
+            if (doutorIds.length === 0) {
+                return []; // Secretária sem vínculos não vê nada
+            }
+            
+            // Se doutorId específico foi fornecido, verificar se está nos vínculos
+            if (doutorId) {
+                if (doutorIds.includes(doutorId)) {
+                    where.doutorId = doutorId;
+                } else {
+                    return []; // Doutor não vinculado
+                }
+            } else {
+                where.doutorId = { in: doutorIds };
+            }
+        } else if (doutorId) {
+            // Para outros roles, se doutorId foi fornecido, filtrar por ele
+            where.doutorId = doutorId;
+        }
+        
         const paciente = await prisma.paciente.findMany({
-            where: { clinicaId, ativo: true },
+            where,
             include: {
                 doutor: {
                     select: {

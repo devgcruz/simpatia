@@ -31,6 +31,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import InfoIcon from '@mui/icons-material/Info';
 import DescriptionIcon from '@mui/icons-material/Description';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { toast } from 'sonner';
 import { AgendamentoCreateInput } from '../../services/agendamento.service';
 import { IDoutor, IPaciente, IServico, IAgendamento, IHistoricoPaciente } from '../../types/models';
@@ -39,7 +40,9 @@ import { getPacientes, getPacienteHistoricos, updateHistoricoPaciente } from '..
 import { getServicos } from '../../services/servico.service';
 import { getPrescricaoByProtocolo } from '../../services/prescricao.service';
 import { useAuth } from '../../hooks/useAuth';
+import { useDoutorSelecionado } from '../../context/DoutorSelecionadoContext';
 import moment from 'moment';
+import WarningIcon from '@mui/icons-material/Warning';
 import { pdf } from '@react-pdf/renderer';
 import PrescricaoPdfView from '../PrescricaoPdfView';
 import { IModeloPrescricaoPDF, modeloPrescricaoPadrao } from '../../types/prescricao';
@@ -76,8 +79,10 @@ export const AgendamentoFormModal: React.FC<Props> = ({
   doutorId,
 }) => {
   const { user } = useAuth();
+  const { doutorSelecionado } = useDoutorSelecionado();
   const [form, setForm] = useState<FormState>(initialState);
   const [loading, setLoading] = useState(false);
+  const [openConfirmModal, setOpenConfirmModal] = useState(false);
 
   const [doutores, setDoutores] = useState<IDoutor[]>([]);
   const [pacientes, setPacientes] = useState<IPaciente[]>([]);
@@ -100,10 +105,12 @@ export const AgendamentoFormModal: React.FC<Props> = ({
     const fetchData = async () => {
       try {
         setLoading(true);
+        // Para SECRETARIA, usar doutor selecionado; para DOUTOR, não passar doutorId (backend filtra automaticamente)
+        const doutorIdParaPacientes = user?.role === 'SECRETARIA' && doutorSelecionado ? doutorSelecionado.id : undefined;
         // Se doutorId foi passado, buscar apenas serviços desse doutor
         const [doutoresData, pacientesData, servicosData] = await Promise.all([
           getDoutores(),
-          getPacientes(),
+          getPacientes(doutorIdParaPacientes),
           getServicos(doutorId),
         ]);
         setDoutores(doutoresData);
@@ -122,6 +129,7 @@ export const AgendamentoFormModal: React.FC<Props> = ({
   useEffect(() => {
     if (!open) return;
 
+    // Para SECRETARIA, sempre mostrar apenas a aba de dados
     setActiveTab('dados');
     setHistoricoError(null);
     setFiltroData('');
@@ -146,15 +154,33 @@ export const AgendamentoFormModal: React.FC<Props> = ({
       setForm({
         ...initialState,
         dataHora: moment(initialData.dataHora).format('YYYY-MM-DDTHH:mm'),
-        doutorId: user?.role === 'DOUTOR' ? String(user.id) : '',
+        doutorId: user?.role === 'DOUTOR' 
+          ? String(user.id) 
+          : user?.role === 'SECRETARIA' && doutorSelecionado
+          ? String(doutorSelecionado.id)
+          : '',
       });
     } else {
       setForm({
         ...initialState,
-        doutorId: user?.role === 'DOUTOR' ? String(user.id) : '',
+        doutorId: user?.role === 'DOUTOR' 
+          ? String(user.id) 
+          : user?.role === 'SECRETARIA' && doutorSelecionado
+          ? String(doutorSelecionado.id)
+          : '',
       });
     }
-  }, [agendamento, initialData, user, open]);
+  }, [agendamento, initialData, user, open, doutorSelecionado]);
+
+  // Atualizar doutorId quando o doutor selecionado mudar (para SECRETARIA)
+  useEffect(() => {
+    if (user?.role === 'SECRETARIA' && doutorSelecionado && !agendamento && open) {
+      setForm((prev) => ({
+        ...prev,
+        doutorId: String(doutorSelecionado.id),
+      }));
+    }
+  }, [doutorSelecionado, user?.role, agendamento, open]);
 
   useEffect(() => {
     if (!open) {
@@ -163,6 +189,12 @@ export const AgendamentoFormModal: React.FC<Props> = ({
     }
 
     if (!agendamento) {
+      setHistoricos([]);
+      return;
+    }
+
+    // SECRETARIA não tem permissão para ver histórico
+    if (user?.role === 'SECRETARIA') {
       setHistoricos([]);
       return;
     }
@@ -180,7 +212,7 @@ export const AgendamentoFormModal: React.FC<Props> = ({
     };
 
     loadHistoricos();
-  }, [open, agendamento]);
+  }, [open, agendamento, user?.role]);
 
   const handleSelectChange = (event: SelectChangeEvent<string>) => {
     const { name, value } = event.target;
@@ -385,10 +417,45 @@ export const AgendamentoFormModal: React.FC<Props> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Validação para SECRETARIA: deve ter doutor selecionado
+    if (user?.role === 'SECRETARIA' && !doutorSelecionado) {
+      toast.error('Por favor, selecione um doutor no menu lateral antes de criar um agendamento.');
+      return;
+    }
+
+    // Se for SECRETARIA e for um novo agendamento (não edição), mostrar modal de confirmação
+    if (user?.role === 'SECRETARIA' && !agendamento && doutorSelecionado) {
+      setOpenConfirmModal(true);
+      return;
+    }
+
+    // Se não for SECRETARIA ou já confirmou, prosseguir normalmente
+    // Para SECRETARIA, garantir que o doutorId seja do doutor selecionado
+    const doutorIdFinal = user?.role === 'SECRETARIA' && doutorSelecionado
+      ? doutorSelecionado.id
+      : Number(form.doutorId || user?.id || 0);
+    
     const dataToSend: AgendamentoCreateInput = {
       ...form,
       pacienteId: Number(form.pacienteId),
-      doutorId: Number(form.doutorId || user?.id || 0),
+      doutorId: doutorIdFinal,
+      servicoId: Number(form.servicoId),
+      dataHora: new Date(form.dataHora).toISOString(),
+    };
+    onSubmit(dataToSend);
+  };
+
+  const handleConfirmSubmit = () => {
+    setOpenConfirmModal(false);
+    // Para SECRETARIA, garantir que o doutorId seja do doutor selecionado
+    const doutorIdFinal = user?.role === 'SECRETARIA' && doutorSelecionado
+      ? doutorSelecionado.id
+      : Number(form.doutorId || user?.id || 0);
+    
+    const dataToSend: AgendamentoCreateInput = {
+      ...form,
+      pacienteId: Number(form.pacienteId),
+      doutorId: doutorIdFinal,
       servicoId: Number(form.servicoId),
       dataHora: new Date(form.dataHora).toISOString(),
     };
@@ -403,8 +470,33 @@ export const AgendamentoFormModal: React.FC<Props> = ({
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth scroll="body">
       <DialogTitle sx={{ m: 0, p: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Typography variant="h6">
-            {agendamento ? 'Editar Agendamento' : 'Novo Agendamento Manual'}
+          <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {agendamento ? (
+              'Editar Agendamento'
+            ) : (
+              <>
+                Novo Agendamento Manual
+                {user?.role === 'SECRETARIA' && doutorSelecionado && (
+                  <>
+                    {' para '}
+                    <Box
+                      component="span"
+                      sx={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 0.5,
+                        color: 'warning.main',
+                      }}
+                    >
+                      <WarningAmberIcon sx={{ fontSize: '1.2em' }} />
+                      <Box component="span" sx={{ fontWeight: 600 }}>
+                        Dr. {doutorSelecionado.nome}
+                      </Box>
+                    </Box>
+                  </>
+                )}
+              </>
+            )}
           </Typography>
           <Box sx={{ display: 'flex', gap: 1 }}>
             {agendamento && (
@@ -444,14 +536,14 @@ export const AgendamentoFormModal: React.FC<Props> = ({
       </DialogTitle>
       <Box component="form" onSubmit={handleSubmit}>
         <DialogContent dividers sx={{ overflow: 'visible' }}>
-          {agendamento && (
+          {agendamento && user?.role !== 'SECRETARIA' && (
             <Tabs value={activeTab} onChange={handleTabChange} sx={{ mb: 2 }}>
               <Tab value="dados" label="Dados do agendamento" />
               <Tab value="historico" label="Histórico do paciente" />
             </Tabs>
           )}
 
-          {activeTab === 'dados' && (
+          {(activeTab === 'dados' || user?.role === 'SECRETARIA') && (
             <Box>
               {loading ? (
                 <CircularProgress />
@@ -496,25 +588,27 @@ export const AgendamentoFormModal: React.FC<Props> = ({
                     </FormControl>
                   </Grid>
 
-                  <Grid item xs={12}>
-                    <FormControl fullWidth required margin="normal">
-                      <InputLabel id="doutor-label">Doutor</InputLabel>
-                      <Select
-                        name="doutorId"
-                        labelId="doutor-label"
-                        value={form.doutorId}
-                        label="Doutor"
-                        onChange={handleSelectChange}
-                        disabled={user?.role === 'DOUTOR'}
-                      >
-                        {doutores.map((d) => (
-                          <MenuItem key={d.id} value={d.id}>
-                            {d.nome}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
+                  {user?.role !== 'SECRETARIA' && (
+                    <Grid item xs={12}>
+                      <FormControl fullWidth required margin="normal">
+                        <InputLabel id="doutor-label">Doutor</InputLabel>
+                        <Select
+                          name="doutorId"
+                          labelId="doutor-label"
+                          value={form.doutorId}
+                          label="Doutor"
+                          onChange={handleSelectChange}
+                          disabled={user?.role === 'DOUTOR'}
+                        >
+                          {doutores.map((d) => (
+                            <MenuItem key={d.id} value={d.id}>
+                              {d.nome}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                  )}
 
                   <Grid item xs={12} sm={6}>
                     <TextField
@@ -593,7 +687,7 @@ export const AgendamentoFormModal: React.FC<Props> = ({
             </Box>
           )}
 
-          {agendamento && activeTab === 'historico' && (
+          {agendamento && activeTab === 'historico' && user?.role !== 'SECRETARIA' && (
             <Box>
               {historicoLoading ? (
                 <CircularProgress />
@@ -897,6 +991,47 @@ export const AgendamentoFormModal: React.FC<Props> = ({
               disabled={!descricaoEditando.trim() || salvandoHistorico}
             >
               {salvandoHistorico ? 'Salvando...' : 'Salvar alterações'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Modal de confirmação para SECRETARIA */}
+        <Dialog
+          open={openConfirmModal}
+          onClose={() => setOpenConfirmModal(false)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <WarningIcon color="warning" />
+              <Typography variant="h6">Confirmar Agendamento</Typography>
+            </Box>
+          </DialogTitle>
+          <DialogContent>
+            <Typography variant="body1" sx={{ mb: 2 }}>
+              Criar um novo agendamento para o{' '}
+              <Box
+                component="span"
+                sx={{
+                  color: 'error.main',
+                  fontSize: '1.2em',
+                  fontWeight: 'bold',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 0.5,
+                }}
+              >
+                <WarningIcon sx={{ fontSize: '1.2em' }} />
+                Dr. {doutorSelecionado?.nome}
+              </Box>
+              ?
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setOpenConfirmModal(false)}>Cancelar</Button>
+            <Button onClick={handleConfirmSubmit} variant="contained" color="primary">
+              Confirmar
             </Button>
           </DialogActions>
         </Dialog>

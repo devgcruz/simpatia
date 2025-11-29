@@ -1,13 +1,14 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { Box, Button, Paper, CircularProgress, TextField, InputAdornment } from '@mui/material';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import { Box, Button, Paper, CircularProgress, TextField, InputAdornment, Chip, Typography } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import HistoryIcon from '@mui/icons-material/History';
 import DescriptionIcon from '@mui/icons-material/Description';
+import PersonIcon from '@mui/icons-material/Person';
 import { DataGrid, GridColDef, GridActionsCellItem, GridToolbar } from '@mui/x-data-grid';
 import { ptBR } from '@mui/x-data-grid/locales';
 import { toast } from 'sonner';
-import { IPaciente } from '../types/models';
+import { IPaciente, IDoutor } from '../types/models';
 import { getPacientes, createPaciente, updatePaciente, deletePaciente } from '../services/paciente.service';
 import { getAgendamentos } from '../services/agendamento.service';
 import { PacienteFormModal } from '../components/pacientes/PacienteFormModal';
@@ -16,11 +17,18 @@ import { ProntuarioModal } from '../components/pacientes/ProntuarioModal';
 import { ConfirmationModal } from '../components/common/ConfirmationModal';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import { IAgendamento } from '../types/models';
+import { useAuth } from '../hooks/useAuth';
+import { useDoutorSelecionado } from '../context/DoutorSelecionadoContext';
 
 export const PacientesPage: React.FC = () => {
+  const { user } = useAuth();
+  const { doutorSelecionado, isLoading: isLoadingDoutor } = useDoutorSelecionado();
   const [pacientes, setPacientes] = useState<IPaciente[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Verificar se o usuário é SECRETARIA
+  const isSecretaria = user?.role === 'SECRETARIA';
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPaciente, setEditingPaciente] = useState<IPaciente | null>(null);
@@ -30,21 +38,23 @@ export const PacientesPage: React.FC = () => {
   const [isProntuarioModalOpen, setIsProntuarioModalOpen] = useState(false);
   const [agendamentoProntuario, setAgendamentoProntuario] = useState<IAgendamento | null>(null);
 
-  const fetchPacientes = async () => {
+  const fetchPacientes = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await getPacientes();
+      // Para SECRETARIA, usar doutor selecionado; para DOUTOR, não passar doutorId (backend filtra automaticamente)
+      const doutorId = isSecretaria && doutorSelecionado ? doutorSelecionado.id : undefined;
+      const data = await getPacientes(doutorId);
       setPacientes(data);
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Erro ao buscar pacientes');
     } finally {
       setLoading(false);
     }
-  };
+  }, [isSecretaria, doutorSelecionado]);
 
   useEffect(() => {
     fetchPacientes();
-  }, []);
+  }, [fetchPacientes]);
 
   const handleOpenModal = (paciente: IPaciente | null = null) => {
     setEditingPaciente(paciente);
@@ -62,6 +72,7 @@ export const PacientesPage: React.FC = () => {
         await updatePaciente(editingPaciente.id, data);
         toast.success('Paciente atualizado com sucesso!');
       } else {
+        // O modal já preenche o doutorId automaticamente para SECRETARIA
         await createPaciente(data);
         toast.success('Paciente criado com sucesso!');
       }
@@ -77,6 +88,11 @@ export const PacientesPage: React.FC = () => {
   };
 
   const handleOpenHistoricoModal = (paciente: IPaciente) => {
+    // SECRETARIA não pode acessar histórico
+    if (isSecretaria) {
+      toast.error('Você não tem permissão para visualizar o histórico do paciente.');
+      return;
+    }
     setPacienteHistorico(paciente);
     setIsHistoricoModalOpen(true);
   };
@@ -87,6 +103,11 @@ export const PacientesPage: React.FC = () => {
   };
 
   const handleOpenProntuario = async (paciente: IPaciente) => {
+    // SECRETARIA não pode acessar prontuário
+    if (isSecretaria) {
+      toast.error('Você não tem permissão para visualizar o prontuário do paciente.');
+      return;
+    }
     try {
       // Buscar agendamentos do paciente
       const agendamentos = await getAgendamentos();
@@ -138,6 +159,13 @@ export const PacientesPage: React.FC = () => {
 
   const handleConfirmDelete = async () => {
     if (!itemToDeleteId) return;
+    
+    // SECRETARIA não pode deletar
+    if (isSecretaria) {
+      toast.error('Você não tem permissão para deletar pacientes.');
+      setItemToDeleteId(null);
+      return;
+    }
 
     try {
       await deletePaciente(itemToDeleteId);
@@ -166,36 +194,66 @@ export const PacientesPage: React.FC = () => {
       type: 'actions',
       headerName: 'Ações',
       width: 180,
-      getActions: ({ row }) => [
-        <GridActionsCellItem
-          key="prontuario"
-          icon={<DescriptionIcon />}
-          label="Prontuário"
-          onClick={() => handleOpenProntuario(row)}
-        />,
-        <GridActionsCellItem
-          key="historico"
-          icon={<HistoryIcon />}
-          label="Histórico"
-          onClick={() => handleOpenHistoricoModal(row)}
-        />,
-        <GridActionsCellItem
-          key="edit"
-          icon={<EditIcon />}
-          label="Editar"
-          onClick={() => handleOpenModal(row)}
-        />,
-        <GridActionsCellItem
-          key="delete"
-          icon={<DeleteIcon />}
-          label="Excluir"
-          onClick={() => handleDelete(row.id)}
-        />,
-      ],
+      getActions: ({ row }) => {
+        const actions = [];
+        
+        // SECRETARIA não pode ver prontuário
+        if (!isSecretaria) {
+          actions.push(
+            <GridActionsCellItem
+              key="prontuario"
+              icon={<DescriptionIcon />}
+              label="Prontuário"
+              onClick={() => handleOpenProntuario(row)}
+            />
+          );
+        }
+        
+        // SECRETARIA não pode ver histórico
+        if (!isSecretaria) {
+          actions.push(
+            <GridActionsCellItem
+              key="historico"
+              icon={<HistoryIcon />}
+              label="Histórico"
+              onClick={() => handleOpenHistoricoModal(row)}
+            />
+          );
+        }
+        
+        // SECRETARIA pode editar
+        actions.push(
+          <GridActionsCellItem
+            key="edit"
+            icon={<EditIcon />}
+            label="Editar"
+            onClick={() => handleOpenModal(row)}
+          />
+        );
+        
+        // SECRETARIA não pode deletar
+        if (!isSecretaria) {
+          actions.push(
+            <GridActionsCellItem
+              key="delete"
+              icon={<DeleteIcon />}
+              label="Excluir"
+              onClick={() => handleDelete(row.id)}
+            />
+          );
+        }
+        
+        return actions;
+      },
     },
   ];
 
   const filteredPacientes = useMemo(() => {
+    // Se for SECRETARIA e não tiver doutor selecionado, não mostrar pacientes
+    if (isSecretaria && !doutorSelecionado) {
+      return [];
+    }
+    
     const term = searchTerm.trim().toLowerCase();
     if (!term) return pacientes;
     return pacientes.filter((paciente) => {
@@ -203,7 +261,23 @@ export const PacientesPage: React.FC = () => {
       const telefone = paciente.telefone?.toLowerCase() ?? '';
       return nome.includes(term) || telefone.includes(term);
     });
-  }, [pacientes, searchTerm]);
+  }, [pacientes, searchTerm, isSecretaria, doutorSelecionado]);
+
+  // Se for SECRETARIA e ainda estiver carregando o contexto, mostrar loading
+  if (isSecretaria && isLoadingDoutor) {
+    return <CircularProgress />;
+  }
+
+  // Se for SECRETARIA e não houver doutor selecionado, mostrar mensagem
+  if (isSecretaria && !doutorSelecionado) {
+    return (
+      <Box sx={{ p: 3, textAlign: 'center' }}>
+        <Typography variant="h6" color="text.secondary">
+          Selecione um doutor no menu lateral para visualizar os pacientes.
+        </Typography>
+      </Box>
+    );
+  }
 
   if (loading) {
     return <CircularProgress />;
@@ -211,6 +285,7 @@ export const PacientesPage: React.FC = () => {
 
   return (
     <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+
       <Box
         sx={{
           display: 'flex',
@@ -236,10 +311,12 @@ export const PacientesPage: React.FC = () => {
             minWidth: { xs: '100%', md: 260 },
             flex: { xs: '0 1 auto', md: 1 },
           }}
+          disabled={isSecretaria && !doutorSelecionado}
         />
         <Button
           variant="contained"
           onClick={() => handleOpenModal()}
+          disabled={isSecretaria && !doutorSelecionado}
           sx={{ alignSelf: { xs: 'stretch', md: 'center' }, whiteSpace: 'nowrap' }}
         >
           Novo Paciente
@@ -279,6 +356,7 @@ export const PacientesPage: React.FC = () => {
         onClose={handleCloseModal}
         onSubmit={handleSubmitForm}
         initialData={editingPaciente}
+        doutorIdForcado={isSecretaria && doutorSelecionado ? doutorSelecionado.id : undefined}
       />
 
       <ConfirmationModal
@@ -289,13 +367,16 @@ export const PacientesPage: React.FC = () => {
         message="Tem certeza que deseja excluir este paciente? Esta ação não pode ser desfeita."
       />
 
-      <HistoricoPacienteModal
-        open={isHistoricoModalOpen}
-        onClose={handleCloseHistoricoModal}
-        paciente={pacienteHistorico}
-      />
 
-      {agendamentoProntuario && (
+      {!isSecretaria && (
+        <HistoricoPacienteModal
+          open={isHistoricoModalOpen}
+          onClose={handleCloseHistoricoModal}
+          paciente={pacienteHistorico}
+        />
+      )}
+
+      {!isSecretaria && agendamentoProntuario && (
         <ProntuarioModal
           open={isProntuarioModalOpen}
           onClose={handleCloseProntuario}

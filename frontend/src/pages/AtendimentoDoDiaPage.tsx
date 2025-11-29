@@ -180,6 +180,26 @@ export const AtendimentoDoDiaPage: React.FC = () => {
     }
   }, [doutorIdParaBusca, dataSelecionada]);
 
+  // Escutar eventos de atualização de agendamento de outras páginas
+  useEffect(() => {
+    const handleAgendamentoAtualizado = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const doutorIdEvento = customEvent.detail?.doutorId;
+      // Se o evento for para o doutor atual ou não especificar doutor, atualizar instantaneamente
+      if (!doutorIdEvento || doutorIdEvento === doutorIdParaBusca) {
+        // Usar setTimeout para garantir que a atualização aconteça após o evento ser processado
+        setTimeout(() => {
+          fetchAgendamentos();
+        }, 100);
+      }
+    };
+
+    window.addEventListener('agendamentoAtualizado', handleAgendamentoAtualizado);
+    return () => {
+      window.removeEventListener('agendamentoAtualizado', handleAgendamentoAtualizado);
+    };
+  }, [doutorIdParaBusca]);
+
   const handleEditAgendamento = (agendamento: IAgendamento) => {
     setAgendamentoEditando(agendamento);
     setIsFormModalOpen(true);
@@ -193,13 +213,25 @@ export const AtendimentoDoDiaPage: React.FC = () => {
 
   const handleSubmitForm = async (data: AgendamentoCreateInput) => {
     try {
+      const doutorIdEvento = data.doutorId || (agendamentoEditando?.doutor.id) || doutorIdParaBusca;
+      
       if (agendamentoEditando) {
         await updateAgendamento(agendamentoEditando.id, data);
         toast.success('Agendamento atualizado com sucesso!');
+        // Disparar evento ANTES de atualizar para garantir atualização instantânea em todas as páginas
+        window.dispatchEvent(new CustomEvent('agendamentoAtualizado', { 
+          detail: { tipo: 'update', doutorId: doutorIdEvento } 
+        }));
       } else {
         await createAgendamento(data);
         toast.success('Agendamento criado com sucesso!');
+        // Disparar evento ANTES de atualizar para garantir atualização instantânea em todas as páginas
+        window.dispatchEvent(new CustomEvent('agendamentoAtualizado', { 
+          detail: { tipo: 'create', doutorId: doutorIdEvento } 
+        }));
       }
+      
+      // Atualizar a página atual após disparar o evento
       await fetchAgendamentos();
       handleCloseFormModal();
     } catch (err: any) {
@@ -230,10 +262,16 @@ export const AtendimentoDoDiaPage: React.FC = () => {
   const handleFinalizarConsulta = async (descricao: string, duracaoMinutos?: number) => {
     if (!agendamentoProntuario) return;
     try {
+      const doutorIdEvento = agendamentoProntuario.doutor.id;
       await finalizeAgendamento(agendamentoProntuario.id, { descricao, duracaoMinutos });
       toast.success('Consulta finalizada com sucesso!', {
         duration: 3000,
       });
+      // Disparar evento ANTES de atualizar para garantir atualização instantânea em todas as páginas
+      window.dispatchEvent(new CustomEvent('agendamentoAtualizado', { 
+        detail: { tipo: 'finalize', doutorId: doutorIdEvento } 
+      }));
+      // Atualizar a página atual após disparar o evento
       await fetchAgendamentos();
       handleCloseProntuario();
     } catch (err: any) {

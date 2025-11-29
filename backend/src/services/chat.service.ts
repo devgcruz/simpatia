@@ -17,15 +17,32 @@ class ChatService {
       throw new Error('Usuário não está associado a uma clínica.');
     }
 
-    if (user.role !== 'CLINICA_ADMIN' && user.role !== 'SUPER_ADMIN') {
+    if (user.role !== 'CLINICA_ADMIN' && user.role !== 'SUPER_ADMIN' && user.role !== 'SECRETARIA') {
       throw new Error('Acesso negado.');
     }
 
+    const where: any = {
+      clinicaId: user.clinicaId,
+      chatStatus: 'HANDOFF',
+    };
+
+    // Se for SECRETARIA, filtrar apenas pacientes dos doutores vinculados
+    if (user.role === 'SECRETARIA') {
+      const vinculos = await prisma.secretariaDoutor.findMany({
+        where: { secretariaId: user.id },
+        select: { doutorId: true },
+      });
+      const doutorIds = vinculos.map((v) => v.doutorId);
+      
+      if (doutorIds.length === 0) {
+        return []; // Secretária sem vínculos não vê nada
+      }
+      
+      where.doutorId = { in: doutorIds };
+    }
+
     return prisma.paciente.findMany({
-      where: {
-        clinicaId: user.clinicaId,
-        chatStatus: 'HANDOFF',
-      },
+      where,
       select: {
         id: true,
         nome: true,
@@ -46,8 +63,25 @@ class ChatService {
       throw new Error('Usuário não está associado a uma clínica.');
     }
 
+    const where: any = { id: pacienteId, clinicaId: user.clinicaId };
+
+    // Se for SECRETARIA, verificar se o paciente está vinculado a um doutor vinculado à secretária
+    if (user.role === 'SECRETARIA') {
+      const vinculos = await prisma.secretariaDoutor.findMany({
+        where: { secretariaId: user.id },
+        select: { doutorId: true },
+      });
+      const doutorIds = vinculos.map((v) => v.doutorId);
+      
+      if (doutorIds.length === 0) {
+        throw new Error('Paciente não encontrado ou não pertence a esta clínica.');
+      }
+      
+      where.doutorId = { in: doutorIds };
+    }
+
     const paciente = await prisma.paciente.findFirst({
-      where: { id: pacienteId, clinicaId: user.clinicaId },
+      where,
     });
 
     if (!paciente) {
@@ -71,8 +105,25 @@ class ChatService {
       throw new Error('O conteúdo da mensagem não pode estar vazio.');
     }
 
+    const where: any = { id: pacienteId, clinicaId: user.clinicaId };
+
+    // Se for SECRETARIA, verificar se o paciente está vinculado a um doutor vinculado à secretária
+    if (user.role === 'SECRETARIA') {
+      const vinculos = await prisma.secretariaDoutor.findMany({
+        where: { secretariaId: user.id },
+        select: { doutorId: true },
+      });
+      const doutorIds = vinculos.map((v) => v.doutorId);
+      
+      if (doutorIds.length === 0) {
+        throw new Error('Paciente não encontrado ou não pertence a esta clínica.');
+      }
+      
+      where.doutorId = { in: doutorIds };
+    }
+
     const paciente = await prisma.paciente.findFirst({
-      where: { id: pacienteId, clinicaId: user.clinicaId },
+      where,
       include: { clinica: true },
     });
 
@@ -114,8 +165,25 @@ class ChatService {
       throw new Error('Usuário não está associado a uma clínica.');
     }
 
+    const where: any = { id: pacienteId, clinicaId: user.clinicaId };
+
+    // Se for SECRETARIA, verificar se o paciente está vinculado a um doutor vinculado à secretária
+    if (user.role === 'SECRETARIA') {
+      const vinculos = await prisma.secretariaDoutor.findMany({
+        where: { secretariaId: user.id },
+        select: { doutorId: true },
+      });
+      const doutorIds = vinculos.map((v) => v.doutorId);
+      
+      if (doutorIds.length === 0) {
+        throw new Error('Paciente não encontrado ou não pertence a esta clínica.');
+      }
+      
+      where.doutorId = { in: doutorIds };
+    }
+
     const paciente = await prisma.paciente.findFirst({
-      where: { id: pacienteId, clinicaId: user.clinicaId },
+      where,
     });
 
     if (!paciente) {

@@ -13,6 +13,7 @@ import { ChatPage } from './pages/ChatPage';
 import { AtendimentoDoDiaPage } from './pages/AtendimentoDoDiaPage';
 import { MedicamentosPage } from './pages/MedicamentosPage';
 import { PrescricoesPage } from './pages/PrescricoesPage';
+import { SecretariasPage } from './pages/SecretariasPage';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
 import { Toaster } from 'sonner';
@@ -40,6 +41,7 @@ function App() {
               <Route path="/servicos" element={<ServicosPage />} />
               <Route path="/pacientes" element={<PacientesPage />} />
               <Route path="/doutores" element={<DoutoresPage />} />
+              <Route path="/secretarias" element={<SecretariasPage />} />
               <Route path="/clinicas" element={<ClinicasPage />} />
               <Route path="/medicamentos" element={<MedicamentosPage />} />
               <Route path="/prescricoes" element={<PrescricoesPage />} />

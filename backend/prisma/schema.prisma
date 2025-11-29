@@ -12,6 +12,7 @@ enum Role {
   DOUTOR
   CLINICA_ADMIN
   SUPER_ADMIN
+  SECRETARIA
 }
 
 enum ChatStatus {
@@ -94,6 +95,8 @@ model Doutor {
   servicos           Servico[]
   pacientes          Paciente[]
   prescricoes        Prescricao[]
+  secretarias        SecretariaDoutor[] @relation("SecretariaVinculos")
+  doutoresVinculados SecretariaDoutor[] @relation("DoutorVinculos")
 }
 
 // Horários que o doutor ATENDE (para a IA saber)
@@ -297,4 +300,20 @@ model Medicamento {
   @@index([numeroRegistroProduto])
   @@index([classeTerapeutica])
   @@index([ativo])
+}
+
+// Vínculo entre Secretária e Doutor
+model SecretariaDoutor {
+  id           Int      @id @default(autoincrement())
+  secretariaId Int      // ID do doutor com role SECRETARIA
+  doutorId     Int      // ID do doutor vinculado
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  secretaria Doutor @relation("SecretariaVinculos", fields: [secretariaId], references: [id], onDelete: Cascade)
+  doutor     Doutor @relation("DoutorVinculos", fields: [doutorId], references: [id], onDelete: Cascade)
+
+  @@unique([secretariaId, doutorId])
+  @@index([secretariaId])
+  @@index([doutorId])
 }

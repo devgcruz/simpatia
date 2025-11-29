@@ -139,7 +139,7 @@ class AgendamentoController {
                 return res.status(404).json({ message: error.message });
             }
 
-            if (error.message === "Acesso negado.") {
+            if (error.message === "Acesso negado." || error.message.includes("Acesso negado")) {
                 return res.status(403).json({ message: error.message });
             }
 
