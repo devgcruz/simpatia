@@ -1,5 +1,7 @@
 import { prisma } from '../lib/prisma';
 import * as pausaExcecaoService from './pausa-excecao.service';
+import moment from 'moment-timezone';
+import { BRAZIL_TZ } from '../utils/timezone';
 
 interface IFiltrosAgendamento {
     doutorId?: string;
@@ -77,6 +79,18 @@ const agendamentoInclude = {
 class AgendamentoService {
 
     /**
+     * Verifica se dois intervalos se sobrepõem
+     */
+    private intervalsOverlap(
+        start1: number,
+        end1: number,
+        start2: number,
+        end2: number
+    ): boolean {
+        return start1 < end2 && start2 < end1;
+    }
+
+    /**
      * Verifica se há conflito de horário com agendamentos existentes
      * Retorna true se há conflito, false caso contrário
      */
@@ -143,6 +157,46 @@ class AgendamentoService {
             temConflito: conflitantes.length > 0,
             agendamentosConflitantes: conflitantes,
         };
+    }
+
+    /**
+     * Verifica se um horário está bloqueado por indisponibilidade
+     */
+    private async verificarIndisponibilidade(
+        dataHora: Date,
+        duracaoMin: number,
+        doutorId: number
+    ): Promise<void> {
+        // Calcular início e fim do agendamento
+        const agendamentoInicio = moment(dataHora).tz(BRAZIL_TZ);
+        const agendamentoFim = agendamentoInicio.clone().add(duracaoMin, 'minutes');
+
+        // Buscar indisponibilidades ativas que se sobrepõem com o horário do agendamento
+        const indisponibilidades = await prisma.indisponibilidade.findMany({
+            where: {
+                doutorId: doutorId,
+                ativo: true,
+                inicio: { lte: agendamentoFim.toDate() },
+                fim: { gte: agendamentoInicio.toDate() },
+            },
+        });
+
+        // Verificar se alguma indisponibilidade bloqueia o horário do agendamento
+        for (const indisponibilidade of indisponibilidades) {
+            const indisponibilidadeInicio = moment(indisponibilidade.inicio).tz(BRAZIL_TZ);
+            const indisponibilidadeFim = moment(indisponibilidade.fim).tz(BRAZIL_TZ);
+
+            // Verificar se há sobreposição entre o agendamento e a indisponibilidade
+            // Um agendamento conflita se começa antes do fim da indisponibilidade E termina depois do início
+            if (
+                agendamentoInicio.isBefore(indisponibilidadeFim) &&
+                indisponibilidadeInicio.isBefore(agendamentoFim)
+            ) {
+                const inicioStr = indisponibilidadeInicio.format('DD/MM/YYYY [às] HH:mm');
+                const fimStr = indisponibilidadeFim.format('DD/MM/YYYY [às] HH:mm');
+                throw new Error(`Este horário está bloqueado por uma indisponibilidade (${inicioStr} até ${fimStr}).`);
+            }
+        }
     }
 
     /**
@@ -375,6 +429,13 @@ class AgendamentoService {
             throw new Error(error.message || "Não é possível agendar neste horário.");
         }
 
+        // Validar indisponibilidade
+        try {
+            await this.verificarIndisponibilidade(dataHoraDate, servico.duracaoMin, targetDoutorId);
+        } catch (error: any) {
+            throw new Error(error.message || "Este horário está bloqueado por indisponibilidade.");
+        }
+
         const isEncaixe = data.isEncaixe || false;
 
         // Verificar conflitos com agendamentos existentes
@@ -472,6 +533,16 @@ class AgendamentoService {
             console.log(`[AgendamentoService.createParaIA] ✅ Validação de horário de almoço passou`);
         } catch (error: any) {
             const erro = error.message || "Não é possível agendar no horário de almoço do doutor.";
+            console.error(`[AgendamentoService.createParaIA] ❌ ${erro}`);
+            throw new Error(erro);
+        }
+
+        // Validar indisponibilidade
+        try {
+            await this.verificarIndisponibilidade(dataHoraDate, servico.duracaoMin, doutorId);
+            console.log(`[AgendamentoService.createParaIA] ✅ Validação de indisponibilidade passou`);
+        } catch (error: any) {
+            const erro = error.message || "Este horário está bloqueado por indisponibilidade.";
             console.error(`[AgendamentoService.createParaIA] ❌ ${erro}`);
             throw new Error(erro);
         }
@@ -751,31 +822,137 @@ class AgendamentoService {
             const dataHoraParaValidar = novaDataHora || agendamentoExistente.dataHora;
             const duracaoParaValidar = data.servicoId ? servicoParaValidar.duracaoMin : agendamentoExistente.servico.duracaoMin;
 
-            // Validar se o agendamento não conflita com horário de almoço
-            try {
-                await this.validarHorarioAlmoco(
-                    dataHoraParaValidar,
-                    duracaoParaValidar,
-                    doutorValidado.id,
-                    doutorValidado.pausaInicio || null,
-                    doutorValidado.pausaFim || null,
-                    doutorValidado.diasBloqueados || null
-                );
-            } catch (error: any) {
-                throw new Error(error.message || "Não é possível agendar neste horário.");
-            }
+            // VALIDAÇÃO DUPLA PARA REMARCAÇÃO
+            // Se a dataHora está sendo alterada, validar tanto o horário antigo quanto o novo
+            const estaRemarcando = novaDataHora && 
+                novaDataHora.getTime() !== new Date(agendamentoExistente.dataHora).getTime();
+            
+            if (estaRemarcando) {
+                const dataHoraAntiga = new Date(agendamentoExistente.dataHora);
+                const duracaoAntiga = agendamentoExistente.servico.duracaoMin;
+                const doutorIdAntigo = agendamentoExistente.doutorId;
 
-            // Verificar conflitos com agendamentos existentes
-            const isEncaixe = data.isEncaixe ?? agendamentoExistente.isEncaixe ?? false;
-            if (!isEncaixe) {
-                const conflito = await this.verificarConflitoHorario(
-                    dataHoraParaValidar,
-                    duracaoParaValidar,
-                    targetDoutorId,
-                    id // Excluir o próprio agendamento da verificação
+                // 1. VALIDAR HORÁRIO ANTIGO: Verificar se não há conflitos temporários
+                // Verificar se há outros agendamentos que podem conflitar com o horário antigo
+                // durante a transição (caso o novo horário já esteja ocupado)
+                const conflitoHorarioAntigo = await this.verificarConflitoHorario(
+                    dataHoraAntiga,
+                    duracaoAntiga,
+                    doutorIdAntigo,
+                    id // Excluir o próprio agendamento
                 );
-                if (conflito.temConflito) {
-                    throw new Error("Este horário já está ocupado por outro agendamento. Marque como 'Encaixe' se desejar agendar mesmo assim.");
+                
+                // Se o doutor mudou, verificar conflitos no doutor antigo também
+                if (targetDoutorId !== doutorIdAntigo) {
+                    // Verificar se há conflitos no horário antigo do doutor antigo
+                    // (para garantir que não estamos criando um buraco problemático)
+                    const conflitoDoutorAntigo = await this.verificarConflitoHorario(
+                        dataHoraAntiga,
+                        duracaoAntiga,
+                        doutorIdAntigo,
+                        id
+                    );
+                    // Nota: Este é mais uma verificação de integridade, não um bloqueio
+                }
+
+                // 2. VALIDAR HORÁRIO NOVO: Verificar disponibilidade do novo horário
+                // Validar horário de almoço para o novo horário
+                try {
+                    await this.validarHorarioAlmoco(
+                        dataHoraParaValidar,
+                        duracaoParaValidar,
+                        doutorValidado.id,
+                        doutorValidado.pausaInicio || null,
+                        doutorValidado.pausaFim || null,
+                        doutorValidado.diasBloqueados || null
+                    );
+                } catch (error: any) {
+                    throw new Error(`Não é possível remarcar para este horário: ${error.message || "Horário inválido."}`);
+                }
+
+                // Validar indisponibilidade para o novo horário
+                try {
+                    await this.verificarIndisponibilidade(
+                        dataHoraParaValidar,
+                        duracaoParaValidar,
+                        targetDoutorId
+                    );
+                } catch (error: any) {
+                    throw new Error(`Não é possível remarcar para este horário: ${error.message || "Horário bloqueado por indisponibilidade."}`);
+                }
+
+                // Verificar conflitos com agendamentos existentes no novo horário
+                const isEncaixe = data.isEncaixe ?? agendamentoExistente.isEncaixe ?? false;
+                if (!isEncaixe) {
+                    const conflitoNovoHorario = await this.verificarConflitoHorario(
+                        dataHoraParaValidar,
+                        duracaoParaValidar,
+                        targetDoutorId,
+                        id // Excluir o próprio agendamento da verificação
+                    );
+                    
+                    if (conflitoNovoHorario.temConflito) {
+                        const agendamentosConflitantes = conflitoNovoHorario.agendamentosConflitantes;
+                        const detalhesConflito = agendamentosConflitantes.length > 0
+                            ? ` Conflito com agendamento(s) existente(s).`
+                            : '';
+                        throw new Error(`Este horário já está ocupado por outro agendamento.${detalhesConflito} Marque como 'Encaixe' se desejar agendar mesmo assim.`);
+                    }
+                }
+
+                // 3. GARANTIR QUE NÃO HÁ CONFLITOS TEMPORÁRIOS
+                // Verificar se o novo horário não conflita com o horário antigo (mesmo dia, horários sobrepostos)
+                const mesmoDia = dataHoraParaValidar.toDateString() === dataHoraAntiga.toDateString();
+                if (mesmoDia && targetDoutorId === doutorIdAntigo) {
+                    const inicioAntigo = dataHoraAntiga.getHours() * 60 + dataHoraAntiga.getMinutes();
+                    const fimAntigo = inicioAntigo + duracaoAntiga;
+                    const inicioNovo = dataHoraParaValidar.getHours() * 60 + dataHoraParaValidar.getMinutes();
+                    const fimNovo = inicioNovo + duracaoParaValidar;
+
+                    // Verificar se há sobreposição entre os horários antigo e novo
+                    if (this.intervalsOverlap(inicioAntigo, fimAntigo, inicioNovo, fimNovo)) {
+                        throw new Error("O novo horário não pode sobrepor o horário atual do agendamento. Escolha um horário diferente.");
+                    }
+                }
+            } else {
+                // Se não está remarcando (apenas mudando doutor ou serviço), validar normalmente
+                // Validar se o agendamento não conflita com horário de almoço
+                try {
+                    await this.validarHorarioAlmoco(
+                        dataHoraParaValidar,
+                        duracaoParaValidar,
+                        doutorValidado.id,
+                        doutorValidado.pausaInicio || null,
+                        doutorValidado.pausaFim || null,
+                        doutorValidado.diasBloqueados || null
+                    );
+                } catch (error: any) {
+                    throw new Error(error.message || "Não é possível agendar neste horário.");
+                }
+
+                // Validar indisponibilidade
+                try {
+                    await this.verificarIndisponibilidade(
+                        dataHoraParaValidar,
+                        duracaoParaValidar,
+                        targetDoutorId
+                    );
+                } catch (error: any) {
+                    throw new Error(error.message || "Este horário está bloqueado por indisponibilidade.");
+                }
+
+                // Verificar conflitos com agendamentos existentes
+                const isEncaixe = data.isEncaixe ?? agendamentoExistente.isEncaixe ?? false;
+                if (!isEncaixe) {
+                    const conflito = await this.verificarConflitoHorario(
+                        dataHoraParaValidar,
+                        duracaoParaValidar,
+                        targetDoutorId,
+                        id // Excluir o próprio agendamento da verificação
+                    );
+                    if (conflito.temConflito) {
+                        throw new Error("Este horário já está ocupado por outro agendamento. Marque como 'Encaixe' se desejar agendar mesmo assim.");
+                    }
                 }
             }
         }
