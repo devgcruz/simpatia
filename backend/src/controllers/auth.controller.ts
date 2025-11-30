@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import authService from '../services/auth.service';
+import { invalidateToken, disconnectUserSockets } from '../services/websocket.service';
 
 class AuthController {
     async handleLogin(req: Request, res: Response) {
@@ -38,7 +39,40 @@ class AuthController {
     }
 
     async handleLogout(req: Request, res: Response) {
-        res.clearCookie('token').status(200).json({ message: 'Logout bem-sucedido.' });
+        try {
+            // Obter token do cookie ou header
+            const tokenFromCookie = req.cookies?.token;
+            const authHeader = req.headers.authorization;
+            const token = tokenFromCookie || (authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null);
+
+            // Invalidar o token (adicionar à blacklist)
+            if (token) {
+                invalidateToken(token);
+            }
+
+            // Desconectar todos os sockets do usuário
+            if (req.user?.id) {
+                disconnectUserSockets(req.user.id);
+            }
+
+            // Limpar cookie
+            res.clearCookie('token', {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+            });
+
+            return res.status(200).json({ message: 'Logout bem-sucedido. Sessão invalidada.' });
+        } catch (error: any) {
+            console.error('Erro no logout:', error);
+            // Mesmo com erro, limpar o cookie
+            res.clearCookie('token', {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+            });
+            return res.status(200).json({ message: 'Logout realizado.' });
+        }
     }
 }
 

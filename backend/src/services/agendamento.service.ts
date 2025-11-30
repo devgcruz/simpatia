@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma';
 import * as pausaExcecaoService from './pausa-excecao.service';
 import moment from 'moment-timezone';
 import { BRAZIL_TZ } from '../utils/timezone';
+import { emitAgendamentoEvent } from './websocket.service';
 
 interface IFiltrosAgendamento {
     doutorId?: string;
@@ -463,15 +464,9 @@ class AgendamentoService {
             include: agendamentoInclude,
         });
 
-        const { doutor, ...rest } = novoAgendamento;
-        return {
-            ...rest,
-            doutor: {
-                id: doutor.id,
-                nome: doutor.nome,
-                email: doutor.email,
-            },
-        };
+        // Retornar agendamento completo com todos os relacionamentos para WebSocket
+        // Não remover campos do doutor pois são necessários para validação de segurança
+        return novoAgendamento;
     }
 
     // NOVO MÉTODO PARA A IA
@@ -583,7 +578,7 @@ class AgendamentoService {
 
         // Formata a resposta
         const { doutor: doutorAgendamento, ...rest } = novoAgendamento;
-        return {
+        const agendamentoFormatado = {
             ...rest,
             doutor: {
                 id: doutorAgendamento.id,
@@ -591,6 +586,17 @@ class AgendamentoService {
                 email: doutorAgendamento.email,
             },
         };
+
+        // Emitir evento WebSocket para atualização em tempo real
+        emitAgendamentoEvent({
+            id: agendamentoFormatado.id,
+            doutorId: agendamentoFormatado.doutorId,
+            clinicaId: clinicaId,
+            action: 'created',
+            agendamento: agendamentoFormatado,
+        });
+
+        return agendamentoFormatado;
     }
 
     /**
@@ -723,7 +729,7 @@ class AgendamentoService {
         });
 
         const { doutor, ...rest } = agendamentoCancelado;
-        return {
+        const agendamentoFormatado = {
             ...rest,
             doutor: {
                 id: doutor.id,
@@ -731,6 +737,17 @@ class AgendamentoService {
                 email: doutor.email,
             },
         };
+
+        // Emitir evento WebSocket para atualização em tempo real
+        emitAgendamentoEvent({
+            id: agendamentoFormatado.id,
+            doutorId: agendamentoFormatado.doutorId,
+            clinicaId: clinicaId,
+            action: 'updated',
+            agendamento: agendamentoFormatado,
+        });
+
+        return agendamentoFormatado;
     }
 
     async update(id: number, data: IUpdateAgendamento, user: AuthUser) {

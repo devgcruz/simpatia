@@ -1112,10 +1112,12 @@ export const AgendamentoFormModal: React.FC<Props> = ({
                   setLoading(true);
                   await confirmarEncaixe(agendamento.id);
                   toast.success('Encaixe confirmado com sucesso!');
-                  // Recarregar dados do agendamento ou fechar modal
+                  // Disparar evento para atualizar a agenda (WebSocket também atualizará)
+                  window.dispatchEvent(new CustomEvent('agendamentoAtualizado', { 
+                    detail: { tipo: 'encaixe_confirmed', doutorId: agendamento.doutor?.id || agendamento.doutorId } 
+                  }));
+                  // Fechar modal
                   onClose();
-                  // Forçar atualização da lista de agendamentos
-                  window.location.reload(); // Pode ser melhorado com um callback
                 } catch (error: any) {
                   toast.error(error?.response?.data?.message || 'Erro ao confirmar encaixe.');
                 } finally {

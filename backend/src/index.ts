@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
+import { createServer } from 'http';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
@@ -21,9 +22,11 @@ import pausaExcecaoRoutes from './routes/pausa-excecao.routes';
 import prescricaoRoutes from './routes/prescricao.routes';
 import medicamentoRoutes from './routes/medicamento.routes';
 import secretariaRoutes from './routes/secretaria.routes';
+import { initializeWebSocket } from './services/websocket.service';
 import path from 'path';
 
 const app = express();
+const httpServer = createServer(app);
 const PORT = process.env.PORT || 3333;
 
 // --- Middlewares de Segurança (DEVE VIR CEDO) ---
@@ -88,6 +91,10 @@ app.use('/api/prescricoes', prescricaoRoutes);
 app.use('/api/medicamentos', medicamentoRoutes);
 app.use('/api/secretarias', secretariaRoutes);
 
-app.listen(PORT, () => {
+// Inicializar WebSocket
+initializeWebSocket(httpServer);
+
+httpServer.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
+  console.log(`📡 WebSocket habilitado`);
 });

@@ -2,6 +2,7 @@
 import React, { createContext, useState, useEffect, ReactNode } from 'react';
 import { api } from '../services/api';
 import { IAuthContext, IUser } from './types';
+import { disconnectWebSocket } from '../hooks/useWebSocket';
 
 const AuthContext = createContext<IAuthContext | undefined>(undefined);
 
@@ -49,9 +50,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = async () => {
     setIsLoading(true);
     try {
+      // Desconectar WebSocket antes de fazer logout
+      disconnectWebSocket();
+      
+      // Fazer logout no backend
       await api.post('/auth/logout');
     } catch (error) {
       console.error('Erro no logout:', error);
+      // Mesmo com erro, desconectar WebSocket e limpar estado
+      disconnectWebSocket();
     } finally {
       setUser(null);
       setIsAuthenticated(false);

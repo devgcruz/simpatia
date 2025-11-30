@@ -20,6 +20,7 @@ import { AgendamentoFormModal } from '../components/agendamentos/AgendamentoForm
 import { ConfirmationModal } from '../components/common/ConfirmationModal';
 import { useAuth } from '../hooks/useAuth';
 import { useDoutorSelecionado } from '../context/DoutorSelecionadoContext';
+import { useWebSocket } from '../hooks/useWebSocket';
 import { getMinhaClinica } from '../services/clinica.service';
 import { Indisponibilidade } from '../services/indisponibilidade.service';
 import { IndisponibilidadeManagerModal } from '../components/doutores/IndisponibilidadeManagerModal';
@@ -223,16 +224,7 @@ export const DashboardPage: React.FC = () => {
       }
 
       // Eventos de horário de almoço do doutor (apenas em dias não bloqueados e que tenham horário configurado)
-      console.log('Verificando horários para criar eventos de pausa:', {
-        horariosDoDoutor,
-        diasBloqueadosDoutor,
-        totalDias,
-        doutorId,
-        doutorNome: doutor?.nome
-      });
-
       if (horariosDoDoutor && Object.keys(horariosDoDoutor).length > 0) {
-        console.log(`Total de dias a processar: ${totalDias + 1}, Horários disponíveis:`, Object.keys(horariosDoDoutor));
         
         for (let i = 0; i <= totalDias; i++) {
           const data = dataInicial.clone().add(i, 'days');
@@ -250,7 +242,6 @@ export const DashboardPage: React.FC = () => {
             const temPausa = pausaInicioValida && pausaFimValida;
             
             if (temPausa) {
-              console.log(`Criando evento de pausa para ${dataStr} (dia ${diaSemana}): ${horario.pausaInicio} - ${horario.pausaFim}`);
               // Verificar se há exceção de pausa para esta data
               const excecoesParaData = excecoesDoutor
                 .map((ex) => ({
@@ -294,7 +285,6 @@ export const DashboardPage: React.FC = () => {
                   } as any,
                 };
                 eventosPausa.push(eventoPausa);
-                console.log('Evento de pausa criado:', eventoPausa);
               }
             }
           }
@@ -306,11 +296,10 @@ export const DashboardPage: React.FC = () => {
       console.error('Erro ao buscar doutor para eventos de pausa:', err);
     }
     
-    console.log(`Total de eventos de pausa criados: ${eventosPausa.length}`);
     return eventosPausa;
   };
 
-  const fetchAgendamentos = async () => {
+  const fetchAgendamentos = useCallback(async () => {
     if (!doutorAtual) {
       return;
     }
@@ -351,8 +340,6 @@ export const DashboardPage: React.FC = () => {
       try {
         const horariosArray = await getHorariosByDoutor(doutorAtual.id);
         horariosCompletos = {};
-          console.log('Horários do doutor recebidos do backend:', horariosArray);
-          console.log('Total de horários retornados:', horariosArray.length);
           
           if (horariosArray.length === 0) {
             console.warn('⚠️ NENHUM horário encontrado no backend para o doutor ID:', doutorAtual.id);
@@ -360,8 +347,6 @@ export const DashboardPage: React.FC = () => {
           }
           
           horariosArray.forEach(h => {
-            console.log(`Processando horário: diaSemana=${h.diaSemana}, ativo=${h.ativo}, pausaInicio=${h.pausaInicio}, pausaFim=${h.pausaFim}`);
-            
             if (h.ativo) {
               horariosCompletos![h.diaSemana] = {
                 inicio: h.inicio,
@@ -369,24 +354,12 @@ export const DashboardPage: React.FC = () => {
                 pausaInicio: h.pausaInicio,
                 pausaFim: h.pausaFim,
               };
-              console.log(`✅ Horário ATIVO configurado para dia ${h.diaSemana}:`, {
-                inicio: h.inicio,
-                fim: h.fim,
-                pausaInicio: h.pausaInicio,
-                pausaFim: h.pausaFim,
-                temPausa: !!(h.pausaInicio && h.pausaFim)
-              });
-            } else {
-              console.log(`❌ Horário INATIVO ignorado para dia ${h.diaSemana}`);
             }
           });
-          console.log('Horários completos mapeados:', horariosCompletos);
-          console.log('Chaves dos horários mapeados:', Object.keys(horariosCompletos || {}));
       } catch (err) {
         console.error('Erro ao buscar horários completos do doutor:', err);
       }
       const eventosPausa = await criarEventosPausa(doutorAtual.id, horariosCompletos);
-      console.log('Eventos de pausa retornados:', eventosPausa.length, eventosPausa);
       
       // Filtrar eventos que estão em dias bloqueados - não devem aparecer na agenda
       const diasBloqueados = doutorAtual.diasBloqueados || [];
@@ -400,17 +373,13 @@ export const DashboardPage: React.FC = () => {
         return true;
       });
       
-      console.log('Total de eventos antes de filtrar:', eventosFormatados.length + eventosIndisp.length + eventosPausa.length);
-      console.log('Total de eventos após filtrar:', eventosFiltrados.length);
-      console.log('Eventos de pausa no array final:', eventosFiltrados.filter(e => (e.resource as any)?.status === 'pausa').length);
-      
       setEventos(eventosFiltrados);
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Erro ao buscar agendamentos');
     } finally {
       setLoading(false);
     }
-  };
+  }, [doutorAtual]);
 
   const fetchClinica = async () => {
     if (!user?.clinicaId) return;
@@ -475,7 +444,35 @@ export const DashboardPage: React.FC = () => {
     }
   }, [doutorAtual]);
 
-  // Escutar eventos de atualização de agendamento de outras páginas
+
+  // WebSocket para atualização em tempo real
+  const handleWebSocketUpdate = useCallback((event: any) => {
+    // Verificar se o evento é relevante para o doutor atual
+    // Se não houver doutorAtual ou se o evento for para o doutor atual, atualizar
+    if (!doutorAtual || event.doutorId === doutorAtual.id) {
+      // Atualizar agendamentos sem setTimeout para evitar "piscar"
+      // Usar requestAnimationFrame para atualizar no próximo frame de renderização
+      requestAnimationFrame(() => {
+        fetchAgendamentos();
+      });
+    }
+  }, [doutorAtual, fetchAgendamentos]);
+
+  // WebSocket para atualização em tempo real - habilitar quando houver usuário
+  const { subscribeToDoutor } = useWebSocket({
+    doutorId: doutorAtual?.id || null,
+    enabled: !!user, // Habilitar quando houver usuário
+    onAgendamentoUpdate: handleWebSocketUpdate,
+  });
+
+  // Atualizar inscrição WebSocket quando o doutor mudar
+  useEffect(() => {
+    if (doutorAtual?.id) {
+      subscribeToDoutor(doutorAtual.id);
+    }
+  }, [doutorAtual?.id, subscribeToDoutor]);
+
+  // Escutar eventos de atualização de agendamento de outras páginas (fallback)
   useEffect(() => {
     const handleAgendamentoAtualizado = (event: Event) => {
       const customEvent = event as CustomEvent;
@@ -839,8 +836,8 @@ export const DashboardPage: React.FC = () => {
         }));
       }
       
-      // Atualizar a página atual após disparar o evento
-      await fetchAgendamentos();
+      // Não recarregar aqui - o WebSocket vai atualizar automaticamente
+      // Isso evita o "piscar" da agenda
       handleCloseModals();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Erro ao salvar agendamento');
@@ -870,8 +867,8 @@ export const DashboardPage: React.FC = () => {
       window.dispatchEvent(new CustomEvent('agendamentoAtualizado', { 
         detail: { tipo: 'delete', doutorId: doutorIdEvento } 
       }));
-      // Atualizar a página atual após disparar o evento
-      await fetchAgendamentos();
+      // Não recarregar aqui - o WebSocket vai atualizar automaticamente
+      // Isso evita o "piscar" da agenda
       handleCloseModals();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Erro ao apagar agendamento');
