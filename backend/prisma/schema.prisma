@@ -54,10 +54,11 @@ model Clinica {
   pausaFim      String? // "13:00" - Fim do intervalo de almoço (opcional)
 
   // --- Relacionamentos (Quais dados pertencem a esta clínica) ---
-  doutores      Doutor[]
-  pacientes     Paciente[]
-  servicos      Servico[]
-  pausaExcecoes PausaExcecao[]
+  doutores         Doutor[]
+  pacientes        Paciente[]
+  servicos         Servico[]
+  pausaExcecoes    PausaExcecao[]
+  conversasInternas ConversaInterna[]
 }
 
 model Doutor {
@@ -97,6 +98,12 @@ model Doutor {
   prescricoes        Prescricao[]
   secretarias        SecretariaDoutor[] @relation("SecretariaVinculos")
   doutoresVinculados SecretariaDoutor[] @relation("DoutorVinculos")
+  conversasCriadas   ConversaInterna[]  @relation("ConversasCriadas")
+  participacoesChat  ParticipanteConversa[] @relation("ParticipacoesChat")
+  mensagensEnviadas  MensagemInterna[]  @relation("MensagensEnviadas")
+  leiturasMensagens  LeituraMensagem[]  @relation("LeiturasMensagens")
+  statusOnline       StatusUsuario?     @relation("StatusOnline")
+  auditLogs          ChatAuditLog[]     @relation("AuditLogs")
 }
 
 // Horários que o doutor ATENDE (para a IA saber)
@@ -322,3 +329,127 @@ model SecretariaDoutor {
   @@index([secretariaId])
   @@index([doutorId])
 }
+
+// ============================================
+// CHAT INTERNO DA CLÍNICA
+// ============================================
+
+enum ChatInternoTipo {
+  INDIVIDUAL  // Conversa 1:1 entre dois usuários
+  GRUPO       // Grupo com múltiplos participantes
+}
+
+enum MensagemInternaTipo {
+  TEXTO
+  IMAGEM
+  PDF
+  EMOJI
+}
+
+enum MensagemInternaStatus {
+  ENVIADA     // Mensagem foi enviada
+  ENTREGUE    // Mensagem foi entregue ao destinatário
+  LIDA        // Mensagem foi lida pelo destinatário
+}
+
+// Conversa do chat interno (pode ser individual ou grupo)
+model ConversaInterna {
+  id          Int                @id @default(autoincrement())
+  tipo        ChatInternoTipo
+  nome        String?            // Nome do grupo (null para conversas individuais)
+  descricao   String?            @db.Text // Descrição do grupo
+  clinicaId   Int                // Todas as conversas pertencem a uma clínica
+  clinica     Clinica            @relation(fields: [clinicaId], references: [id], onDelete: Cascade)
+  criadoPor   Int                // ID do usuário que criou a conversa
+  criador     Doutor             @relation("ConversasCriadas", fields: [criadoPor], references: [id])
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  
+  // Relacionamentos
+  participantes ParticipanteConversa[]
+  mensagens     MensagemInterna[]
+  
+  @@index([clinicaId, updatedAt])
+  @@index([criadoPor])
+}
+
+// Participantes de uma conversa (usuários que fazem parte)
+model ParticipanteConversa {
+  id              Int             @id @default(autoincrement())
+  conversaId      Int
+  conversa        ConversaInterna @relation(fields: [conversaId], references: [id], onDelete: Cascade)
+  usuarioId       Int             // ID do Doutor (que pode ter role DOUTOR, SECRETARIA, etc.)
+  usuario         Doutor          @relation("ParticipacoesChat", fields: [usuarioId], references: [id], onDelete: Cascade)
+  adicionadoPor   Int?            // Quem adicionou este participante
+  adicionadoEm    DateTime        @default(now())
+  ultimaLeitura   DateTime?       // Timestamp da última mensagem lida por este participante
+  notificacoes    Boolean         @default(true) // Se recebe notificações desta conversa
+  
+  @@unique([conversaId, usuarioId])
+  @@index([usuarioId])
+  @@index([conversaId, ultimaLeitura])
+}
+
+// Mensagens do chat interno
+model MensagemInterna {
+  id              Int                    @id @default(autoincrement())
+  conversaId      Int
+  conversa        ConversaInterna       @relation(fields: [conversaId], references: [id], onDelete: Cascade)
+  remetenteId     Int                    // ID do Doutor que enviou
+  remetente       Doutor                 @relation("MensagensEnviadas", fields: [remetenteId], references: [id])
+  tipo            MensagemInternaTipo    @default(TEXTO)
+  conteudo        String                 @db.Text // Texto da mensagem ou caminho do arquivo
+  conteudoCriptografado String?          @db.Text // Conteúdo criptografado para mensagens sensíveis
+  status          MensagemInternaStatus  @default(ENVIADA)
+  editada         Boolean                @default(false)
+  editadaEm       DateTime?
+  createdAt       DateTime               @default(now())
+  
+  // Para rastreamento de leitura por destinatário
+  leituras        LeituraMensagem[]
+  
+  @@index([conversaId, createdAt])
+  @@index([remetenteId])
+  @@index([status])
+}
+
+// Rastreamento de leitura de mensagens
+model LeituraMensagem {
+  id          Int            @id @default(autoincrement())
+  mensagemId  Int
+  mensagem    MensagemInterna @relation(fields: [mensagemId], references: [id], onDelete: Cascade)
+  usuarioId   Int            // ID do Doutor que leu
+  usuario     Doutor         @relation("LeiturasMensagens", fields: [usuarioId], references: [id], onDelete: Cascade)
+  lidaEm      DateTime       @default(now())
+  
+  @@unique([mensagemId, usuarioId])
+  @@index([usuarioId])
+}
+
+// Status online/offline dos usuários
+model StatusUsuario {
+  id          Int       @id @default(autoincrement())
+  usuarioId   Int       @unique // ID do Doutor
+  usuario     Doutor    @relation("StatusOnline", fields: [usuarioId], references: [id], onDelete: Cascade)
+  online      Boolean   @default(false)
+  ultimaVezOnline DateTime?
+  digitandoEmConversaId Int? // ID da conversa em que está digitando
+  
+  @@index([online, ultimaVezOnline])
+}
+
+// Logs de auditoria do chat
+model ChatAuditLog {
+  id          Int       @id @default(autoincrement())
+  usuarioId   Int?      // ID do Doutor que executou a ação
+  usuario     Doutor?   @relation("AuditLogs", fields: [usuarioId], references: [id], onDelete: SetNull)
+  acao        String    // "LOGIN", "ENVIO_MENSAGEM", "CRIACAO_GRUPO", "ADICIONAR_PARTICIPANTE", etc.
+  detalhes    String?   @db.Text // JSON com detalhes da ação
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime  @default(now())
+  
+  @@index([usuarioId, createdAt])
+  @@index([acao, createdAt])
+}
+

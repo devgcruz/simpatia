@@ -1,8 +1,9 @@
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { Server as HTTPServer } from 'http';
-import jwt from 'jsonwebtoken';
 import { z } from 'zod';
+import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
+import { verifyToken } from '../utils/jwt.util';
 
 let io: SocketIOServer | null = null;
 
@@ -52,6 +53,14 @@ const blacklistedIPs = new Map<string, number>(); // IP -> blockUntil timestamp
 // Rastrear conexões ativas por IP e por socket
 const activeConnectionsByIP = new Map<string, Set<string>>(); // IP -> Set<socketId>
 const socketRooms = new Map<string, Set<string>>(); // socketId -> Set<roomName>
+
+// Estatísticas globais para monitoramento
+let totalConnections = 0;
+let totalReconnections = 0;
+let totalBlockedConnections = 0;
+let totalBlockedMessages = 0;
+let lastStatsLog = Date.now();
+const STATS_LOG_INTERVAL_MS = 60000; // Log estatísticas a cada 1 minuto
 
 // Configurações de Rate Limit
 const RATE_LIMIT_CONFIG = {
@@ -131,7 +140,9 @@ function isIPBlacklisted(ip: string): boolean {
 function blacklistIP(ip: string, reason: string): void {
   const blockUntil = Date.now() + RATE_LIMIT_CONFIG.BLACKLIST_DURATION_MS;
   blacklistedIPs.set(ip, blockUntil);
-  console.error(`[WebSocket Rate Limit] IP ${ip} blacklisted até ${new Date(blockUntil).toISOString()}. Motivo: ${reason}`);
+  const durationMinutes = Math.round(RATE_LIMIT_CONFIG.BLACKLIST_DURATION_MS / 60000);
+  console.error(`[WebSocket Flood Monitor] 🚫 IP ${ip} BLACKLISTADO por ${durationMinutes} minuto(s) até ${new Date(blockUntil).toISOString()}. Motivo: ${reason}`);
+  console.error(`[WebSocket Flood Monitor] 📊 Total de IPs na blacklist: ${blacklistedIPs.size}`);
 }
 
 /**
@@ -142,8 +153,12 @@ function checkConcurrentConnectionsLimit(ip: string): { allowed: boolean; reason
   const currentConnections = activeSockets ? activeSockets.size : 0;
 
   if (currentConnections >= RATE_LIMIT_CONFIG.MAX_CONCURRENT_CONNECTIONS_PER_IP) {
-    console.warn(`[WebSocket Rate Limit] IP ${ip} excedeu limite de conexões simultâneas: ${currentConnections}/${RATE_LIMIT_CONFIG.MAX_CONCURRENT_CONNECTIONS_PER_IP}`);
+    console.warn(`[WebSocket Flood Monitor] ⚠️ Limite de conexões simultâneas excedido para IP ${ip}: ${currentConnections}/${RATE_LIMIT_CONFIG.MAX_CONCURRENT_CONNECTIONS_PER_IP}`);
     return { allowed: false, reason: `Limite de conexões simultâneas excedido (${currentConnections}/${RATE_LIMIT_CONFIG.MAX_CONCURRENT_CONNECTIONS_PER_IP})` };
+  }
+
+  if (currentConnections > 0) {
+    console.log(`[WebSocket Flood Monitor] 📊 IP ${ip} já possui ${currentConnections} conexão(ões) ativa(s)`);
   }
 
   return { allowed: true };
@@ -201,9 +216,16 @@ function checkReconnectionRateLimit(ip: string): { allowed: boolean; reason?: st
     return { allowed: false, reason: 'Muitas reconexões detectadas' };
   }
 
+  // Log de reconexão se for uma reconexão rápida (antes de incrementar)
+  const timeSinceLastConnection = now - ipLimit.lastConnectionTime;
+  if (ipLimit.connections.count > 0 && timeSinceLastConnection < 5000) {
+    console.log(`[WebSocket Flood Monitor] 🔄 Reconexão detectada para IP ${ip}: ${ipLimit.connections.count + 1} tentativa(s) em ${RATE_LIMIT_CONFIG.RECONNECTION_WINDOW_MS}ms (última conexão há ${timeSinceLastConnection}ms)`);
+  }
+
   // Incrementar contador
   ipLimit.connections.count++;
   ipLimit.lastConnectionTime = now;
+  
   return { allowed: true };
 }
 
@@ -258,7 +280,16 @@ function checkMessageRateLimit(socketId: string): { allowed: boolean; reason?: s
   // Verificar limite
   if (socketLimit.messages.count >= RATE_LIMIT_CONFIG.MAX_MESSAGES_PER_MINUTE) {
     socketLimit.messages.blocked = true;
+    console.warn(`[WebSocket Flood Monitor] ⚠️ Limite de mensagens excedido para socket ${socketId}: ${socketLimit.messages.count}/${RATE_LIMIT_CONFIG.MAX_MESSAGES_PER_MINUTE} mensagens/min`);
     return { allowed: false, reason: `Limite de mensagens excedido (${socketLimit.messages.count}/${RATE_LIMIT_CONFIG.MAX_MESSAGES_PER_MINUTE})` };
+  }
+
+  // Log quando próximo do limite (80% do limite)
+  if (socketLimit.messages.count > 0 && socketLimit.messages.count % 10 === 0) {
+    const percentage = Math.round((socketLimit.messages.count / RATE_LIMIT_CONFIG.MAX_MESSAGES_PER_MINUTE) * 100);
+    if (percentage >= 80) {
+      console.warn(`[WebSocket Flood Monitor] ⚠️ Socket ${socketId} próximo do limite: ${socketLimit.messages.count}/${RATE_LIMIT_CONFIG.MAX_MESSAGES_PER_MINUTE} (${percentage}%)`);
+    }
   }
 
   // Incrementar contador
@@ -893,10 +924,6 @@ function validateWebSocketToken(token: string | undefined): { valid: boolean; us
     return { valid: false, error: 'Token não fornecido' };
   }
 
-  if (!process.env.JWT_SECRET) {
-    return { valid: false, error: 'Configuração de token ausente' };
-  }
-
   try {
     // Remover "Bearer " se presente
     const cleanToken = token.startsWith('Bearer ') ? token.substring(7) : token;
@@ -913,7 +940,13 @@ function validateWebSocketToken(token: string | undefined): { valid: boolean; us
       tokenBlacklist.delete(cleanToken);
     }
     
-    const payload = jwt.verify(cleanToken, process.env.JWT_SECRET) as any;
+    // Verificar token usando RS256
+    const payload = verifyToken(cleanToken);
+    
+    // Verificar se é um access token
+    if (payload.type && payload.type !== 'access') {
+      return { valid: false, error: 'Token inválido: deve ser um access token' };
+    }
     
     return {
       valid: true,
@@ -924,6 +957,10 @@ function validateWebSocketToken(token: string | undefined): { valid: boolean; us
       },
     };
   } catch (error: any) {
+    // Verificar se o erro é de algoritmo inválido (token antigo HS256)
+    if (error.message?.includes('invalid algorithm') || error.message?.includes('algorithm')) {
+      return { valid: false, error: 'Token inválido: algoritmo não suportado. Faça login novamente para obter um novo token.' };
+    }
     return { valid: false, error: error.message || 'Token inválido' };
   }
 }
@@ -1094,6 +1131,7 @@ export function initializeWebSocket(server: HTTPServer) {
   }
 
   io = new SocketIOServer(server, {
+    path: '/socket.io',
     cors: {
       origin: allowedOrigin,
       credentials: true,
@@ -1138,7 +1176,8 @@ export function initializeWebSocket(server: HTTPServer) {
       if (ip !== 'unknown') {
         const concurrentCheck = checkConcurrentConnectionsLimit(ip);
         if (!concurrentCheck.allowed) {
-          console.error(`[WebSocket Rate Limit] ❌ Conexão rejeitada - ${concurrentCheck.reason} (IP: ${ip})`);
+          totalBlockedConnections++;
+          console.error(`[WebSocket Flood Monitor] ❌ Conexão rejeitada - ${concurrentCheck.reason} (IP: ${ip})`);
           blacklistIP(ip, `Excedeu limite de conexões simultâneas`);
           callback(null, false);
           return;
@@ -1149,9 +1188,17 @@ export function initializeWebSocket(server: HTTPServer) {
       if (ip !== 'unknown') {
         const reconnectionCheck = checkReconnectionRateLimit(ip);
         if (!reconnectionCheck.allowed) {
-          console.error(`[WebSocket Rate Limit] ❌ Conexão rejeitada - ${reconnectionCheck.reason} (IP: ${ip})`);
+          totalBlockedConnections++;
+          totalReconnections++;
+          console.error(`[WebSocket Flood Monitor] ❌ Conexão rejeitada - ${reconnectionCheck.reason} (IP: ${ip})`);
           callback(null, false);
           return;
+        }
+        
+        // Detectar reconexão (se já tinha conexões ativas)
+        const activeSockets = activeConnectionsByIP.get(ip);
+        if (activeSockets && activeSockets.size > 0) {
+          totalReconnections++;
         }
       }
 
@@ -1274,6 +1321,15 @@ export function initializeWebSocket(server: HTTPServer) {
     }
     activeConnectionsByIP.get(ip)!.add(socket.id);
     
+    // Log de conexão bem-sucedida com estatísticas
+    const activeSocketsForIP = activeConnectionsByIP.get(ip);
+    const totalConnectionsForIP = activeSocketsForIP ? activeSocketsForIP.size : 0;
+    const totalIPs = activeConnectionsByIP.size;
+    const totalSockets = io ? io.sockets.sockets.size : 0;
+    
+    console.log(`[WebSocket Flood Monitor] ✅ Nova conexão estabelecida: Socket ${socket.id} | IP: ${ip} | User: ${user.id} (${user.role})`);
+    console.log(`[WebSocket Flood Monitor] 📊 Estatísticas: IP ${ip} tem ${totalConnectionsForIP} conexão(ões) | Total de IPs: ${totalIPs} | Total de sockets: ${totalSockets}`);
+    
     // Inicializar rastreamento de salas para este socket
     socketRooms.set(socket.id, new Set());
     
@@ -1341,9 +1397,9 @@ export function initializeWebSocket(server: HTTPServer) {
       // 3. Verificar rate limit de tentativas de inscrição em salas
       const subscriptionCheck = checkRoomSubscriptionRateLimit(socket.id);
       if (!subscriptionCheck.allowed) {
-        console.warn(`[WebSocket Rate Limit] Socket ${socket.id} bloqueado: ${subscriptionCheck.reason}`);
-        socket.emit('error', { message: `Rate limit de inscrições excedido: ${subscriptionCheck.reason}` });
         const ip = getSocketIP(socket);
+        console.warn(`[WebSocket Flood Monitor] ⚠️ Socket ${socket.id} (IP: ${ip}) bloqueado por flood de inscrições: ${subscriptionCheck.reason}`);
+        socket.emit('error', { message: `Rate limit de inscrições excedido: ${subscriptionCheck.reason}` });
         blacklistIP(ip, `Flood de inscrições em salas no socket ${socket.id}`);
         socket.disconnect();
         return;
@@ -1352,9 +1408,10 @@ export function initializeWebSocket(server: HTTPServer) {
       // 4. Verificar rate limit de mensagens
       const messageCheck = checkMessageRateLimit(socket.id);
       if (!messageCheck.allowed) {
-        console.warn(`[WebSocket Rate Limit] Socket ${socket.id} bloqueado: ${messageCheck.reason}`);
-        socket.emit('error', { message: `Rate limit excedido: ${messageCheck.reason}` });
+        totalBlockedMessages++;
         const ip = getSocketIP(socket);
+        console.warn(`[WebSocket Flood Monitor] ⚠️ Socket ${socket.id} (IP: ${ip}) bloqueado por rate limit: ${messageCheck.reason}`);
+        socket.emit('error', { message: `Rate limit excedido: ${messageCheck.reason}` });
         blacklistIP(ip, `Flood de mensagens no socket ${socket.id}`);
         socket.disconnect();
         return;
@@ -1577,9 +1634,9 @@ export function initializeWebSocket(server: HTTPServer) {
       // 3. Verificar rate limit de tentativas de inscrição em salas
       const subscriptionCheck = checkRoomSubscriptionRateLimit(socket.id);
       if (!subscriptionCheck.allowed) {
-        console.warn(`[WebSocket Rate Limit] Socket ${socket.id} bloqueado: ${subscriptionCheck.reason}`);
-        socket.emit('error', { message: `Rate limit de inscrições excedido: ${subscriptionCheck.reason}` });
         const ip = getSocketIP(socket);
+        console.warn(`[WebSocket Flood Monitor] ⚠️ Socket ${socket.id} (IP: ${ip}) bloqueado por flood de inscrições: ${subscriptionCheck.reason}`);
+        socket.emit('error', { message: `Rate limit de inscrições excedido: ${subscriptionCheck.reason}` });
         blacklistIP(ip, `Flood de inscrições em salas no socket ${socket.id}`);
         socket.disconnect();
         return;
@@ -1588,9 +1645,10 @@ export function initializeWebSocket(server: HTTPServer) {
       // 4. Verificar rate limit de mensagens
       const messageCheck = checkMessageRateLimit(socket.id);
       if (!messageCheck.allowed) {
-        console.warn(`[WebSocket Rate Limit] Socket ${socket.id} bloqueado: ${messageCheck.reason}`);
-        socket.emit('error', { message: `Rate limit excedido: ${messageCheck.reason}` });
+        totalBlockedMessages++;
         const ip = getSocketIP(socket);
+        console.warn(`[WebSocket Flood Monitor] ⚠️ Socket ${socket.id} (IP: ${ip}) bloqueado por rate limit: ${messageCheck.reason}`);
+        socket.emit('error', { message: `Rate limit excedido: ${messageCheck.reason}` });
         blacklistIP(ip, `Flood de mensagens no socket ${socket.id}`);
         socket.disconnect();
         return;
@@ -1678,12 +1736,22 @@ export function initializeWebSocket(server: HTTPServer) {
       // Remover conexão do rastreamento por IP
       const ip = getSocketIP(socket);
       const activeSockets = activeConnectionsByIP.get(ip);
+      const hadConnections = activeSockets ? activeSockets.size : 0;
+      
       if (activeSockets) {
         activeSockets.delete(socket.id);
         if (activeSockets.size === 0) {
           activeConnectionsByIP.delete(ip);
         }
       }
+      
+      // Log de desconexão com estatísticas
+      const remainingConnections = activeSockets ? activeSockets.size : 0;
+      const totalIPs = activeConnectionsByIP.size;
+      const totalSockets = io ? io.sockets.sockets.size : 0;
+      
+      console.log(`[WebSocket Flood Monitor] 🔌 Desconexão: Socket ${socket.id} | IP: ${ip} | User: ${user.id}`);
+      console.log(`[WebSocket Flood Monitor] 📊 Estatísticas após desconexão: IP ${ip} tem ${remainingConnections} conexão(ões) restante(s) | Total de IPs: ${totalIPs} | Total de sockets: ${totalSockets}`);
       
       // Limpar rastreamento de salas
       socketRooms.delete(socket.id);

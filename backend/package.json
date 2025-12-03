@@ -6,6 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "dev:https": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "generate-cert": "node scripts/generate-dev-cert.js",
     "create-admin": "ts-node-dev --transpile-only scripts/create-admin.ts",
     "update-admin-email": "ts-node-dev --transpile-only scripts/update-admin-email.ts",
     "test-login": "ts-node-dev --transpile-only scripts/test-login.ts",

@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
+import { generateAccessToken, generateRefreshToken, verifyToken } from '../utils/jwt.util';
 
 class AuthService {
     async login(email: string, senhaRecebida: string) {
@@ -24,25 +24,61 @@ class AuthService {
             throw new Error("Credenciais inválidas.");
         }
 
-        // Sucesso (JWT): Criar token JWT
-        if (!process.env.JWT_SECRET) {
-            throw new Error("JWT_SECRET não configurado no ambiente.");
-        }
+        // Sucesso (JWT): Criar tokens JWT com RS256
+        const tokenPayload = {
+            sub: doutor.id,
+            email: doutor.email,
+            role: doutor.role,
+            clinicaId: doutor.clinicaId,
+        };
 
-        const token = jwt.sign(
-            { 
-                sub: doutor.id, 
+        const accessToken = generateAccessToken(tokenPayload);
+        const refreshToken = generateRefreshToken(tokenPayload);
+
+        // Armazenar refresh token no banco (opcional, para revogação)
+        // Por enquanto, vamos retornar ambos os tokens
+
+        // Retornar tokens e doutor (sem a senha)
+        const { senha, ...doutorSemSenha } = doutor;
+        return { 
+            token: accessToken, 
+            refreshToken,
+            doutor: doutorSemSenha 
+        };
+    }
+
+    /**
+     * Renova o access token usando o refresh token
+     */
+    async refreshAccessToken(refreshToken: string) {
+        try {
+            const payload = verifyToken(refreshToken);
+            
+            if (payload.type !== 'refresh') {
+                throw new Error('Token inválido: não é um refresh token');
+            }
+
+            // Buscar o usuário para garantir que ainda está ativo
+            const doutor = await prisma.doutor.findUnique({
+                where: { id: payload.sub },
+            });
+
+            if (!doutor || !doutor.ativo) {
+                throw new Error('Usuário não encontrado ou inativo');
+            }
+
+            // Gerar novo access token
+            const newAccessToken = generateAccessToken({
+                sub: doutor.id,
                 email: doutor.email,
                 role: doutor.role,
-                clinicaId: doutor.clinicaId
-            },
-            process.env.JWT_SECRET,
-            { expiresIn: '1h' }
-        );
+                clinicaId: doutor.clinicaId,
+            });
 
-        // Retornar token e doutor (sem a senha)
-        const { senha, ...doutorSemSenha } = doutor;
-        return { token, doutor: doutorSemSenha };
+            return { token: newAccessToken };
+        } catch (error: any) {
+            throw new Error('Refresh token inválido ou expirado');
+        }
     }
 }
 

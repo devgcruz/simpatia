@@ -17,6 +17,7 @@ import {
   ListItemText,
   Button,
   Collapse,
+  useMediaQuery,
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
@@ -30,12 +31,15 @@ import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import StoreIcon from '@mui/icons-material/Store';
 import ChatIcon from '@mui/icons-material/Chat';
+import ChatBubbleIcon from '@mui/icons-material/ChatBubble';
 import TodayIcon from '@mui/icons-material/Today';
 import MedicationIcon from '@mui/icons-material/Medication';
 import DescriptionIcon from '@mui/icons-material/Description';
 import { useAuth } from '../hooks/useAuth';
 import { useDoutorSelecionado } from '../context/DoutorSelecionadoContext';
 import { SelectDoutorModal } from '../components/common/SelectDoutorModal';
+import { NotificationBell } from '../components/common/NotificationBell';
+import { ChatInternoWidget } from '../components/chat-interno/ChatInternoWidget';
 import PersonIcon from '@mui/icons-material/Person';
 
 const drawerWidth = 240;
@@ -84,14 +88,16 @@ const AppBar = styled(MuiAppBar, {
     easing: theme.transitions.easing.sharp,
     duration: theme.transitions.duration.leavingScreen,
   }),
-  ...(open && {
-    marginLeft: drawerWidth,
-    width: `calc(100% - ${drawerWidth}px)`,
-    transition: theme.transitions.create(['width', 'margin'], {
-      easing: theme.transitions.easing.sharp,
-      duration: theme.transitions.duration.enteringScreen,
+  [theme.breakpoints.up('md')]: {
+    ...(open && {
+      marginLeft: drawerWidth,
+      width: `calc(100% - ${drawerWidth}px)`,
+      transition: theme.transitions.create(['width', 'margin'], {
+        easing: theme.transitions.easing.sharp,
+        duration: theme.transitions.duration.enteringScreen,
+      }),
     }),
-  }),
+  },
 }));
 
 const Drawer = styled(MuiDrawer, { shouldForwardProp: (prop) => prop !== 'open' })(
@@ -100,14 +106,21 @@ const Drawer = styled(MuiDrawer, { shouldForwardProp: (prop) => prop !== 'open' 
     flexShrink: 0,
     whiteSpace: 'nowrap',
     boxSizing: 'border-box',
-    ...(open && {
-      ...openedMixin(theme),
-      '& .MuiDrawer-paper': openedMixin(theme),
-    }),
-    ...(!open && {
-      ...closedMixin(theme),
-      '& .MuiDrawer-paper': closedMixin(theme),
-    }),
+    [theme.breakpoints.up('md')]: {
+      ...(open && {
+        ...openedMixin(theme),
+        '& .MuiDrawer-paper': openedMixin(theme),
+      }),
+      ...(!open && {
+        ...closedMixin(theme),
+        '& .MuiDrawer-paper': closedMixin(theme),
+      }),
+    },
+    [theme.breakpoints.down('md')]: {
+      '& .MuiDrawer-paper': {
+        width: drawerWidth,
+      },
+    },
   }),
 );
 
@@ -121,12 +134,25 @@ interface MenuItem {
 
 export const DashboardLayout: React.FC = () => {
   const theme = useTheme();
-  const [open, setOpen] = useState(true);
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const [open, setOpen] = React.useState(!isMobile); // Fechado por padrão em mobile
+  const [mobileOpen, setMobileOpen] = React.useState(false);
   const [gerenciarOpen, setGerenciarOpen] = useState(true);
   const { user, logout } = useAuth();
   const location = useLocation();
   const { doutorSelecionado, setDoutorSelecionado, doutoresDisponiveis, isLoading: isLoadingDoutor } = useDoutorSelecionado();
   const [isSelectDoutorModalOpen, setIsSelectDoutorModalOpen] = useState(false);
+
+  // Ajustar estado do drawer quando mudar de mobile para desktop
+  React.useEffect(() => {
+    if (!isMobile) {
+      setMobileOpen(false);
+      // Em desktop, manter o estado atual de 'open' ao redimensionar
+    } else {
+      // Em mobile, garantir que o drawer permanente esteja fechado
+      setOpen(false);
+    }
+  }, [isMobile]);
 
   const menuItems: MenuItem[] = [
     { text: 'Agenda', icon: <EventIcon />, path: '/dashboard', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN', 'SECRETARIA'] },
@@ -141,6 +167,12 @@ export const DashboardLayout: React.FC = () => {
       icon: <ChatIcon />,
       path: '/atendimento',
       role: ['CLINICA_ADMIN', 'SUPER_ADMIN', 'SECRETARIA'],
+    },
+    {
+      text: 'Chat Interno',
+      icon: <ChatBubbleIcon />,
+      path: '/chat-interno',
+      role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN', 'SECRETARIA'],
     },
     {
       text: 'Gerenciar',
@@ -207,53 +239,97 @@ export const DashboardLayout: React.FC = () => {
   const headerTitle = findActiveMenuItem();
 
   const handleDrawerOpen = () => {
-    setOpen(true);
+    if (isMobile) {
+      setMobileOpen(true);
+    } else {
+      setOpen(true);
+    }
   };
 
   const handleDrawerClose = () => {
-    setOpen(false);
+    if (isMobile) {
+      setMobileOpen(false);
+    } else {
+      setOpen(false);
+    }
+  };
+
+  const handleDrawerToggle = () => {
+    if (isMobile) {
+      setMobileOpen(!mobileOpen);
+    } else {
+      setOpen(!open);
+    }
   };
 
   return (
     <Box sx={{ display: 'flex' }}>
       <CssBaseline />
-      <AppBar position="fixed" open={open}>
+      <AppBar position="fixed" open={open && !isMobile}>
         <Toolbar>
           <IconButton
             color="inherit"
             aria-label="open drawer"
-            onClick={handleDrawerOpen}
+            onClick={handleDrawerToggle}
             edge="start"
             sx={{
-              marginRight: 5,
-              ...(open && { display: 'none' }),
+              marginRight: { xs: 2, md: 5 },
+              display: isMobile ? 'block' : (open ? 'none' : 'block'),
             }}
           >
             <MenuIcon />
           </IconButton>
-          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
+          <Typography 
+            variant="h6" 
+            noWrap 
+            component="div" 
+            sx={{ 
+              flexGrow: 1,
+              fontSize: { xs: '1rem', md: '1.25rem' },
+            }}
+          >
             {headerTitle}
           </Typography>
-          <Typography variant="body1" sx={{ mr: 2 }}>
+          <Typography 
+            variant="body1" 
+            sx={{ 
+              mr: { xs: 1, md: 2 },
+              display: { xs: 'none', sm: 'block' },
+              fontSize: { xs: '0.875rem', md: '1rem' },
+            }}
+          >
             Olá, {user?.email}
           </Typography>
-          <Button color="inherit" onClick={logout}>
+          <NotificationBell />
+          <Button 
+            color="inherit" 
+            onClick={logout}
+            size={isMobile ? 'small' : 'medium'}
+            sx={{ fontSize: { xs: '0.75rem', md: '0.875rem' } }}
+          >
             Sair
           </Button>
         </Toolbar>
       </AppBar>
-      <Drawer variant="permanent" open={open}>
+      <Drawer 
+        variant={isMobile ? 'temporary' : 'permanent'} 
+        open={isMobile ? mobileOpen : open}
+        onClose={isMobile ? handleDrawerClose : undefined}
+        ModalProps={{
+          keepMounted: true, // Melhor performance em mobile
+        }}
+      >
         <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           <DrawerHeader>
             <Typography variant="h6" sx={{ mr: 'auto', ml: 1 }}>
               Simpatia IA
             </Typography>
-            <IconButton onClick={handleDrawerClose}>
+            <IconButton onClick={isMobile ? handleDrawerClose : handleDrawerClose}>
               {theme.direction === 'rtl' ? <ChevronRightIcon /> : <ChevronLeftIcon />}
             </IconButton>
           </DrawerHeader>
           <Divider />
-          <List sx={{ flexGrow: 1, overflowY: open ? 'auto' : 'hidden', overflowX: 'hidden' }}>
+          <List sx={{ flexGrow: 1, overflowY: (isMobile ? mobileOpen : open) ? 'auto' : 'hidden', overflowX: 'hidden' }}>
           {permittedMenuItems.map((item) => {
             if (item.subItems) {
               // Menu expansível
@@ -271,9 +347,14 @@ export const DashboardLayout: React.FC = () => {
                   <ListItem disablePadding sx={{ display: 'block' }}>
                     <ListItemButton
                       onClick={() => {
-                        if (!open) {
+                        const isOpen = isMobile ? mobileOpen : open;
+                        if (!isOpen) {
                           // Se o menu estiver fechado, abrir o menu primeiro
-                          setOpen(true);
+                          if (isMobile) {
+                            setMobileOpen(true);
+                          } else {
+                            setOpen(true);
+                          }
                           setGerenciarOpen(true);
                         } else {
                           // Se o menu estiver aberto, apenas expandir/colapsar
@@ -282,7 +363,7 @@ export const DashboardLayout: React.FC = () => {
                       }}
                       sx={{
                         minHeight: 48,
-                        justifyContent: open ? 'initial' : 'center',
+                        justifyContent: (isMobile ? mobileOpen : open) ? 'initial' : 'center',
                         px: 2.5,
                         backgroundColor: hasActiveSubItem ? 'action.selected' : 'transparent',
                       }}
@@ -290,17 +371,17 @@ export const DashboardLayout: React.FC = () => {
                       <ListItemIcon
                         sx={{
                           minWidth: 0,
-                          mr: open ? 3 : 'auto',
+                          mr: (isMobile ? mobileOpen : open) ? 3 : 'auto',
                           justifyContent: 'center',
                         }}
                       >
                         {item.icon}
                       </ListItemIcon>
-                      <ListItemText primary={item.text} sx={{ opacity: open ? 1 : 0 }} />
-                      {open && (gerenciarOpen ? <ExpandLess /> : <ExpandMore />)}
+                      <ListItemText primary={item.text} sx={{ opacity: (isMobile ? mobileOpen : open) ? 1 : 0 }} />
+                      {(isMobile ? mobileOpen : open) && (gerenciarOpen ? <ExpandLess /> : <ExpandMore />)}
                     </ListItemButton>
                   </ListItem>
-                  <Collapse in={gerenciarOpen && open} timeout="auto" unmountOnExit>
+                  <Collapse in={gerenciarOpen && (isMobile ? mobileOpen : open)} timeout="auto" unmountOnExit>
                     <List component="div" disablePadding>
                       {permittedSubItems.map((subItem) => {
                         const isActive = location.pathname.startsWith(subItem.path);
@@ -309,9 +390,14 @@ export const DashboardLayout: React.FC = () => {
                             <ListItemButton
                               component={RouterLink}
                               to={subItem.path}
+                              onClick={() => {
+                                if (isMobile) {
+                                  setMobileOpen(false);
+                                }
+                              }}
                               sx={{
                                 minHeight: 48,
-                                pl: open ? 4 : 2.5,
+                                pl: (isMobile ? mobileOpen : open) ? 4 : 2.5,
                                 backgroundColor: isActive ? 'action.selected' : 'transparent',
                                 '&:hover': {
                                   backgroundColor: 'action.hover',
@@ -321,13 +407,13 @@ export const DashboardLayout: React.FC = () => {
                               <ListItemIcon
                                 sx={{
                                   minWidth: 0,
-                                  mr: open ? 3 : 'auto',
+                                  mr: (isMobile ? mobileOpen : open) ? 3 : 'auto',
                                   justifyContent: 'center',
                                 }}
                               >
                                 {subItem.icon}
                               </ListItemIcon>
-                              <ListItemText primary={subItem.text} sx={{ opacity: open ? 1 : 0 }} />
+                              <ListItemText primary={subItem.text} sx={{ opacity: (isMobile ? mobileOpen : open) ? 1 : 0 }} />
                             </ListItemButton>
                           </ListItem>
                         );
@@ -345,9 +431,14 @@ export const DashboardLayout: React.FC = () => {
                 <ListItemButton
                   component={RouterLink}
                   to={item.path}
+                  onClick={() => {
+                    if (isMobile) {
+                      setMobileOpen(false);
+                    }
+                  }}
                   sx={{
                     minHeight: 48,
-                    justifyContent: open ? 'initial' : 'center',
+                    justifyContent: (isMobile ? mobileOpen : open) ? 'initial' : 'center',
                     px: 2.5,
                     backgroundColor: isActive ? 'action.selected' : 'transparent',
                   }}
@@ -355,13 +446,13 @@ export const DashboardLayout: React.FC = () => {
                   <ListItemIcon
                     sx={{
                       minWidth: 0,
-                      mr: open ? 3 : 'auto',
+                      mr: (isMobile ? mobileOpen : open) ? 3 : 'auto',
                       justifyContent: 'center',
                     }}
                   >
                     {item.icon}
                   </ListItemIcon>
-                  <ListItemText primary={item.text} sx={{ opacity: open ? 1 : 0 }} />
+                  <ListItemText primary={item.text} sx={{ opacity: (isMobile ? mobileOpen : open) ? 1 : 0 }} />
                 </ListItemButton>
               </ListItem>
             );
@@ -438,7 +529,7 @@ export const DashboardLayout: React.FC = () => {
                         : 'Nenhum Doutor Selecionado'
                     }
                     sx={{
-                      opacity: open ? 1 : 0,
+                      opacity: (isMobile ? mobileOpen : open) ? 1 : 0,
                       '& .MuiListItemText-primary': {
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
@@ -469,11 +560,23 @@ export const DashboardLayout: React.FC = () => {
         component="main"
         sx={{
           flexGrow: 1,
-          p: 3,
+          p: { xs: 1, sm: 2, md: 3 },
           height: '100vh',
           display: 'flex',
           flexDirection: 'column',
           overflowY: location.pathname.startsWith('/dashboard') ? 'hidden' : 'auto',
+          width: { xs: '100%', md: `calc(100% - ${open ? drawerWidth : theme.spacing(7)}px)` },
+          transition: theme.transitions.create(['width', 'margin'], {
+            easing: theme.transitions.easing.sharp,
+            duration: theme.transitions.duration.leavingScreen,
+          }),
+          ...(!isMobile && open && {
+            width: `calc(100% - ${drawerWidth}px)`,
+            transition: theme.transitions.create(['width', 'margin'], {
+              easing: theme.transitions.easing.sharp,
+              duration: theme.transitions.duration.enteringScreen,
+            }),
+          }),
         }}
       >
         <DrawerHeader />
@@ -481,6 +584,9 @@ export const DashboardLayout: React.FC = () => {
           <Outlet />
         </Box>
       </Box>
+      
+      {/* Widget de Chat Interno - Sempre visível */}
+      <ChatInternoWidget />
     </Box>
   );
 };

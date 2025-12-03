@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   Box,
   Paper,
@@ -32,6 +32,7 @@ import HistoryIcon from '@mui/icons-material/History';
 import TodayIcon from '@mui/icons-material/Today';
 import PhoneIcon from '@mui/icons-material/Phone';
 import WarningIcon from '@mui/icons-material/Warning';
+import PauseCircleIcon from '@mui/icons-material/PauseCircle';
 import { toast } from 'sonner';
 import moment from 'moment';
 import 'moment/locale/pt-br';
@@ -39,12 +40,48 @@ import { IAgendamento, IDoutor } from '../types/models';
 import { getAgendamentos, updateAgendamento, createAgendamento, AgendamentoCreateInput } from '../services/agendamento.service';
 import { getDoutores } from '../services/doutor.service';
 import { useAuth } from '../hooks/useAuth';
+import { useWebSocket } from '../hooks/useWebSocket';
 import { AgendamentoFormModal } from '../components/agendamentos/AgendamentoFormModal';
 import { HistoricoPacienteModal } from '../components/pacientes/HistoricoPacienteModal';
 import { ProntuarioModal } from '../components/pacientes/ProntuarioModal';
 import { finalizeAgendamento } from '../services/agendamento.service';
 
 moment.locale('pt-br');
+
+// Função para verificar se há atendimento pausado no localStorage
+const verificarAtendimentoPausado = (agendamentoId: number): boolean => {
+  try {
+    const key = `atendimento_pausado_${agendamentoId}`;
+    const estadoSalvo = localStorage.getItem(key);
+    if (!estadoSalvo) {
+      return false;
+    }
+
+    const estado = JSON.parse(estadoSalvo);
+    const inicioAtendimento = estado.inicioAtendimento ? new Date(estado.inicioAtendimento) : null;
+    
+    if (!inicioAtendimento) {
+      return false;
+    }
+
+    // Verificar se o estado não é muito antigo (mais de 24 horas)
+    if (estado.timestamp) {
+      const dataSalvamento = new Date(estado.timestamp);
+      const agora = new Date();
+      const diferencaHoras = (agora.getTime() - dataSalvamento.getTime()) / (1000 * 60 * 60);
+      
+      if (diferencaHoras > 24) {
+        // Limpar estado antigo
+        localStorage.removeItem(key);
+        return false;
+      }
+    }
+
+    return true;
+  } catch (error) {
+    return false;
+  }
+};
 
 const getStatusColor = (status: string): 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning' => {
   switch (status) {
@@ -130,8 +167,8 @@ export const AtendimentoDoDiaPage: React.FC = () => {
     carregarDoutores();
   }, [isDoutor, user?.id]);
 
-  const fetchAgendamentos = async () => {
-    if (!doutorIdParaBusca || doutorIdParaBusca === '') {
+  const fetchAgendamentos = useCallback(async () => {
+    if (!doutorIdParaBusca || typeof doutorIdParaBusca !== 'number') {
       setAgendamentos([]);
       setLoading(false);
       return;
@@ -145,13 +182,15 @@ export const AtendimentoDoDiaPage: React.FC = () => {
         dataFim: dataHoje.fim,
       });
 
-      // Filtrar apenas agendamentos do dia selecionado, excluindo cancelados e pendentes, e ordenar por horário
+      // Filtrar apenas agendamentos do dia selecionado, excluindo cancelados, e ordenar por horário
+      // NOTA: Incluir agendamentos 'pendente_ia' pois eles devem aparecer no atendimento do dia
       const dataSelecionadaMoment = moment(dataSelecionada).startOf('day');
       const agendamentosHoje = data
         .filter((ag) => {
           const dataAgendamento = moment(ag.dataHora).startOf('day');
           const isMesmoDia = dataAgendamento.isSame(dataSelecionadaMoment, 'day');
-          const isStatusValido = ag.status !== 'cancelado' && ag.status !== 'pendente';
+          // Excluir apenas cancelados - incluir pendentes e confirmados
+          const isStatusValido = ag.status !== 'cancelado';
           return isMesmoDia && isStatusValido;
         })
         .sort((a, b) => moment(a.dataHora).valueOf() - moment(b.dataHora).valueOf());
@@ -172,21 +211,116 @@ export const AtendimentoDoDiaPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [doutorIdParaBusca, dataHoje.inicio, dataHoje.fim, dataSelecionada]);
 
   useEffect(() => {
-    if (doutorIdParaBusca && doutorIdParaBusca !== '') {
+    if (doutorIdParaBusca && typeof doutorIdParaBusca === 'number') {
       fetchAgendamentos();
     }
-  }, [doutorIdParaBusca, dataSelecionada]);
+  }, [doutorIdParaBusca, dataSelecionada, fetchAgendamentos]);
 
-  // Escutar eventos de atualização de agendamento de outras páginas
+  // WebSocket para atualização em tempo real
+  const handleWebSocketUpdate = useCallback((event: any) => {
+    console.log('[AtendimentoDoDia] WebSocket event recebido:', {
+      action: event.action,
+      doutorId: event.doutorId,
+      doutorIdParaBusca,
+      agendamentoId: event.agendamento?.id,
+      dataHora: event.agendamento?.dataHora,
+      dataSelecionada,
+    });
+
+    // Verificar se o evento é relevante para o doutor atual e data selecionada
+    const eventDoutorId = event.doutorId;
+    const eventAgendamento = event.agendamento;
+    
+    // Se não houver doutorIdParaBusca ou se o evento for para o doutor atual
+    if (!doutorIdParaBusca || typeof doutorIdParaBusca !== 'number') {
+      console.log('[AtendimentoDoDia] Ignorando evento: doutorIdParaBusca inválido');
+      return;
+    }
+
+    if (eventDoutorId !== doutorIdParaBusca) {
+      console.log('[AtendimentoDoDia] Ignorando evento: doutor diferente', {
+        eventDoutorId,
+        doutorIdParaBusca,
+      });
+      return;
+    }
+
+    // Para eventos de criação, sempre atualizar (o filtro de data será feito no fetchAgendamentos)
+    if (event.action === 'created') {
+      console.log('[AtendimentoDoDia] Evento de criação detectado, atualizando agendamentos...');
+      requestAnimationFrame(() => {
+        fetchAgendamentos();
+      });
+      return;
+    }
+
+    // Para outros eventos, verificar se o agendamento é do dia selecionado
+    if (eventAgendamento && eventAgendamento.dataHora) {
+      const dataAgendamento = moment(eventAgendamento.dataHora).startOf('day');
+      const dataSelecionadaMoment = moment(dataSelecionada).startOf('day');
+      
+      console.log('[AtendimentoDoDia] Verificando data do agendamento:', {
+        dataAgendamento: dataAgendamento.format('YYYY-MM-DD'),
+        dataSelecionada: dataSelecionadaMoment.format('YYYY-MM-DD'),
+        isSame: dataAgendamento.isSame(dataSelecionadaMoment, 'day'),
+      });
+      
+      // Se for do mesmo dia ou se for uma ação de delete (que não tem agendamento)
+      if (dataAgendamento.isSame(dataSelecionadaMoment, 'day') || event.action === 'deleted') {
+        console.log('[AtendimentoDoDia] Atualizando agendamentos (mesmo dia ou delete)');
+        requestAnimationFrame(() => {
+          fetchAgendamentos();
+        });
+      } else {
+        console.log('[AtendimentoDoDia] Ignorando evento: agendamento de outro dia');
+      }
+    } else if (event.action === 'deleted') {
+      // Para delete, sempre atualizar (não temos o agendamento para verificar a data)
+      console.log('[AtendimentoDoDia] Evento de delete detectado, atualizando agendamentos...');
+      requestAnimationFrame(() => {
+        fetchAgendamentos();
+      });
+    } else {
+      console.log('[AtendimentoDoDia] Ignorando evento: sem agendamento e não é delete');
+    }
+  }, [doutorIdParaBusca, dataSelecionada, fetchAgendamentos]);
+
+  // WebSocket para atualização em tempo real - habilitar quando houver usuário e doutor
+  const { subscribeToDoutor, isConnected } = useWebSocket({
+    doutorId: doutorIdParaBusca && typeof doutorIdParaBusca === 'number' ? doutorIdParaBusca : null,
+    enabled: !!user && !!doutorIdParaBusca && typeof doutorIdParaBusca === 'number',
+    onAgendamentoUpdate: handleWebSocketUpdate,
+  });
+
+  // Log de conexão WebSocket para debug
+  useEffect(() => {
+    if (doutorIdParaBusca && typeof doutorIdParaBusca === 'number') {
+      console.log('[AtendimentoDoDia] WebSocket status:', {
+        isConnected,
+        doutorId: doutorIdParaBusca,
+        enabled: !!user && !!doutorIdParaBusca && typeof doutorIdParaBusca === 'number',
+      });
+    }
+  }, [isConnected, doutorIdParaBusca, user]);
+
+  // Atualizar inscrição WebSocket quando o doutor ou data mudar
+  useEffect(() => {
+    if (doutorIdParaBusca && typeof doutorIdParaBusca === 'number') {
+      console.log('[AtendimentoDoDia] Inscrevendo no doutor via WebSocket:', doutorIdParaBusca);
+      subscribeToDoutor(doutorIdParaBusca);
+    }
+  }, [doutorIdParaBusca, subscribeToDoutor]);
+
+  // Escutar eventos de atualização de agendamento de outras páginas (fallback)
   useEffect(() => {
     const handleAgendamentoAtualizado = (event: Event) => {
       const customEvent = event as CustomEvent;
       const doutorIdEvento = customEvent.detail?.doutorId;
       // Se o evento for para o doutor atual ou não especificar doutor, atualizar instantaneamente
-      if (!doutorIdEvento || doutorIdEvento === doutorIdParaBusca) {
+      if (!doutorIdEvento || (typeof doutorIdParaBusca === 'number' && doutorIdEvento === doutorIdParaBusca)) {
         // Usar setTimeout para garantir que a atualização aconteça após o evento ser processado
         setTimeout(() => {
           fetchAgendamentos();
@@ -198,7 +332,7 @@ export const AtendimentoDoDiaPage: React.FC = () => {
     return () => {
       window.removeEventListener('agendamentoAtualizado', handleAgendamentoAtualizado);
     };
-  }, [doutorIdParaBusca]);
+  }, [doutorIdParaBusca, fetchAgendamentos]);
 
   const handleEditAgendamento = (agendamento: IAgendamento) => {
     setAgendamentoEditando(agendamento);
@@ -352,10 +486,6 @@ export const AtendimentoDoDiaPage: React.FC = () => {
     );
   }
 
-  const doutorNome = isDoutor
-    ? user?.email
-    : doutores.find((d) => d.id === doutorSelecionado)?.nome || 'Selecione um doutor';
-
   return (
     <Box>
       <Paper
@@ -412,7 +542,7 @@ export const AtendimentoDoDiaPage: React.FC = () => {
         </Stack>
       </Paper>
 
-      {!doutorIdParaBusca || doutorIdParaBusca === '' ? (
+      {!doutorIdParaBusca || typeof doutorIdParaBusca !== 'number' ? (
         <Paper sx={{ p: 4, textAlign: 'center' }}>
           <Typography variant="h6" color="text.secondary">
             {isDoutor ? 'Carregando informações...' : 'Selecione um doutor para ver os atendimentos do dia'}
@@ -442,7 +572,10 @@ export const AtendimentoDoDiaPage: React.FC = () => {
             <>
               {agendamentosFuturos.length > 0 ? (
                 <Grid container spacing={2}>
-                {agendamentosFuturos.map((agendamento) => (
+                {agendamentosFuturos.map((agendamento) => {
+                  const temAtendimentoPausado = verificarAtendimentoPausado(agendamento.id);
+                  
+                  return (
                   <Grid item xs={12} sm={6} md={4} key={agendamento.id}>
                     <Card
                       elevation={2}
@@ -452,6 +585,9 @@ export const AtendimentoDoDiaPage: React.FC = () => {
                         flexDirection: 'column',
                         transition: 'all 0.3s ease',
                         cursor: 'pointer',
+                        position: 'relative',
+                        overflow: 'hidden',
+                        border: temAtendimentoPausado ? `2px solid ${theme.palette.warning.main}` : 'none',
                         '&:hover': {
                           transform: 'translateY(-4px)',
                           boxShadow: theme.shadows[8],
@@ -459,7 +595,54 @@ export const AtendimentoDoDiaPage: React.FC = () => {
                       }}
                       onClick={() => handleOpenProntuario(agendamento)}
                     >
-                      <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                      {temAtendimentoPausado && (
+                        <Box
+                          sx={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            pointerEvents: 'none',
+                            zIndex: 1,
+                            opacity: 0.1,
+                          }}
+                        >
+                          <PauseCircleIcon
+                            sx={{
+                              fontSize: '120px',
+                              color: theme.palette.warning.main,
+                              transform: 'rotate(-15deg)',
+                            }}
+                          />
+                        </Box>
+                      )}
+                      {temAtendimentoPausado && (
+                        <Box
+                          sx={{
+                            position: 'absolute',
+                            top: 8,
+                            right: 8,
+                            zIndex: 2,
+                            pointerEvents: 'none',
+                          }}
+                        >
+                          <Chip
+                            icon={<PauseCircleIcon />}
+                            label="PAUSADO"
+                            color="warning"
+                            size="small"
+                            sx={{
+                              fontWeight: 'bold',
+                              boxShadow: theme.shadows[2],
+                            }}
+                          />
+                        </Box>
+                      )}
+                      <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 3 }}>
                         <Stack direction="row" spacing={2} alignItems="flex-start" mb={2}>
                           <Avatar sx={{ bgcolor: theme.palette.primary.main }}>
                             <PersonIcon />
@@ -563,7 +746,8 @@ export const AtendimentoDoDiaPage: React.FC = () => {
                       </CardContent>
                     </Card>
                   </Grid>
-                ))}
+                  );
+                })}
                 </Grid>
               ) : (
                 <Paper sx={{ p: 4, textAlign: 'center' }}>

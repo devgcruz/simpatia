@@ -13,7 +13,7 @@ class AuthController {
             }
 
             // Chamar o serviço de autenticação
-            const { token, doutor } = await authService.login(email, senha);
+            const { token, refreshToken, doutor } = await authService.login(email, senha);
 
             // Proteção (Cookies Seguros): Configurar cookie com opções de segurança
             res.cookie('token', token, {
@@ -21,7 +21,15 @@ class AuthController {
                 secure: process.env.NODE_ENV === 'production', // Só envia em HTTPS
                 // Em desenvolvimento, usamos 'lax' para permitir cookie entre portas (3000/5173 -> 3333)
                 sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-                maxAge: 3600000 // 1 hora, igual ao token
+                maxAge: 15 * 60 * 1000 // 15 minutos (access token)
+            });
+
+            // Cookie para refresh token (válido por 7 dias)
+            res.cookie('refreshToken', refreshToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+                maxAge: 7 * 24 * 60 * 60 * 1000 // 7 dias
             });
 
             // Retornar status 200 com os dados do doutor (sem a senha)
@@ -72,6 +80,30 @@ class AuthController {
                 sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
             });
             return res.status(200).json({ message: 'Logout realizado.' });
+        }
+    }
+
+    async handleRefreshToken(req: Request, res: Response) {
+        try {
+            const refreshToken = req.cookies?.refreshToken || req.body.refreshToken;
+
+            if (!refreshToken) {
+                return res.status(400).json({ message: 'Refresh token não fornecido' });
+            }
+
+            const { token } = await authService.refreshAccessToken(refreshToken);
+
+            // Atualizar cookie do access token
+            res.cookie('token', token, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+                maxAge: 15 * 60 * 1000 // 15 minutos
+            });
+
+            return res.json({ token });
+        } catch (error: any) {
+            return res.status(401).json({ message: error.message || 'Refresh token inválido' });
         }
     }
 }

@@ -20,6 +20,9 @@ router.post('/login', loginLimiter, authController.handleLogin);
 // Rota de logout
 router.post('/logout', authController.handleLogout);
 
+// Rota de refresh token
+router.post('/refresh', authController.handleRefreshToken);
+
 // --- ROTA NOVA ---
 // GET /api/auth/me
 // Esta rota verifica o token (via cookie) e retorna os dados do usuário.

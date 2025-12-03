@@ -136,6 +136,7 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
   const [alergiasList, setAlergiasList] = useState<string[]>([]);
   const [novaAlergia, setNovaAlergia] = useState<string>('');
   const intervalRef = useRef<number | null>(null);
+  const toastExibidoRef = useRef<number | null>(null); // Para evitar toasts duplicados
   
   // Estados para prescrição
   const [openPrescricaoModal, setOpenPrescricaoModal] = useState(false);
@@ -173,6 +174,81 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
   };
 
   const alergias = agendamento ? parseAlergias(agendamento.paciente.alergias) : [];
+
+  // Funções para persistir o estado do atendimento
+  const getStorageKey = (agendamentoId: number): string => {
+    return `atendimento_pausado_${agendamentoId}`;
+  };
+
+  const salvarEstadoAtendimento = (agendamentoId: number, inicioAtendimento: Date | null, tempoDecorrido: number) => {
+    try {
+      if (inicioAtendimento) {
+        // Só salva se houver um atendimento iniciado (mesmo que pausado)
+        const estado = {
+          inicioAtendimento: inicioAtendimento.toISOString(),
+          tempoDecorrido,
+          timestamp: new Date().toISOString(),
+        };
+        const key = getStorageKey(agendamentoId);
+        localStorage.setItem(key, JSON.stringify(estado));
+        console.log('[Atendimento] Estado salvo:', { agendamentoId, tempoDecorrido, key });
+      }
+    } catch (error) {
+      console.error('Erro ao salvar estado do atendimento:', error);
+    }
+  };
+
+  const carregarEstadoAtendimento = (agendamentoId: number): { inicioAtendimento: Date | null; tempoDecorrido: number } | null => {
+    try {
+      const key = getStorageKey(agendamentoId);
+      const estadoSalvo = localStorage.getItem(key);
+      
+      console.log('[Atendimento] Tentando carregar estado:', { agendamentoId, key, existe: !!estadoSalvo });
+      
+      if (!estadoSalvo) {
+        console.log('[Atendimento] Nenhum estado salvo encontrado');
+        return null;
+      }
+
+      const estado = JSON.parse(estadoSalvo);
+      const inicioAtendimento = estado.inicioAtendimento ? new Date(estado.inicioAtendimento) : null;
+      
+      // Verificar se o estado não é muito antigo (mais de 24 horas)
+      if (estado.timestamp) {
+        const dataSalvamento = new Date(estado.timestamp);
+        const agora = new Date();
+        const diferencaHoras = (agora.getTime() - dataSalvamento.getTime()) / (1000 * 60 * 60);
+        
+        if (diferencaHoras > 24) {
+          // Limpar estado antigo
+          console.log('[Atendimento] Estado muito antigo, removendo:', diferencaHoras);
+          localStorage.removeItem(key);
+          return null;
+        }
+      }
+
+      console.log('[Atendimento] Estado carregado com sucesso:', { 
+        inicioAtendimento: inicioAtendimento?.toISOString(), 
+        tempoDecorrido: estado.tempoDecorrido 
+      });
+
+      return {
+        inicioAtendimento,
+        tempoDecorrido: estado.tempoDecorrido || 0,
+      };
+    } catch (error) {
+      console.error('Erro ao carregar estado do atendimento:', error);
+      return null;
+    }
+  };
+
+  const limparEstadoAtendimento = (agendamentoId: number) => {
+    try {
+      localStorage.removeItem(getStorageKey(agendamentoId));
+    } catch (error) {
+      console.error('Erro ao limpar estado do atendimento:', error);
+    }
+  };
 
   const markdownComponents = useMemo<ReactMarkdownComponents>(() => ({
     p: ({ node, ...props }) => (
@@ -323,12 +399,41 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
     };
   }, [atendimentoIniciado, inicioAtendimento]);
 
-  // Resetar quando o modal fechar ou mudar o agendamento
+  // Carregar estado do atendimento quando o modal abrir
+  useEffect(() => {
+    if (open && agendamento?.id) {
+      // Tentar carregar estado salvo
+      const estadoSalvo = carregarEstadoAtendimento(agendamento.id);
+      if (estadoSalvo && estadoSalvo.inicioAtendimento) {
+        // Restaurar o estado do atendimento
+        setInicioAtendimento(estadoSalvo.inicioAtendimento);
+        setTempoDecorrido(estadoSalvo.tempoDecorrido);
+        setAtendimentoIniciado(false);
+        
+        // Exibir toast apenas uma vez por agendamento
+        if (toastExibidoRef.current !== agendamento.id) {
+          toast.info('Atendimento pausado encontrado. Você pode retomar de onde parou.');
+          toastExibidoRef.current = agendamento.id;
+        }
+      }
+      
+      carregarChatGemini(agendamento.id, true);
+    }
+  }, [open, agendamento?.id]);
+
+  // Resetar quando o modal fechar
   useEffect(() => {
     if (!open) {
+      // IMPORTANTE: Salvar estado do atendimento ANTES de resetar qualquer coisa
+      if (agendamento?.id && inicioAtendimento) {
+        salvarEstadoAtendimento(agendamento.id, inicioAtendimento, tempoDecorrido);
+      }
+      
+      // Resetar ref do toast para permitir exibição novamente quando abrir outro agendamento
+      toastExibidoRef.current = null;
+      
       setAtendimentoIniciado(false);
-      setTempoDecorrido(0);
-      setInicioAtendimento(null);
+      // NÃO resetar tempoDecorrido e inicioAtendimento imediatamente - eles serão carregados quando o modal abrir
       setDescricaoFinalizacao('');
       setActiveTab(0);
       setHistoricos([]);
@@ -364,12 +469,21 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
       setQuantidadeMedicamento(1);
       setUnidadeMedicamento('caixa');
       setQuantidadeComprimidos('');
-    }
-  }, [open]);
-
-  useEffect(() => {
-    if (open && agendamento?.id) {
-      carregarChatGemini(agendamento.id, true);
+      
+      // Resetar estados do atendimento apenas se não houver estado salvo
+      // Verificar após um pequeno delay para garantir que o salvamento foi feito
+      const timer = setTimeout(() => {
+        if (!open && agendamento?.id) {
+          const estadoSalvo = carregarEstadoAtendimento(agendamento.id);
+          if (!estadoSalvo) {
+            // Só resetar se não houver estado salvo
+            setTempoDecorrido(0);
+            setInicioAtendimento(null);
+          }
+        }
+      }, 200);
+      
+      return () => clearTimeout(timer);
     }
   }, [open, agendamento?.id]);
 
@@ -596,6 +710,11 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
   }, [open, activeTab, agendamento?.paciente, isDoutor]);
 
   const handleIniciarAtendimento = () => {
+    // Limpar estado salvo anterior se houver (para evitar conflitos)
+    if (agendamento?.id) {
+      limparEstadoAtendimento(agendamento.id);
+    }
+    
     setAtendimentoIniciado(true);
     setInicioAtendimento(new Date());
     toast.success('Atendimento iniciado!');
@@ -603,6 +722,10 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
 
   const handlePausarAtendimento = () => {
     setAtendimentoIniciado(false);
+    // Salvar estado imediatamente ao pausar
+    if (agendamento?.id && inicioAtendimento) {
+      salvarEstadoAtendimento(agendamento.id, inicioAtendimento, tempoDecorrido);
+    }
     toast.info('Atendimento pausado');
   };
 
@@ -626,6 +749,17 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
   const handleFecharModalFinalizar = () => {
     setOpenModalFinalizar(false);
     setDescricaoFinalizacao('');
+  };
+
+  const handleCloseModal = (_event?: {}, _reason?: string) => {
+    // Impedir fechamento se o atendimento estiver ativo
+    if (atendimentoIniciado) {
+      toast.warning('Não é possível fechar o prontuário enquanto o atendimento estiver ativo. Pause ou finalize o atendimento primeiro.');
+      return;
+    }
+    
+    // Permitir fechamento normal se o atendimento não estiver ativo
+    onClose();
   };
 
   const handleFinalizarConsulta = async () => {
@@ -654,6 +788,12 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
       
       await onFinalizar(descricaoFinalizacao, duracaoMinutos);
       // Não mostrar toast aqui, pois o onFinalizar já mostra
+      
+      // Limpar estado do atendimento do localStorage quando finalizado
+      if (agendamento?.id) {
+        limparEstadoAtendimento(agendamento.id);
+      }
+      
       setAtendimentoIniciado(false);
       setTempoDecorrido(0);
       setInicioAtendimento(null);
@@ -1120,7 +1260,7 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
     <>
     <Dialog 
       open={open} 
-      onClose={onClose} 
+      onClose={handleCloseModal} 
       maxWidth="xl" 
       fullWidth
       PaperProps={{
@@ -1231,7 +1371,7 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
               />
             </Box>
           </Box>
-          <IconButton onClick={onClose}>
+          <IconButton onClick={handleCloseModal}>
             <CloseIcon />
           </IconButton>
         </Box>
@@ -1335,6 +1475,7 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                           console.log('Abrindo modal de prescrição');
                           setOpenPrescricaoModal(true);
                         }}
+                        disabled={(!atendimentoIniciado && !inicioAtendimento) || agendamento.status === 'finalizado'}
                         sx={{ 
                           minWidth: 140,
                           boxShadow: 2,

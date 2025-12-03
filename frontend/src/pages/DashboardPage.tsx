@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Calendar, momentLocalizer } from 'react-big-calendar';
 import moment from 'moment-timezone';
 import 'moment/locale/pt-br';
@@ -18,6 +18,8 @@ import { IAgendamento, IClinica, IDoutor } from '../types/models';
 
 import { AgendamentoFormModal } from '../components/agendamentos/AgendamentoFormModal';
 import { ConfirmationModal } from '../components/common/ConfirmationModal';
+import { ErrorBoundary } from '../components/common/ErrorBoundary';
+import { SafeCalendar } from '../components/common/SafeCalendar';
 import { useAuth } from '../hooks/useAuth';
 import { useDoutorSelecionado } from '../context/DoutorSelecionadoContext';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -139,13 +141,15 @@ export const DashboardPage: React.FC = () => {
   const [selectedSlot, setSelectedSlot] = useState<{ dataHora: Date } | null>(null);
 
   const formatarEventos = (agendamentos: IAgendamento[]): CalendarEvent[] =>
-    agendamentos.map((ag) => ({
-      id: ag.id,
-      title: `${ag.paciente.nome} (${ag.servico.nome})`,
-      start: new Date(ag.dataHora),
-      end: moment(ag.dataHora).add(ag.servico.duracaoMin, 'minutes').toDate(),
-      resource: ag,
-    }));
+    agendamentos
+      .filter((ag) => ag && ag.paciente && ag.servico) // Filtrar agendamentos inválidos
+      .map((ag) => ({
+        id: ag.id,
+        title: `${ag.paciente?.nome || 'Paciente'} (${ag.servico?.nome || 'Serviço'})`,
+        start: new Date(ag.dataHora),
+        end: moment(ag.dataHora).add(ag.servico?.duracaoMin || 30, 'minutes').toDate(),
+        resource: ag,
+      }));
 
   const criarEventosPausa = async (doutorId?: number, horariosDoutorData?: Record<number, { inicio: string; fim: string; pausaInicio?: string | null; pausaFim?: string | null }>): Promise<CalendarEvent[]> => {
     const eventosPausa: CalendarEvent[] = [];
@@ -267,9 +271,15 @@ export const DashboardPage: React.FC = () => {
                 const inicioPausa = data.clone().hour(inicioHora).minute(inicioMinuto).second(0).toDate();
                 const fimPausa = data.clone().hour(fimHora).minute(fimMinuto).second(0).toDate();
                 
-                const eventoPausa = {
+                // Validar que as datas são válidas antes de criar o evento
+                if (!inicioPausa || !fimPausa || isNaN(inicioPausa.getTime()) || isNaN(fimPausa.getTime())) {
+                  console.warn('Pausa com datas inválidas:', { inicioPausa, fimPausa, pausaInicio, pausaFim });
+                  continue;
+                }
+                
+                const eventoPausa: CalendarEvent = {
                   id: -1000000 - indexCounter++,
-                  title: `Pausa \n (${doutor.nome})`,
+                  title: `Pausa (${doutor.nome || 'Doutor'})`,
                   start: inicioPausa,
                   end: fimPausa,
                   resource: {
@@ -301,6 +311,7 @@ export const DashboardPage: React.FC = () => {
 
   const fetchAgendamentos = useCallback(async () => {
     if (!doutorAtual) {
+      setEventos([]); // Limpar eventos quando não há doutor selecionado
       return;
     }
 
@@ -308,31 +319,46 @@ export const DashboardPage: React.FC = () => {
       setLoading(true);
       // Buscar agendamentos filtrados por doutor
       const data: IAgendamento[] = await getAgendamentos({ doutorId: doutorAtual.id });
-      const eventosFormatados = formatarEventos(data);
+      const eventosFormatados = formatarEventos(Array.isArray(data) ? data : []);
       
       // Buscar indisponibilidades do doutor selecionado
       const indisps = await listarIndisponibilidadesDoDoutor(doutorAtual.id);
-      const eventosIndisp: CalendarEvent[] = indisps.map((i) => {
-        const inicio = moment(i.inicio).tz(BRAZIL_TZ);
-        const fim = moment(i.fim).tz(BRAZIL_TZ);
-        // Exibir exatamente o horário cadastrado no card
-        // O backend já cuida de bloquear até o final da hora final (até 10:59 se cadastrado 10:00)
+      const eventosIndisp: CalendarEvent[] = indisps
+        .filter((i) => i && i.inicio && i.fim) // Filtrar indisponibilidades inválidas
+        .map((i) => {
+          try {
+            const inicio = moment(i.inicio).tz(BRAZIL_TZ);
+            const fim = moment(i.fim).tz(BRAZIL_TZ);
+            
+            // Validar que as datas são válidas
+            if (!inicio.isValid() || !fim.isValid()) {
+              console.warn('Indisponibilidade com datas inválidas:', i);
+              return null;
+            }
+            
+            // Exibir exatamente o horário cadastrado no card
+            // O backend já cuida de bloquear até o final da hora final (até 10:59 se cadastrado 10:00)
 
-        return {
-          id: -i.id,
-          title: `Indisponível${i.motivo ? ` (${i.motivo})` : ''}`,
-          start: inicio.toDate(),
-          end: fim.toDate(),
-          resource: {
-            id: 0,
-            dataHora: inicio.toISOString(),
-            status: 'indisponivel',
-            paciente: { id: 0, nome: 'Indisponibilidade', telefone: '', clinicaId: 0 },
-            doutor: { id: doutorAtual.id, nome: doutorAtual.nome, email: '', role: 'DOUTOR', clinicaId: 0 },
-            servico: { id: 0, nome: 'Indisponibilidade', descricao: '', duracaoMin: 0, preco: 0, clinicaId: 0 },
-          } as any,
-        };
-      });
+            return {
+              id: -i.id,
+              title: `Indisponível${i.motivo ? ` (${i.motivo})` : ''}`,
+              start: inicio.toDate(),
+              end: fim.toDate(),
+              resource: {
+                id: 0,
+                dataHora: inicio.toISOString(),
+                status: 'indisponivel',
+                paciente: { id: 0, nome: 'Indisponibilidade', telefone: '', clinicaId: 0 },
+                doutor: { id: doutorAtual.id, nome: doutorAtual.nome, email: '', role: 'DOUTOR', clinicaId: 0 },
+                servico: { id: 0, nome: 'Indisponibilidade', descricao: '', duracaoMin: 0, preco: 0, clinicaId: 0 },
+              } as any,
+            };
+          } catch (err) {
+            console.warn('Erro ao processar indisponibilidade:', err, i);
+            return null;
+          }
+        })
+        .filter((e): e is CalendarEvent => e !== null); // Filtrar nulls
       
       // Adicionar eventos de pausa do doutor selecionado
       // Buscar horários completos do doutor para passar para criarEventosPausa
@@ -363,17 +389,95 @@ export const DashboardPage: React.FC = () => {
       
       // Filtrar eventos que estão em dias bloqueados - não devem aparecer na agenda
       const diasBloqueados = doutorAtual.diasBloqueados || [];
-      const eventosFiltrados = [...eventosFormatados, ...eventosIndisp, ...eventosPausa].filter(evento => {
-        // Verificar se o evento está em um dia bloqueado
-        const diaSemanaEvento = moment(evento.start).tz(BRAZIL_TZ).day();
-        if (diasBloqueados.includes(diaSemanaEvento)) {
-          return false;
-        }
-        
-        return true;
-      });
       
-      setEventos(eventosFiltrados);
+      // Combinar todos os eventos e validar rigorosamente
+      const todosEventos = [...eventosFormatados, ...eventosIndisp, ...eventosPausa];
+      
+      const eventosFiltrados = todosEventos
+        .filter((evento) => {
+          // Validação rigorosa: evento deve existir e ser um objeto válido
+          if (!evento || typeof evento !== 'object') {
+            console.warn('Evento inválido encontrado:', evento);
+            return false;
+          }
+          // Deve ter title como string não vazia
+          if (!evento.title || typeof evento.title !== 'string' || evento.title.trim() === '') {
+            console.warn('Evento sem title válido:', evento);
+            return false;
+          }
+          // Deve ter start e end como Date válidos
+          if (!evento.start || !(evento.start instanceof Date) || isNaN(evento.start.getTime())) {
+            console.warn('Evento com start inválido:', evento);
+            return false;
+          }
+          if (!evento.end || !(evento.end instanceof Date) || isNaN(evento.end.getTime())) {
+            console.warn('Evento com end inválido:', evento);
+            return false;
+          }
+          return true;
+        })
+        .filter(evento => {
+          // Verificar se o evento está em um dia bloqueado
+          try {
+            const diaSemanaEvento = moment(evento.start).tz(BRAZIL_TZ).day();
+            if (diasBloqueados.includes(diaSemanaEvento)) {
+              return false;
+            }
+          } catch (err) {
+            console.warn('Erro ao verificar dia da semana do evento:', err, evento);
+            return false;
+          }
+          
+          return true;
+        });
+      
+      // Garantir que todos os eventos têm todas as propriedades necessárias
+      const eventosValidados: CalendarEvent[] = [];
+      
+      for (const evento of eventosFiltrados) {
+        try {
+          // Validação final antes de adicionar
+          if (!evento || typeof evento !== 'object' || Array.isArray(evento)) {
+            console.warn('Evento inválido no mapeamento final:', evento);
+            continue;
+          }
+          
+          if (!evento.title || typeof evento.title !== 'string' || evento.title.trim() === '') {
+            console.warn('Evento sem title válido no mapeamento final:', evento);
+            continue;
+          }
+          
+          if (!evento.start || !(evento.start instanceof Date) || isNaN(evento.start.getTime())) {
+            console.warn('Evento com start inválido no mapeamento final:', evento);
+            continue;
+          }
+          
+          if (!evento.end || !(evento.end instanceof Date) || isNaN(evento.end.getTime())) {
+            console.warn('Evento com end inválido no mapeamento final:', evento);
+            continue;
+          }
+          
+          eventosValidados.push({
+            id: Number(evento.id) || 0,
+            title: String(evento.title).trim(),
+            start: new Date(evento.start.getTime()),
+            end: new Date(evento.end.getTime()),
+            resource: evento.resource || {},
+          });
+        } catch (err) {
+          console.error('Erro ao mapear evento:', err, evento);
+          continue;
+        }
+      }
+      
+      // Garantir que sempre seja um array válido e não-nulo
+      const finalArray = Array.isArray(eventosValidados) 
+        ? eventosValidados.filter((e) => e !== null && e !== undefined && typeof e === 'object')
+        : [];
+      
+      console.log('DashboardPage: Eventos que serão salvos no estado:', finalArray.length, 'de', eventosFiltrados.length);
+      
+      setEventos(finalArray);
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Erro ao buscar agendamentos');
     } finally {
@@ -1026,6 +1130,73 @@ export const DashboardPage: React.FC = () => {
 
   const { min, max } = getCalendarMinMax();
 
+  // Validar eventos com useMemo para garantir que sempre sejam válidos
+  // IMPORTANTE: useMemo deve ser chamado ANTES de qualquer early return para seguir as regras dos hooks
+  const eventosValidados = useMemo(() => {
+    try {
+      if (!Array.isArray(eventos)) {
+        console.warn('Eventos não é um array:', eventos);
+        return [];
+      }
+
+      // Criar um novo array para evitar mutações
+      const validados: CalendarEvent[] = [];
+      
+      for (let i = 0; i < eventos.length; i++) {
+        const evento = eventos[i];
+        
+        // Validação rigorosa
+        if (!evento || typeof evento !== 'object' || Array.isArray(evento)) {
+          console.warn(`Evento inválido no índice ${i}:`, evento);
+          continue;
+        }
+        
+        if (!evento.title || typeof evento.title !== 'string' || evento.title.trim() === '') {
+          console.warn(`Evento sem title válido no índice ${i}:`, evento);
+          continue;
+        }
+        
+        if (!evento.start || !(evento.start instanceof Date) || isNaN(evento.start.getTime())) {
+          console.warn(`Evento com start inválido no índice ${i}:`, evento);
+          continue;
+        }
+        
+        if (!evento.end || !(evento.end instanceof Date) || isNaN(evento.end.getTime())) {
+          console.warn(`Evento com end inválido no índice ${i}:`, evento);
+          continue;
+        }
+        
+        // Criar um novo objeto para garantir imutabilidade
+        try {
+          validados.push({
+            id: evento.id ?? 0,
+            title: String(evento.title).trim(),
+            start: new Date(evento.start.getTime()), // Criar nova instância de Date
+            end: new Date(evento.end.getTime()), // Criar nova instância de Date
+            resource: evento.resource || {},
+          });
+        } catch (err) {
+          console.error(`Erro ao criar evento no índice ${i}:`, err, evento);
+          continue;
+        }
+      }
+
+      // Garantir que retornamos sempre um array válido e não-nulo
+      // Verificação final: garantir que não há undefined no array
+      const finalArray = Array.isArray(validados) ? validados.filter((e) => e !== null && e !== undefined) : [];
+      
+      // Log para debug se houver problemas
+      if (eventos.length > 0 && finalArray.length === 0) {
+        console.warn('Todos os eventos foram filtrados!', eventos);
+      }
+      
+      return finalArray;
+    } catch (err) {
+      console.error('Erro ao validar eventos:', err, eventos);
+      return [];
+    }
+  }, [eventos]);
+
   const handleSelectDoutor = (doutor: IDoutor) => {
     setDoutorAgendaSelecionado(doutor);
     setIsSelectDoutorModalOpen(false);
@@ -1165,28 +1336,38 @@ export const DashboardPage: React.FC = () => {
           },
         }}
       >
-        <Calendar
-          localizer={localizer}
-          events={eventos}
-          startAccessor="start"
-          endAccessor="end"
-          culture="pt-br"
-          style={{ minHeight: isSmallScreen ? 420 : 0, width: '100%', height: '100%', flex: 1 }}
-          messages={messages}
-          formats={formats}
-          defaultView={isSmallScreen ? 'agenda' : 'week'}
-          views={isSmallScreen ? ['day', 'agenda'] : ['month', 'week', 'day', 'agenda']}
-          step={30}
-          timeslots={2}
-          selectable
-          onSelectEvent={handleSelectEvent}
-          onSelectSlot={handleSelectSlot}
-          eventPropGetter={eventStyleGetter}
-          dayPropGetter={dayPropGetter}
-          dayLayoutAlgorithm="no-overlap"
-          min={min}
-          max={max}
-        />
+        <ErrorBoundary
+          fallback={
+            <Box sx={{ p: 3, textAlign: 'center' }}>
+              <Typography variant="h6" color="error">
+                Erro ao carregar o calendário. Por favor, recarregue a página.
+              </Typography>
+            </Box>
+          }
+        >
+          <SafeCalendar
+            localizer={localizer}
+            events={eventosValidados}
+            startAccessor="start"
+            endAccessor="end"
+            culture="pt-br"
+            style={{ minHeight: isSmallScreen ? 420 : 0, width: '100%', height: '100%', flex: 1 }}
+            messages={messages}
+            formats={formats}
+            defaultView={isSmallScreen ? 'agenda' : 'week'}
+            views={isSmallScreen ? ['day', 'agenda'] : ['month', 'week', 'day', 'agenda']}
+            step={30}
+            timeslots={2}
+            selectable
+            onSelectEvent={handleSelectEvent}
+            onSelectSlot={handleSelectSlot}
+            eventPropGetter={eventStyleGetter}
+            dayPropGetter={dayPropGetter}
+            dayLayoutAlgorithm="no-overlap"
+            min={min}
+            max={max}
+          />
+        </ErrorBoundary>
       </Box>
 
       <AgendamentoFormModal

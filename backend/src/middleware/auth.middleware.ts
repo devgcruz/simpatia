@@ -1,7 +1,7 @@
 // src/middleware/auth.middleware.ts
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
 import { tokenBlacklist } from '../services/websocket.service';
+import { verifyToken } from '../utils/jwt.util';
 
 // Este middleware será usado em todas as rotas que precisam de proteção
 export const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
@@ -11,10 +11,6 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction) 
   // 2. Se não houver token, o usuário não está logado
   if (!token) {
     return res.status(401).json({ message: 'Acesso negado. Nenhum token fornecido.' });
-  }
-
-  if (!process.env.JWT_SECRET) {
-    return res.status(500).json({ message: 'Configuração de token ausente.' });
   }
 
   try {
@@ -30,8 +26,13 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction) 
       tokenBlacklist.delete(token);
     }
 
-    // 4. Verificamos se o token é válido e o decodificamos
-    const payload = jwt.verify(token, process.env.JWT_SECRET) as any;
+    // 4. Verificamos se o token é válido usando RS256
+    const payload = verifyToken(token);
+
+    // Verificar se é um access token
+    if (payload.type && payload.type !== 'access') {
+      return res.status(401).json({ message: 'Token inválido: deve ser um access token' });
+    }
 
     // 5. Injetamos os dados do payload (id, role, clinicaId)
     //    dentro do objeto 'req.user'
@@ -43,9 +44,10 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction) 
 
     // 6. Deixamos a requisição continuar para o seu destino (o controller)
     next();
-  } catch (error) {
+  } catch (error: any) {
     // Se o token for inválido ou expirado
-    return res.status(401).json({ message: 'Token inválido.' });
+    console.error('Erro na verificação do token:', error.message);
+    return res.status(401).json({ message: 'Token inválido ou expirado.' });
   }
 };
 

@@ -12,6 +12,8 @@ export default defineConfig({
         changeOrigin: true,
       }
     }
-  }
+  },
+  // Garantir que o Service Worker seja servido corretamente
+  publicDir: 'public',
 })
 
