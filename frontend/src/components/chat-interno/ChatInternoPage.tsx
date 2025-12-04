@@ -11,14 +11,12 @@ import {
   IconButton,
   Typography,
   Badge,
-  Divider,
   InputAdornment,
   CircularProgress,
 } from '@mui/material';
 import {
   Send as SendIcon,
   Search as SearchIcon,
-  Add as AddIcon,
   Group as GroupIcon,
   Person as PersonIcon,
 } from '@mui/icons-material';
@@ -41,17 +39,161 @@ export const ChatInternoPage: React.FC = () => {
   const [termoBusca, setTermoBusca] = useState('');
   const mensagensEndRef = useRef<HTMLDivElement>(null);
   const [usuariosDigitando, setUsuariosDigitando] = useState<Set<number>>(new Set());
+  const notificacoesAtivasRef = useRef<Map<number, Notification>>(new Map()); // Rastrear notificações por conversaId
+
+  // Função para limpar notificações de uma conversa
+  const limparNotificacoesConversa = (conversaId: number) => {
+    // Fechar notificações do navegador
+    const notificacao = notificacoesAtivasRef.current.get(conversaId);
+    if (notificacao) {
+      notificacao.close();
+      notificacoesAtivasRef.current.delete(conversaId);
+    }
+
+    // Fechar todas as notificações com o mesmo tag via Service Worker
+    if ('serviceWorker' in navigator && navigator.serviceWorker.ready) {
+      navigator.serviceWorker.ready.then((registration) => {
+        registration.getNotifications({ tag: `chat-${conversaId}` }).then((notifications) => {
+          notifications.forEach((notif) => notif.close());
+        });
+      });
+    }
+  };
+
 
   const { isConnected, enviarMensagem, marcarMensagensComoLidas, iniciarDigitando, pararDigitando } =
     useChatInternoWebSocket({
       conversaId: conversaSelecionada?.id || null,
+      enabled: true, // Sempre conectado para receber notificações
       onNovaMensagem: (mensagem) => {
+        console.log('[ChatInternoPage] Nova mensagem recebida:', {
+          conversaId: mensagem.conversaId,
+          remetenteId: mensagem.remetenteId,
+          userId: user?.id,
+          conversaSelecionadaId: conversaSelecionada?.id,
+        });
+
+        // Se a mensagem é para a conversa selecionada e está visível
         if (mensagem.conversaId === conversaSelecionada?.id) {
           setMensagens((prev) => [...prev, mensagem]);
           marcarMensagensComoLidas(mensagem.conversaId);
+          
+          // ATUALIZAÇÃO IMEDIATA: Zerar contador quando mensagem é recebida na conversa aberta
+          setConversas((prev) =>
+            prev.map((c) =>
+              c.id === mensagem.conversaId
+                ? { ...c, mensagensNaoLidas: 0 }
+                : c
+            )
+          );
+        } else if (mensagem.remetenteId !== user?.id) {
+          // Se a mensagem não é do próprio usuário e não está na conversa aberta, mostrar notificação
+          console.log('[ChatInternoPage] Mostrando notificação para mensagem de outro usuário');
+          
+          // Obter nome do remetente e da conversa (usar estado atual)
+          const conversa = conversas.find((c) => c.id === mensagem.conversaId);
+          const nomeRemetente = mensagem.remetente?.nome || 'Alguém';
+          const nomeConversa = conversa ? obterNomeConversa(conversa) : nomeRemetente;
+          
+          // ATUALIZAÇÃO IMEDIATA: Incrementar contador localmente quando nova mensagem chega
+          setConversas((prev) => {
+            const conversaExistente = prev.find((c) => c.id === mensagem.conversaId);
+            if (conversaExistente) {
+              return prev.map((c) =>
+                c.id === mensagem.conversaId
+                  ? { ...c, mensagensNaoLidas: (c.mensagensNaoLidas || 0) + 1 }
+                  : c
+              );
+            }
+            return prev;
+          });
+          
+          // Mostrar notificações IMEDIATAMENTE (fora do setState)
+          // Mostrar toast com ação para abrir o chat
+          toast.info(`${nomeRemetente}`, {
+            description: mensagem.conteudo.length > 100 ? mensagem.conteudo.substring(0, 100) + '...' : mensagem.conteudo,
+            duration: 5000,
+            action: {
+              label: 'Abrir',
+              onClick: () => {
+                // Limpar notificações imediatamente ao clicar em "Abrir"
+                limparNotificacoesConversa(mensagem.conversaId);
+                
+                // Aguardar um pouco para garantir que conversas foram carregadas
+                setTimeout(() => {
+                  const conv = conversas.find((c) => c.id === mensagem.conversaId);
+                  if (conv) {
+                    setConversaSelecionada(conv);
+                    // Marcar como lidas imediatamente
+                    marcarMensagensComoLidas(mensagem.conversaId);
+                  } else {
+                    // Se não encontrou, recarregar conversas e tentar novamente
+                    carregarConversas().then(() => {
+                      const conv2 = conversas.find((c) => c.id === mensagem.conversaId);
+                      if (conv2) {
+                        setConversaSelecionada(conv2);
+                        marcarMensagensComoLidas(mensagem.conversaId);
+                      }
+                    });
+                  }
+                }, 100);
+              },
+            },
+          });
+
+          // Mostrar notificação do navegador (Web Push) apenas se tiver permissão
+          if ('Notification' in window && Notification.permission === 'granted') {
+            try {
+              // Fechar notificação anterior da mesma conversa se existir
+              const notificacaoAnterior = notificacoesAtivasRef.current.get(mensagem.conversaId);
+              if (notificacaoAnterior) {
+                try {
+                  notificacaoAnterior.close();
+                } catch (e) {
+                  // Ignorar
+                }
+              }
+
+              const notificacao = new Notification(nomeConversa, {
+                body: mensagem.conteudo.length > 50 ? mensagem.conteudo.substring(0, 50) + '...' : mensagem.conteudo,
+                icon: '/icon-192x192.svg',
+                tag: `chat-${mensagem.conversaId}`,
+                requireInteraction: false,
+              });
+
+              // Armazenar referência da notificação
+              notificacoesAtivasRef.current.set(mensagem.conversaId, notificacao);
+
+              // Limpar notificação quando clicada
+              notificacao.onclick = () => {
+                limparNotificacoesConversa(mensagem.conversaId);
+                window.focus();
+                setTimeout(() => {
+                  const conv = conversas.find((c) => c.id === mensagem.conversaId);
+                  if (conv) {
+                    setConversaSelecionada(conv);
+                    limparNotificacoesConversa(mensagem.conversaId);
+                    marcarMensagensComoLidas(mensagem.conversaId);
+                  }
+                }, 100);
+                notificacao.close();
+              };
+
+              // Limpar referência quando a notificação for fechada
+              notificacao.onclose = () => {
+                notificacoesAtivasRef.current.delete(mensagem.conversaId);
+              };
+            } catch (error) {
+              console.error('[ChatInternoPage] Erro ao criar notificação:', error);
+            }
+          }
+          
+          // Sincronizar com backend em background (sem bloquear UI)
+          carregarConversas();
+        } else {
+          // Se é mensagem do próprio usuário, apenas recarregar conversas
+          carregarConversas();
         }
-        // Atualizar lista de conversas
-        carregarConversas();
       },
       onMensagensLidas: (data) => {
         // Atualizar status das mensagens
@@ -60,6 +202,15 @@ export const ChatInternoPage: React.FC = () => {
             msg.conversaId === data.conversaId && msg.remetenteId !== data.usuarioId
               ? { ...msg, status: 'LIDA' as const }
               : msg
+          )
+        );
+        
+        // ATUALIZAÇÃO IMEDIATA DO ESTADO LOCAL - Zerar contador quando mensagens são marcadas como lidas
+        setConversas((prev) =>
+          prev.map((c) =>
+            c.id === data.conversaId
+              ? { ...c, mensagensNaoLidas: 0 }
+              : c
           )
         );
       },
@@ -84,8 +235,26 @@ export const ChatInternoPage: React.FC = () => {
 
   useEffect(() => {
     if (conversaSelecionada) {
-      carregarMensagens(conversaSelecionada.id);
+      // Limpar notificações da conversa específica
+      limparNotificacoesConversa(conversaSelecionada.id);
+      
+      // ATUALIZAÇÃO IMEDIATA DO ESTADO LOCAL - Zerar contador antes de qualquer requisição
+      setConversas((prev) =>
+        prev.map((c) =>
+          c.id === conversaSelecionada.id
+            ? { ...c, mensagensNaoLidas: 0 }
+            : c
+        )
+      );
+      
+      // Marcar mensagens como lidas no backend (via WebSocket)
       marcarMensagensComoLidas(conversaSelecionada.id);
+      
+      // Carregar mensagens
+      carregarMensagens(conversaSelecionada.id);
+      
+      // Sincronizar com backend em background (sem bloquear UI)
+      carregarConversas();
     }
   }, [conversaSelecionada]);
 
@@ -152,14 +321,6 @@ export const ChatInternoPage: React.FC = () => {
     return outroParticipante?.usuario.nome || 'Conversa';
   };
 
-  const obterAvatarConversa = (conversa: ConversaInterna): string => {
-    if (conversa.tipo === 'GRUPO') {
-      return conversa.nome?.[0]?.toUpperCase() || 'G';
-    }
-    const outroParticipante = conversa.participantes.find((p) => p.usuarioId !== user?.id);
-    return outroParticipante?.usuario.nome?.[0]?.toUpperCase() || 'U';
-  };
-
   const conversasFiltradas = termoBusca
     ? conversas.filter(
         (c) =>
@@ -211,7 +372,24 @@ export const ChatInternoPage: React.FC = () => {
                 key={conversa.id}
                 button
                 selected={conversaSelecionada?.id === conversa.id}
-                onClick={() => setConversaSelecionada(conversa)}
+                onClick={() => {
+                  // Limpar notificações imediatamente ao clicar na conversa
+                  limparNotificacoesConversa(conversa.id);
+                  
+                  // ATUALIZAÇÃO IMEDIATA DO ESTADO LOCAL - Zerar contador antes de qualquer requisição
+                  setConversas((prev) =>
+                    prev.map((c) =>
+                      c.id === conversa.id
+                        ? { ...c, mensagensNaoLidas: 0 }
+                        : c
+                    )
+                  );
+                  
+                  // Marcar como lidas imediatamente
+                  marcarMensagensComoLidas(conversa.id);
+                  
+                  setConversaSelecionada(conversa);
+                }}
               >
                 <ListItemAvatar>
                   <Badge

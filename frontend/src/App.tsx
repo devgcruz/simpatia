@@ -1,5 +1,4 @@
 // src/App.tsx
-import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
 import { PublicRoute } from './components/common/PublicRoute';
@@ -15,6 +14,7 @@ import { MedicamentosPage } from './pages/MedicamentosPage';
 import { PrescricoesPage } from './pages/PrescricoesPage';
 import { SecretariasPage } from './pages/SecretariasPage';
 import { ChatInternoPage } from './components/chat-interno/ChatInternoPage';
+import { ConfiguracoesPage } from './pages/ConfiguracoesPage';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
 import { Toaster } from 'sonner';
@@ -47,6 +47,7 @@ function App() {
               <Route path="/medicamentos" element={<MedicamentosPage />} />
               <Route path="/prescricoes" element={<PrescricoesPage />} />
               <Route path="/chat-interno" element={<ChatInternoPage />} />
+              <Route path="/configuracoes" element={<ConfiguracoesPage />} />
             </Route>
           </Route>
 

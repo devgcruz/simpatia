@@ -242,3 +242,5 @@ async function testRaceCondition() {
    - Consistência de dados
 
 
+
+

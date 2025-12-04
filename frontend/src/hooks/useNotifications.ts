@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { playNotificationSound } from '../utils/notificationSound';
+import { useSettings } from '../context/SettingsContext';
 
 // Cache para evitar notificações duplicadas (mesmo agendamento em menos de 2 segundos)
 const notificationCache = new Map<string, number>();
@@ -29,6 +30,7 @@ interface UseNotificationsOptions {
  */
 export function useNotifications(options: UseNotificationsOptions = {}) {
   const { enabled = true, requestPermission: shouldRequestPermission = false, onNotificationClick } = options;
+  const { settings } = useSettings();
   
   const [permission, setPermission] = useState<NotificationPermission>(
     typeof Notification !== 'undefined' ? Notification.permission : 'default'
@@ -145,8 +147,10 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
       notificationCache.delete(oldestKey);
     }
 
-    // Reproduzir som
-    playNotificationSound();
+    // Reproduzir som apenas se estiver habilitado nas configurações
+    if (settings.notifications.soundEnabled) {
+      playNotificationSound();
+    }
 
     // Mostrar toast
     toast.info(data.title, {
@@ -188,14 +192,7 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
           tag: data.tag || 'agendamento',
           requireInteraction: false,
           data: data.data || {},
-          vibrate: [200, 100, 200],
-          actions: [
-            {
-              action: 'open',
-              title: 'Ver Agendamento',
-            },
-          ],
-        });
+        } as NotificationOptions);
         console.log('[Notifications] Notificação do navegador exibida via Service Worker');
       } else if (typeof Notification !== 'undefined') {
         // Fallback: usar Notification API diretamente

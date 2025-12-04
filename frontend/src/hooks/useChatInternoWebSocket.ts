@@ -111,13 +111,13 @@ export const useChatInternoWebSocket = (options: UseChatInternoWebSocketOptions 
       // Enviar token se disponível (cookie HTTPOnly será enviado automaticamente)
       ...(token
         ? {
-            extraHeaders: {
-              Authorization: `Bearer ${token}`,
-            },
-            auth: {
-              token: token,
-            },
-          }
+          extraHeaders: {
+            Authorization: `Bearer ${token}`,
+          },
+          auth: {
+            token: token,
+          },
+        }
         : {}),
       // IMPORTANTE: withCredentials permite que cookies HTTPOnly sejam enviados
       withCredentials: true,
@@ -147,6 +147,7 @@ export const useChatInternoWebSocket = (options: UseChatInternoWebSocketOptions 
     });
 
     socket.on('mensagem:nova', (mensagem: MensagemInterna) => {
+      console.log('[WebSocket Hook] mensagem:nova received:', mensagem);
       if (onNovaMensagemRef.current) {
         onNovaMensagemRef.current(mensagem);
       }
@@ -189,7 +190,7 @@ export const useChatInternoWebSocket = (options: UseChatInternoWebSocketOptions 
       socketRef.current = null;
       setIsConnected(false);
     };
-  }, [enabled, user, conversaId]);
+  }, [enabled, user]);
 
   // Entrar/sair da conversa quando conversaId mudar
   useEffect(() => {

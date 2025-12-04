@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Outlet, Link as RouterLink, useLocation } from 'react-router-dom';
+import { Outlet, Link, useLocation } from 'react-router-dom';
 import { styled, useTheme, Theme, CSSObject } from '@mui/material/styles';
 import {
   Box,
@@ -238,14 +238,6 @@ export const DashboardLayout: React.FC = () => {
   
   const headerTitle = findActiveMenuItem();
 
-  const handleDrawerOpen = () => {
-    if (isMobile) {
-      setMobileOpen(true);
-    } else {
-      setOpen(true);
-    }
-  };
-
   const handleDrawerClose = () => {
     if (isMobile) {
       setMobileOpen(false);
@@ -388,7 +380,7 @@ export const DashboardLayout: React.FC = () => {
                         return (
                           <ListItem key={subItem.text} disablePadding sx={{ display: 'block' }}>
                             <ListItemButton
-                              component={RouterLink}
+                              component={Link}
                               to={subItem.path}
                               onClick={() => {
                                 if (isMobile) {
@@ -428,9 +420,9 @@ export const DashboardLayout: React.FC = () => {
             const isActive = location.pathname.startsWith(item.path);
             return (
               <ListItem key={item.text} disablePadding sx={{ display: 'block' }}>
-                <ListItemButton
-                  component={RouterLink}
-                  to={item.path}
+              <ListItemButton
+                component={Link}
+                to={item.path}
                   onClick={() => {
                     if (isMobile) {
                       setMobileOpen(false);
@@ -542,6 +534,40 @@ export const DashboardLayout: React.FC = () => {
               </Box>
             </>
           )}
+          <Divider />
+          <Box
+            sx={{
+              p: 0,
+              flexShrink: 0,
+            }}
+          >
+            <ListItemButton
+              component={Link}
+              to="/configuracoes"
+              onClick={() => {
+                if (isMobile) {
+                  setMobileOpen(false);
+                }
+              }}
+              sx={{
+                minHeight: 48,
+                justifyContent: (isMobile ? mobileOpen : open) ? 'initial' : 'center',
+                px: 2.5,
+                backgroundColor: location.pathname.startsWith('/configuracoes') ? 'action.selected' : 'transparent',
+              }}
+            >
+              <ListItemIcon
+                sx={{
+                  minWidth: 0,
+                  mr: (isMobile ? mobileOpen : open) ? 3 : 'auto',
+                  justifyContent: 'center',
+                }}
+              >
+                <SettingsIcon />
+              </ListItemIcon>
+              <ListItemText primary="Configurações" sx={{ opacity: (isMobile ? mobileOpen : open) ? 1 : 0 }} />
+            </ListItemButton>
+          </Box>
         </Box>
       </Drawer>
       {user?.role === 'SECRETARIA' && (

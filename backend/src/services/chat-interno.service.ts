@@ -113,7 +113,7 @@ class ChatInternoService {
       data: {
         tipo: ChatInternoTipo.GRUPO,
         nome,
-        descricao,
+        descricao: descricao || null,
         clinicaId,
         criadoPor,
         participantes: {
@@ -549,8 +549,29 @@ class ChatInternoService {
 
   /**
    * Busca usuários online
+   * Considera offline usuários que não atualizaram o status há mais de 2 minutos
    */
   async getUsuariosOnline(clinicaId: number) {
+    const doisMinutosAtras = new Date(Date.now() - 2 * 60 * 1000);
+
+    // Primeiro, marcar como offline usuários que não atualizaram há mais de 2 minutos
+    await prisma.statusUsuario.updateMany({
+      where: {
+        online: true,
+        ultimaVezOnline: {
+          lt: doisMinutosAtras,
+        },
+        usuario: {
+          clinicaId,
+          ativo: true,
+        },
+      },
+      data: {
+        online: false,
+      },
+    });
+
+    // Agora buscar apenas usuários realmente online
     const usuarios = await prisma.statusUsuario.findMany({
       where: {
         online: true,
@@ -578,12 +599,18 @@ class ChatInternoService {
    * Lista todos os usuários disponíveis para chat na clínica
    */
   async getUsuariosDisponiveis(clinicaId: number, usuarioIdExcluir?: number) {
+    const whereClause: any = {
+      clinicaId,
+      ativo: true,
+    };
+
+    // Sempre excluir o próprio usuário se fornecido
+    if (usuarioIdExcluir) {
+      whereClause.id = { not: usuarioIdExcluir };
+    }
+
     const usuarios = await prisma.doutor.findMany({
-      where: {
-        clinicaId,
-        ativo: true,
-        id: usuarioIdExcluir ? { not: usuarioIdExcluir } : undefined,
-      },
+      where: whereClause,
       select: {
         id: true,
         nome: true,
