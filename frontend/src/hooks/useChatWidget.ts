@@ -309,13 +309,16 @@ export const useChatWidget = () => {
                         console.log('[useChatWidget] Should show notification for:', nomeRemetente);
 
                         // Reproduzir som apenas se estiver habilitado nas configurações
+                        // Usar som de chat (não agendamento)
                         if (settings.notifications.soundEnabled) {
-                            playNotificationSound();
+                            playNotificationSound(settings.notifications.soundType);
                         }
 
+                        // Sempre mostrar toast (notificação local na página)
+                        // A configuração browserNotificationsEnabled controla apenas as push notifications do navegador
                         toast.info(`${nomeRemetente}`, {
                             description: mensagem.conteudo.length > 100 ? mensagem.conteudo.substring(0, 100) + '...' : mensagem.conteudo,
-                            duration: 5000,
+                            duration: 1000,
                             action: {
                                 label: 'Abrir',
                                 onClick: () => {
@@ -414,6 +417,7 @@ export const useChatWidget = () => {
                     return [
                         ...prev,
                         {
+                            id: data.userId, // Adicionar id no nível raiz (requerido pela interface)
                             usuario: {
                                 id: data.userId,
                                 nome: data.nome || 'Usuário',

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Container,
@@ -9,8 +9,13 @@ import {
   Divider,
   List,
   ListItem,
+  ListItemButton,
   ListItemText,
   ListItemIcon,
+  RadioGroup,
+  Radio,
+  IconButton,
+  Collapse,
 } from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
 import NotificationsIcon from '@mui/icons-material/Notifications';
@@ -18,10 +23,36 @@ import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import VolumeOffIcon from '@mui/icons-material/VolumeOff';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import NotificationsOffIcon from '@mui/icons-material/NotificationsOff';
-import { useSettings } from '../context/SettingsContext';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import { useSettings, NotificationSoundType } from '../context/SettingsContext';
+import { playNotificationSound } from '../utils/notificationSound';
 
 export const ConfiguracoesPage: React.FC = () => {
-  const { settings, toggleSound, toggleBrowserNotifications } = useSettings();
+  const { settings, toggleSound, toggleBrowserNotifications, setSoundType, setAppointmentSoundType } = useSettings();
+  const [chatSoundExpanded, setChatSoundExpanded] = useState(false);
+  const [appointmentSoundExpanded, setAppointmentSoundExpanded] = useState(false);
+
+  const soundTypes: { value: NotificationSoundType; label: string; description: string }[] = [
+    { value: 'default', label: 'Padrão', description: 'Tom equilibrado e suave' },
+    { value: 'soft', label: 'Suave', description: 'Tom mais baixo e discreto' },
+    { value: 'chime', label: 'Sino', description: 'Tom musical harmonioso' },
+    { value: 'bell', label: 'Sino Alto', description: 'Tom claro e alto' },
+    { value: 'pop', label: 'Pop', description: 'Som curto e rápido' },
+    { value: 'ding', label: 'Ding', description: 'Tom agudo e curto' },
+  ];
+
+  const appointmentSoundTypes: { value: NotificationSoundType; label: string; description: string }[] = [
+    { value: 'appointment1', label: 'Agendamento 1', description: 'Tom ascendente e alegre' },
+    { value: 'appointment2', label: 'Agendamento 2', description: 'Tom grave e profissional' },
+    { value: 'appointment3', label: 'Agendamento 3', description: 'Tom médio e claro' },
+    ...soundTypes, // Incluir também os sons gerais
+  ];
+
+  const handlePlaySound = (soundType: NotificationSoundType) => {
+    playNotificationSound(soundType);
+  };
 
   return (
     <Container maxWidth="md" sx={{ py: 4 }}>
@@ -79,6 +110,153 @@ export const ConfiguracoesPage: React.FC = () => {
               label=""
             />
           </ListItem>
+
+          {settings.notifications.soundEnabled && (
+            <>
+              <ListItem
+                disablePadding
+                sx={{
+                  px: 0,
+                  py: 1,
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                  flexDirection: 'column',
+                  alignItems: 'stretch',
+                }}
+              >
+                <ListItemButton
+                  onClick={() => setChatSoundExpanded(!chatSoundExpanded)}
+                  sx={{ px: 2, py: 1.5 }}
+                >
+                  <ListItemText
+                    primary="Tom de Notificação - Chat"
+                    primaryTypographyProps={{ fontWeight: 500, variant: 'body2' }}
+                  />
+                  {chatSoundExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                </ListItemButton>
+                <Collapse in={chatSoundExpanded} timeout="auto" unmountOnExit>
+                  <Box sx={{ px: 2, pb: 2 }}>
+                    <RadioGroup
+                      value={settings.notifications.soundType}
+                      onChange={(e) => setSoundType(e.target.value as NotificationSoundType)}
+                      sx={{ gap: 0.5 }}
+                    >
+                      {soundTypes.map((sound) => (
+                        <Box
+                          key={sound.value}
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            p: 1,
+                            borderRadius: 1,
+                            '&:hover': {
+                              bgcolor: 'action.hover',
+                            },
+                          }}
+                        >
+                          <FormControlLabel
+                            value={sound.value}
+                            control={<Radio size="small" />}
+                            label={
+                              <Box>
+                                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                  {sound.label}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {sound.description}
+                                </Typography>
+                              </Box>
+                            }
+                            sx={{ flex: 1, m: 0 }}
+                          />
+                          <IconButton
+                            size="small"
+                            onClick={() => handlePlaySound(sound.value)}
+                            sx={{ ml: 1 }}
+                            color="primary"
+                          >
+                            <PlayArrowIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                      ))}
+                    </RadioGroup>
+                  </Box>
+                </Collapse>
+              </ListItem>
+              <ListItem
+                disablePadding
+                sx={{
+                  px: 0,
+                  py: 1,
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                  flexDirection: 'column',
+                  alignItems: 'stretch',
+                }}
+              >
+                <ListItemButton
+                  onClick={() => setAppointmentSoundExpanded(!appointmentSoundExpanded)}
+                  sx={{ px: 2, py: 1.5 }}
+                >
+                  <ListItemText
+                    primary="Tom de Notificação - Agendamentos"
+                    primaryTypographyProps={{ fontWeight: 500, variant: 'body2' }}
+                  />
+                  {appointmentSoundExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                </ListItemButton>
+                <Collapse in={appointmentSoundExpanded} timeout="auto" unmountOnExit>
+                  <Box sx={{ px: 2, pb: 2 }}>
+                    <RadioGroup
+                      value={settings.notifications.appointmentSoundType}
+                      onChange={(e) => setAppointmentSoundType(e.target.value as NotificationSoundType)}
+                      sx={{ gap: 0.5 }}
+                    >
+                      {appointmentSoundTypes.map((sound) => (
+                        <Box
+                          key={sound.value}
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            p: 1,
+                            borderRadius: 1,
+                            '&:hover': {
+                              bgcolor: 'action.hover',
+                            },
+                          }}
+                        >
+                          <FormControlLabel
+                            value={sound.value}
+                            control={<Radio size="small" />}
+                            label={
+                              <Box>
+                                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                  {sound.label}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {sound.description}
+                                </Typography>
+                              </Box>
+                            }
+                            sx={{ flex: 1, m: 0 }}
+                          />
+                          <IconButton
+                            size="small"
+                            onClick={() => handlePlaySound(sound.value)}
+                            sx={{ ml: 1 }}
+                            color="primary"
+                          >
+                            <PlayArrowIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                      ))}
+                    </RadioGroup>
+                  </Box>
+                </Collapse>
+              </ListItem>
+            </>
+          )}
 
           <ListItem
             sx={{

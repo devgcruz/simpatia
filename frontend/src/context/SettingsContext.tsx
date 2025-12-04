@@ -1,9 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
+export type NotificationSoundType = 'default' | 'soft' | 'chime' | 'bell' | 'pop' | 'ding' | 'appointment1' | 'appointment2' | 'appointment3';
+
 interface Settings {
   notifications: {
     soundEnabled: boolean;
     browserNotificationsEnabled: boolean;
+    soundType: NotificationSoundType; // Som para chat
+    appointmentSoundType: NotificationSoundType; // Som para agendamentos
   };
 }
 
@@ -12,12 +16,16 @@ interface SettingsContextType {
   updateSettings: (updates: Partial<Settings>) => void;
   toggleSound: () => void;
   toggleBrowserNotifications: () => void;
+  setSoundType: (soundType: NotificationSoundType) => void;
+  setAppointmentSoundType: (soundType: NotificationSoundType) => void;
 }
 
 const defaultSettings: Settings = {
   notifications: {
     soundEnabled: true, // Ativado por padrão
     browserNotificationsEnabled: true,
+    soundType: 'default' as NotificationSoundType, // Som padrão para chat
+    appointmentSoundType: 'appointment1' as NotificationSoundType, // Som padrão para agendamentos
   },
 };
 
@@ -88,6 +96,26 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
     }));
   };
 
+  const setSoundType = (soundType: NotificationSoundType) => {
+    setSettings((prev) => ({
+      ...prev,
+      notifications: {
+        ...prev.notifications,
+        soundType,
+      },
+    }));
+  };
+
+  const setAppointmentSoundType = (soundType: NotificationSoundType) => {
+    setSettings((prev) => ({
+      ...prev,
+      notifications: {
+        ...prev.notifications,
+        appointmentSoundType: soundType,
+      },
+    }));
+  };
+
   return (
     <SettingsContext.Provider
       value={{
@@ -95,6 +123,8 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
         updateSettings,
         toggleSound,
         toggleBrowserNotifications,
+        setSoundType,
+        setAppointmentSoundType,
       }}
     >
       {children}

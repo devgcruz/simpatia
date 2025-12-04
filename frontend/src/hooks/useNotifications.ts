@@ -12,10 +12,13 @@ export interface NotificationData {
   body: string;
   icon?: string;
   tag?: string;
+  soundType?: 'chat' | 'appointment'; // Tipo de notificação para usar som correto
   data?: {
     agendamentoId?: number;
     doutorId?: number;
     url?: string;
+    conversaId?: number; // Added for chat notifications
+    mensagemId?: number; // Added for chat notifications
   };
 }
 
@@ -127,35 +130,46 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
   const showLocalNotification = useCallback((data: NotificationData) => {
     if (!enabled) return;
 
-    // Verificar se já foi mostrada recentemente (evitar duplicação)
-    const cacheKey = data.tag || `${data.data?.agendamentoId || 'unknown'}-${data.title}`;
-    const lastShown = notificationCache.get(cacheKey);
-    const now = Date.now();
+    // Para agendamentos, permitir notificações consecutivas (sem debounce)
+    // Para chat, manter debounce para evitar spam
+    const isAppointment = data.soundType === 'appointment' || data.data?.agendamentoId;
     
-    if (lastShown && (now - lastShown) < NOTIFICATION_DEBOUNCE_MS) {
-      console.log('[Notifications] Notificação duplicada ignorada:', cacheKey);
-      return;
-    }
-    
-    // Atualizar cache
-    notificationCache.set(cacheKey, now);
-    
-    // Limpar cache antigo (manter apenas últimas 10 notificações)
-    if (notificationCache.size > 10) {
-      const oldestKey = Array.from(notificationCache.entries())
-        .sort((a, b) => a[1] - b[1])[0][0];
-      notificationCache.delete(oldestKey);
+    if (!isAppointment) {
+      // Aplicar debounce apenas para notificações de chat
+      const cacheKey = data.tag || `${data.data?.conversaId || 'unknown'}-${data.title}`;
+      const lastShown = notificationCache.get(cacheKey);
+      const now = Date.now();
+      
+      if (lastShown && (now - lastShown) < NOTIFICATION_DEBOUNCE_MS) {
+        console.log('[Notifications] Notificação duplicada ignorada:', cacheKey);
+        return;
+      }
+      
+      // Atualizar cache apenas para chat
+      notificationCache.set(cacheKey, now);
+      
+      // Limpar cache antigo (manter apenas últimas 10 notificações)
+      if (notificationCache.size > 10) {
+        const oldestKey = Array.from(notificationCache.entries())
+          .sort((a, b) => a[1] - b[1])[0][0];
+        notificationCache.delete(oldestKey);
+      }
     }
 
     // Reproduzir som apenas se estiver habilitado nas configurações
+    // Usar som específico baseado no tipo de notificação
     if (settings.notifications.soundEnabled) {
-      playNotificationSound();
+      const soundToPlay = data.soundType === 'appointment' 
+        ? settings.notifications.appointmentSoundType 
+        : settings.notifications.soundType;
+      playNotificationSound(soundToPlay);
     }
 
-    // Mostrar toast
+    // Sempre mostrar toast (notificação local na página)
+    // A configuração browserNotificationsEnabled controla apenas as push notifications do navegador
     toast.info(data.title, {
       description: data.body,
-      duration: 5000,
+      duration: 1000,
       action: data.data?.agendamentoId ? {
         label: 'Ver',
         onClick: () => {
@@ -167,11 +181,17 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
         },
       } : undefined,
     });
-  }, [enabled, onNotificationClick]);
+  }, [enabled, onNotificationClick, settings.notifications.soundEnabled, settings.notifications.soundType, settings.notifications.appointmentSoundType]);
 
   // Mostrar notificação do navegador (Web Push)
   const showBrowserNotification = useCallback(async (data: NotificationData) => {
     if (!enabled || !isSupported) return;
+
+    // Verificar se notificações do navegador estão habilitadas nas configurações
+    if (!settings.notifications.browserNotificationsEnabled) {
+      console.log('[Notifications] Notificações do navegador desabilitadas nas configurações');
+      return;
+    }
 
     // Se não tiver permissão, tentar solicitar
     if (permission !== 'granted') {
@@ -221,7 +241,7 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
       console.error('[Notifications] Erro ao exibir notificação do navegador:', error);
       // Fallback: mostrar apenas notificação local (já foi mostrada)
     }
-  }, [enabled, isSupported, permission, requestPermission, onNotificationClick]);
+  }, [enabled, isSupported, permission, requestPermission, onNotificationClick, settings.notifications.browserNotificationsEnabled]);
 
   // Mostrar notificação (escolhe automaticamente o melhor método)
   const showNotification = useCallback(async (data: NotificationData) => {

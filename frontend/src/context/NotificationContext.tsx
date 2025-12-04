@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useCallback, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useCallback, useRef } from 'react';
 import { useNotifications, NotificationData } from '../hooks/useNotifications';
 import { useAuth } from '../hooks/useAuth';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -58,61 +58,105 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
   const handleAgendamentoWebSocket = useCallback((event: any) => {
     console.log('[NotificationContext] Evento WebSocket recebido:', event);
 
-    // Apenas processar eventos de criação para doutores
-    if (event.action !== 'created') {
-      return;
-    }
-
     // Verificar se o evento é para o doutor atual
     if (!isDoutor || !doutorId || event.doutorId !== doutorId) {
       return;
     }
 
     const agendamento = event.agendamento;
-    if (!agendamento || !agendamento.id) {
+    
+    // Processar diferentes tipos de eventos
+    let notificationData: NotificationData | null = null;
+
+    // 1. Novos agendamentos (criados por secretária, IA ou doutor)
+    if (event.action === 'created' && agendamento && agendamento.id) {
+      // Verificar se já processamos este agendamento (evitar duplicação)
+      const agendamentoId = agendamento.id;
+      const eventKey = getEventKey(agendamentoId, agendamento.dataHora);
+      
+      if (processedEventsRef.current.has(eventKey)) {
+        console.log('[NotificationContext] Evento já processado, ignorando:', eventKey);
+        return;
+      }
+
+      // Marcar como processado
+      processedEventsRef.current.add(eventKey);
+      console.log('[NotificationContext] Processando novo agendamento:', eventKey);
+      
+      // Limpar cache antigo (manter apenas últimos 100 eventos)
+      if (processedEventsRef.current.size > 100) {
+        const firstKey = Array.from(processedEventsRef.current)[0];
+        processedEventsRef.current.delete(firstKey);
+      }
+
+      // Formatar data/hora do agendamento
+      const dataHora = moment(agendamento.dataHora);
+      const dataHoraFormatada = dataHora.format('DD/MM/YYYY [às] HH:mm');
+
+      // Determinar se foi criado pela IA (geralmente são encaixes)
+      const isCriadoPorIA = agendamento.isEncaixe === true;
+      
+      notificationData = {
+        title: isCriadoPorIA ? 'Novo Agendamento (IA)' : 'Novo Agendamento',
+        body: `${agendamento.paciente?.nome || 'Paciente'} - ${dataHoraFormatada}`,
+        icon: '/icon-192x192.svg',
+        tag: `agendamento-${agendamento.id}`,
+        soundType: 'appointment', // Usar som de agendamento
+        data: {
+          agendamentoId: agendamento.id,
+          doutorId: event.doutorId,
+          url: '/atendimento-do-dia',
+        },
+      };
+    }
+    // 2. Agendamentos cancelados
+    else if (event.action === 'updated' && agendamento && agendamento.id && agendamento.status === 'cancelado') {
+      // Verificar se já processamos este cancelamento (evitar duplicação)
+      const agendamentoId = agendamento.id;
+      const eventKey = `cancelado-${agendamentoId}-${agendamento.dataHora || Date.now()}`;
+      
+      if (processedEventsRef.current.has(eventKey)) {
+        console.log('[NotificationContext] Cancelamento já processado, ignorando:', eventKey);
+        return;
+      }
+
+      // Marcar como processado
+      processedEventsRef.current.add(eventKey);
+      console.log('[NotificationContext] Processando cancelamento:', eventKey);
+      
+      // Limpar cache antigo
+      if (processedEventsRef.current.size > 100) {
+        const firstKey = Array.from(processedEventsRef.current)[0];
+        processedEventsRef.current.delete(firstKey);
+      }
+
+      // Formatar data/hora do agendamento
+      const dataHora = moment(agendamento.dataHora);
+      const dataHoraFormatada = dataHora.format('DD/MM/YYYY [às] HH:mm');
+
+      notificationData = {
+        title: 'Agendamento Cancelado',
+        body: `${agendamento.paciente?.nome || 'Paciente'} - ${dataHoraFormatada}`,
+        icon: '/icon-192x192.svg',
+        tag: `agendamento-cancelado-${agendamento.id}`,
+        soundType: 'appointment', // Usar som de agendamento
+        data: {
+          agendamentoId: agendamento.id,
+          doutorId: event.doutorId,
+          url: '/atendimento-do-dia',
+        },
+      };
+    }
+
+    // Se não há notificação para mostrar, retornar
+    if (!notificationData) {
       return;
     }
-
-    // Verificar se já processamos este agendamento (evitar duplicação)
-    const agendamentoId = agendamento.id;
-    const eventKey = getEventKey(agendamentoId, agendamento.dataHora);
-    
-    if (processedEventsRef.current.has(eventKey)) {
-      console.log('[NotificationContext] Evento já processado, ignorando:', eventKey);
-      return;
-    }
-
-    // Marcar como processado
-    processedEventsRef.current.add(eventKey);
-    console.log('[NotificationContext] Processando novo evento:', eventKey);
-    
-    // Limpar cache antigo (manter apenas últimos 100 eventos)
-    if (processedEventsRef.current.size > 100) {
-      const firstKey = Array.from(processedEventsRef.current)[0];
-      processedEventsRef.current.delete(firstKey);
-    }
-
-    // Formatar data/hora do agendamento
-    const dataHora = moment(agendamento.dataHora);
-    const dataHoraFormatada = dataHora.format('DD/MM/YYYY [às] HH:mm');
-
-    // Criar notificação
-    const notificationData: NotificationData = {
-      title: 'Novo Agendamento',
-      body: `${agendamento.paciente?.nome || 'Paciente'} - ${dataHoraFormatada}`,
-      icon: '/icon-192x192.svg',
-      tag: `agendamento-${agendamento.id}`,
-      data: {
-        agendamentoId: agendamento.id,
-        doutorId: event.doutorId,
-        url: '/atendimento-do-dia',
-      },
-    };
 
     // Mostrar notificação (toast + som + push)
     showNotificationHook(notificationData);
     
-    // Disparar evento customizado para o NotificationBell (apenas uma vez)
+    // Disparar evento customizado para o NotificationBell
     window.dispatchEvent(new CustomEvent('notification:created', {
       detail: notificationData,
     }));

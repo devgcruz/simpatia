@@ -2,8 +2,10 @@
  * Utilitário para reproduzir som de notificação
  */
 
+import { NotificationSoundType } from '../context/SettingsContext';
+
 let audioContext: AudioContext | null = null;
-let notificationSoundBuffer: AudioBuffer | null = null;
+const soundBuffers: Map<NotificationSoundType, AudioBuffer> = new Map();
 
 /**
  * Inicializa o contexto de áudio (lazy loading)
@@ -16,42 +18,131 @@ function getAudioContext(): AudioContext {
 }
 
 /**
- * Gera um som de notificação agradável usando Web Audio API
- * Cria um som suave tipo "ding" ou "ping"
+ * Gera diferentes tipos de som de notificação usando Web Audio API
  */
-function generateNotificationSound(): AudioBuffer {
+function generateNotificationSound(soundType: NotificationSoundType): AudioBuffer {
   const ctx = getAudioContext();
   const sampleRate = ctx.sampleRate;
-  const duration = 0.3; // 300ms
-  const buffer = ctx.createBuffer(1, sampleRate * duration, sampleRate);
+  
+  let frequency1: number;
+  let frequency2: number;
+  let frequency3: number | null = null;
+  let duration: number;
+  let envelopeType: 'smooth' | 'sharp' | 'gentle';
+
+  switch (soundType) {
+    case 'soft':
+      frequency1 = 600;
+      frequency2 = 800;
+      duration = 0.25;
+      envelopeType = 'gentle';
+      break;
+    case 'chime':
+      frequency1 = 523; // C5
+      frequency2 = 659; // E5
+      frequency3 = 784; // G5
+      duration = 0.35;
+      envelopeType = 'smooth';
+      break;
+    case 'bell':
+      frequency1 = 880; // A5
+      frequency2 = 1108; // C#6
+      duration = 0.4;
+      envelopeType = 'smooth';
+      break;
+    case 'pop':
+      frequency1 = 400;
+      frequency2 = 600;
+      duration = 0.15;
+      envelopeType = 'sharp';
+      break;
+    case 'ding':
+      frequency1 = 1000;
+      frequency2 = 1200;
+      duration = 0.2;
+      envelopeType = 'sharp';
+      break;
+    case 'appointment1':
+      // Som de agendamento 1: Tom ascendente e alegre
+      frequency1 = 440; // A4
+      frequency2 = 554; // C#5
+      frequency3 = 659; // E5
+      duration = 0.4;
+      envelopeType = 'smooth';
+      break;
+    case 'appointment2':
+      // Som de agendamento 2: Tom mais grave e profissional
+      frequency1 = 330; // E4
+      frequency2 = 440; // A4
+      frequency3 = 554; // C#5
+      duration = 0.35;
+      envelopeType = 'smooth';
+      break;
+    case 'appointment3':
+      // Som de agendamento 3: Tom médio e claro
+      frequency1 = 523; // C5
+      frequency2 = 659; // E5
+      duration = 0.3;
+      envelopeType = 'smooth';
+      break;
+    case 'default':
+    default:
+      frequency1 = 800;
+      frequency2 = 1000;
+      duration = 0.3;
+      envelopeType = 'smooth';
+      break;
+  }
+
+  const totalSamples = Math.floor(sampleRate * duration);
+  const buffer = ctx.createBuffer(1, totalSamples, sampleRate);
   const data = buffer.getChannelData(0);
 
-  // Criar um tom suave (frequência fundamental + harmônicos)
-  const frequency = 800; // Hz - tom agradável
-  const frequency2 = 1000; // Hz - segundo harmônico
-  
-  for (let i = 0; i < data.length; i++) {
+  for (let i = 0; i < totalSamples; i++) {
     const t = i / sampleRate;
-    // Envelope ADSR (Attack, Decay, Sustain, Release) para suavizar
     let envelope = 1;
-    if (t < 0.05) {
-      // Attack
-      envelope = t / 0.05;
-    } else if (t < 0.1) {
-      // Decay
-      envelope = 1 - (t - 0.05) / 0.05 * 0.3;
-    } else if (t < 0.2) {
-      // Sustain
-      envelope = 0.7;
+
+    // Aplicar envelope baseado no tipo
+    if (envelopeType === 'gentle') {
+      // Envelope suave e longo
+      if (t < 0.08) {
+        envelope = t / 0.08;
+      } else if (t < 0.15) {
+        envelope = 1 - (t - 0.08) / 0.07 * 0.2;
+      } else {
+        envelope = 0.8 * (1 - (t - 0.15) / (duration - 0.15));
+      }
+    } else if (envelopeType === 'sharp') {
+      // Envelope rápido e agudo
+      if (t < 0.02) {
+        envelope = t / 0.02;
+      } else if (t < 0.05) {
+        envelope = 1 - (t - 0.02) / 0.03 * 0.4;
+      } else {
+        envelope = 0.6 * (1 - (t - 0.05) / (duration - 0.05));
+      }
     } else {
-      // Release
-      envelope = 0.7 * (1 - (t - 0.2) / 0.1);
+      // Envelope suave (smooth)
+      if (t < 0.05) {
+        envelope = t / 0.05;
+      } else if (t < 0.1) {
+        envelope = 1 - (t - 0.05) / 0.05 * 0.3;
+      } else if (t < 0.2) {
+        envelope = 0.7;
+      } else {
+        envelope = 0.7 * (1 - (t - 0.2) / (duration - 0.2));
+      }
     }
+
+    // Gerar o som
+    let sample = Math.sin(2 * Math.PI * frequency1 * t) * 0.3 * envelope;
+    sample += Math.sin(2 * Math.PI * frequency2 * t) * 0.2 * envelope;
     
-    // Combinar dois tons com envelope
-    data[i] = 
-      Math.sin(2 * Math.PI * frequency * t) * 0.3 * envelope +
-      Math.sin(2 * Math.PI * frequency2 * t) * 0.2 * envelope;
+    if (frequency3) {
+      sample += Math.sin(2 * Math.PI * frequency3 * t) * 0.15 * envelope;
+    }
+
+    data[i] = sample;
   }
 
   return buffer;
@@ -60,7 +151,7 @@ function generateNotificationSound(): AudioBuffer {
 /**
  * Reproduz o som de notificação
  */
-export function playNotificationSound(): void {
+export function playNotificationSound(soundType: NotificationSoundType = 'default'): void {
   try {
     const ctx = getAudioContext();
     
@@ -70,17 +161,19 @@ export function playNotificationSound(): void {
     }
 
     // Gerar ou usar buffer em cache
-    if (!notificationSoundBuffer) {
-      notificationSoundBuffer = generateNotificationSound();
+    if (!soundBuffers.has(soundType)) {
+      soundBuffers.set(soundType, generateNotificationSound(soundType));
     }
+
+    const buffer = soundBuffers.get(soundType)!;
 
     // Criar source e reproduzir
     const source = ctx.createBufferSource();
-    source.buffer = notificationSoundBuffer;
+    source.buffer = buffer;
     source.connect(ctx.destination);
     source.start(0);
 
-    console.log('[Notification Sound] Som reproduzido');
+    console.log('[Notification Sound] Som reproduzido:', soundType);
   } catch (error) {
     console.warn('[Notification Sound] Erro ao reproduzir som:', error);
     // Fallback: tentar usar HTML5 Audio se disponível
