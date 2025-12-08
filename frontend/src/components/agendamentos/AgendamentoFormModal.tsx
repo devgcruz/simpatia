@@ -163,6 +163,7 @@ export const AgendamentoFormModal: React.FC<Props> = ({
       setForm({
         ...initialState,
         dataHora: moment(initialData.dataHora).format('YYYY-MM-DDTHH:mm'),
+        status: user?.role === 'SECRETARIA' ? 'pendente' : initialState.status,
         doutorId: user?.role === 'DOUTOR' 
           ? String(user.id) 
           : user?.role === 'SECRETARIA' && doutorSelecionado
@@ -172,6 +173,7 @@ export const AgendamentoFormModal: React.FC<Props> = ({
     } else {
       setForm({
         ...initialState,
+        status: user?.role === 'SECRETARIA' ? 'pendente' : initialState.status,
         doutorId: user?.role === 'DOUTOR' 
           ? String(user.id) 
           : user?.role === 'SECRETARIA' && doutorSelecionado
@@ -232,8 +234,11 @@ export const AgendamentoFormModal: React.FC<Props> = ({
       // Verificar se é admin
       const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'CLINICA_ADMIN';
       
-      // Verificar se o agendamento está no futuro (exceto para admin)
-      if (agendamento) {
+      // Permitir cancelar agendamentos finalizados (independente de serem passados ou futuros)
+      const isFinalizado = agendamento?.status === 'finalizado' || form.status === 'finalizado';
+      
+      // Verificar se o agendamento está no futuro (exceto para admin ou se estiver finalizado)
+      if (agendamento && !isFinalizado) {
         const agora = moment();
         const dataHoraAgendamento = moment(agendamento.dataHora);
         const isFuturo = dataHoraAgendamento.isAfter(agora);
@@ -242,7 +247,7 @@ export const AgendamentoFormModal: React.FC<Props> = ({
           toast.error('Não é possível cancelar agendamentos retroativos. Apenas administradores podem cancelar agendamentos passados.');
           return;
         }
-      } else if (!isAdmin && form.dataHora) {
+      } else if (!isAdmin && !isFinalizado && form.dataHora) {
         const agora = moment();
         const dataHoraAgendamento = moment(form.dataHora);
         const isFuturo = dataHoraAgendamento.isAfter(agora);
@@ -484,7 +489,16 @@ export const AgendamentoFormModal: React.FC<Props> = ({
       : Number(form.doutorId || user?.id || 0);
     
     // Se for encaixe novo (não edição), definir status automaticamente
-    const statusFinal = (!agendamento && form.isEncaixe) ? 'encaixe_pendente' : form.status;
+    // Para SECRETARIA em novo agendamento, permitir "pendente" ou "confirmado"
+    let statusFinal = form.status;
+    if (!agendamento && form.isEncaixe) {
+      statusFinal = 'encaixe_pendente';
+    } else if (user?.role === 'SECRETARIA' && !agendamento) {
+      // Permitir apenas "pendente" ou "confirmado" para SECRETARIA em novos agendamentos
+      if (form.status !== 'pendente' && form.status !== 'confirmado') {
+        statusFinal = 'pendente'; // Padrão para novos agendamentos
+      }
+    }
     
     const dataToSend: AgendamentoCreateInput = {
       ...form,
@@ -506,7 +520,16 @@ export const AgendamentoFormModal: React.FC<Props> = ({
       : Number(form.doutorId || user?.id || 0);
     
     // Se for encaixe novo, definir status automaticamente
-    const statusFinal = form.isEncaixe ? 'encaixe_pendente' : form.status;
+    // Para SECRETARIA em novo agendamento, permitir "pendente" ou "confirmado"
+    let statusFinal = form.status;
+    if (form.isEncaixe) {
+      statusFinal = 'encaixe_pendente';
+    } else if (user?.role === 'SECRETARIA' && !agendamento) {
+      // Permitir apenas "pendente" ou "confirmado" para SECRETARIA em novos agendamentos
+      if (form.status !== 'pendente' && form.status !== 'confirmado') {
+        statusFinal = 'pendente'; // Padrão para novos agendamentos
+      }
+    }
     
     const dataToSend: AgendamentoCreateInput = {
       ...form,
@@ -727,22 +750,81 @@ export const AgendamentoFormModal: React.FC<Props> = ({
                       <Select
                         name="status"
                         labelId="status-label"
-                        value={form.status}
+                        value={form.status || (user?.role === 'SECRETARIA' ? 'pendente' : 'confirmado')}
                         label="Status"
                         onChange={handleSelectChange}
                         disabled={form.isEncaixe && !agendamento} // Desabilitar se for encaixe novo (será definido automaticamente)
                       >
-                        <MenuItem value="confirmado">Confirmado</MenuItem>
-                        <MenuItem value="pendente_ia">Pendente (IA)</MenuItem>
-                        {form.isEncaixe && !agendamento && (
-                          <MenuItem value="encaixe_pendente">Encaixe Pendente</MenuItem>
-                        )}
-                        <MenuItem value="cancelado">Cancelado</MenuItem>
-                        <MenuItem value="finalizado">Finalizado</MenuItem>
+                        {/* Para SECRETARIA: mostrar Pendente e Confirmado, e manter status atual se for outro */}
+                        {(() => {
+                          const isSecretaria = user?.role === 'SECRETARIA';
+                          const statusOptions: JSX.Element[] = [];
+                          const currentStatus = form.status || '';
+                          
+                          if (isSecretaria) {
+                            // Sempre incluir Pendente e Confirmado para SECRETARIA
+                            statusOptions.push(<MenuItem key="pendente" value="pendente">Pendente</MenuItem>);
+                            statusOptions.push(<MenuItem key="confirmado" value="confirmado">Confirmado</MenuItem>);
+                            
+                            // Se estiver editando um agendamento existente, sempre permitir cancelar
+                            // (isso permite cancelar agendamentos finalizados e outros status)
+                            if (agendamento) {
+                              statusOptions.push(<MenuItem key="cancelado" value="cancelado">Cancelado</MenuItem>);
+                            }
+                            
+                            // Se o status atual não for pendente ou confirmado, incluir também para manter o valor
+                            if (currentStatus && currentStatus !== 'pendente' && currentStatus !== 'confirmado' && currentStatus !== 'cancelado') {
+                              const statusLabel = 
+                                currentStatus === 'finalizado' ? 'Finalizado' :
+                                currentStatus === 'pendente_ia' ? 'Pendente (IA)' :
+                                currentStatus === 'encaixe_pendente' ? 'Encaixe Pendente' :
+                                currentStatus.charAt(0).toUpperCase() + currentStatus.slice(1);
+                              
+                              statusOptions.push(
+                                <MenuItem key={currentStatus} value={currentStatus}>{statusLabel}</MenuItem>
+                              );
+                            }
+                          } else {
+                            // Para outras roles, mostrar todas as opções
+                            statusOptions.push(<MenuItem key="confirmado" value="confirmado">Confirmado</MenuItem>);
+                            statusOptions.push(<MenuItem key="pendente_ia" value="pendente_ia">Pendente (IA)</MenuItem>);
+                            if (form.isEncaixe && !agendamento) {
+                              statusOptions.push(<MenuItem key="encaixe_pendente" value="encaixe_pendente">Encaixe Pendente</MenuItem>);
+                            }
+                            statusOptions.push(<MenuItem key="cancelado" value="cancelado">Cancelado</MenuItem>);
+                            statusOptions.push(<MenuItem key="finalizado" value="finalizado">Finalizado</MenuItem>);
+                            
+                            // Se o status atual for 'pendente', incluir também (para casos de edição de agendamento criado por SECRETARIA)
+                            if (currentStatus === 'pendente') {
+                              statusOptions.push(<MenuItem key="pendente" value="pendente">Pendente</MenuItem>);
+                            }
+                            
+                            // Se o status atual não estiver nas opções acima, incluir também
+                            if (currentStatus && 
+                                currentStatus !== 'confirmado' && 
+                                currentStatus !== 'pendente_ia' && 
+                                currentStatus !== 'encaixe_pendente' && 
+                                currentStatus !== 'cancelado' && 
+                                currentStatus !== 'finalizado' &&
+                                currentStatus !== 'pendente') {
+                              const statusLabel = currentStatus.charAt(0).toUpperCase() + currentStatus.slice(1);
+                              statusOptions.push(
+                                <MenuItem key={currentStatus} value={currentStatus}>{statusLabel}</MenuItem>
+                              );
+                            }
+                          }
+                          
+                          return statusOptions;
+                        })()}
                       </Select>
                       {form.isEncaixe && !agendamento && (
                         <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, ml: 1.75 }}>
                           Status será automaticamente definido como "Encaixe Pendente"
+                        </Typography>
+                      )}
+                      {user?.role === 'SECRETARIA' && !agendamento && (
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, ml: 1.75 }}>
+                          Para novos agendamentos, você pode escolher entre "Pendente" ou "Confirmado"
                         </Typography>
                       )}
                     </FormControl>
@@ -1113,9 +1195,12 @@ export const AgendamentoFormModal: React.FC<Props> = ({
                   await confirmarEncaixe(agendamento.id);
                   toast.success('Encaixe confirmado com sucesso!');
                   // Disparar evento para atualizar a agenda (WebSocket também atualizará)
-                  window.dispatchEvent(new CustomEvent('agendamentoAtualizado', { 
-                    detail: { tipo: 'encaixe_confirmed', doutorId: agendamento.doutor?.id || agendamento.doutorId } 
-                  }));
+                  const doutorIdEvento = agendamento.doutor?.id;
+                  if (doutorIdEvento) {
+                    window.dispatchEvent(new CustomEvent('agendamentoAtualizado', { 
+                      detail: { tipo: 'encaixe_confirmed', doutorId: doutorIdEvento } 
+                    }));
+                  }
                   // Fechar modal
                   onClose();
                 } catch (error: any) {
