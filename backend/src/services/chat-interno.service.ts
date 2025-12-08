@@ -81,6 +81,7 @@ class ChatInternoService {
                 nome: true,
                 email: true,
                 role: true,
+                fotoPerfil: true,
               },
             },
           },
@@ -132,6 +133,7 @@ class ChatInternoService {
                 nome: true,
                 email: true,
                 role: true,
+                fotoPerfil: true,
               },
             },
           },
@@ -164,6 +166,7 @@ class ChatInternoService {
                 nome: true,
                 email: true,
                 role: true,
+                fotoPerfil: true,
               },
             },
           },
@@ -174,12 +177,13 @@ class ChatInternoService {
             createdAt: 'desc',
           },
           include: {
-            remetente: {
-              select: {
-                id: true,
-                nome: true,
-              },
+          remetente: {
+            select: {
+              id: true,
+              nome: true,
+              fotoPerfil: true,
             },
+          },
           },
         },
         _count: {
@@ -259,6 +263,7 @@ class ChatInternoService {
               nome: true,
               email: true,
               role: true,
+              fotoPerfil: true,
             },
           },
           leituras: {
@@ -479,6 +484,7 @@ class ChatInternoService {
             nome: true,
             email: true,
             role: true,
+            fotoPerfil: true,
           },
         },
       },
@@ -587,6 +593,7 @@ class ChatInternoService {
             nome: true,
             email: true,
             role: true,
+            fotoPerfil: true,
           },
         },
       },
@@ -617,6 +624,7 @@ class ChatInternoService {
         email: true,
         role: true,
         ativo: true,
+        fotoPerfil: true,
       },
       orderBy: {
         nome: 'asc',
@@ -652,6 +660,7 @@ class ChatInternoService {
                 nome: true,
                 email: true,
                 role: true,
+                fotoPerfil: true,
               },
             },
           },

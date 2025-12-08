@@ -40,6 +40,7 @@ export const ChatInternoPage: React.FC = () => {
   const mensagensEndRef = useRef<HTMLDivElement>(null);
   const [usuariosDigitando, setUsuariosDigitando] = useState<Set<number>>(new Set());
   const notificacoesAtivasRef = useRef<Map<number, Notification>>(new Map()); // Rastrear notificações por conversaId
+  const conversaSelecionadaRef = useRef<ConversaInterna | null>(null); // Ref para acessar valor atualizado no callback
 
   // Função para limpar notificações de uma conversa
   const limparNotificacoesConversa = (conversaId: number) => {
@@ -70,12 +71,26 @@ export const ChatInternoPage: React.FC = () => {
           conversaId: mensagem.conversaId,
           remetenteId: mensagem.remetenteId,
           userId: user?.id,
-          conversaSelecionadaId: conversaSelecionada?.id,
+          conversaSelecionadaId: conversaSelecionadaRef.current?.id,
         });
 
+        // Usar ref para obter o valor mais recente da conversa selecionada
+        const conversaAtual = conversaSelecionadaRef.current;
+
         // Se a mensagem é para a conversa selecionada e está visível
-        if (mensagem.conversaId === conversaSelecionada?.id) {
-          setMensagens((prev) => [...prev, mensagem]);
+        if (mensagem.conversaId === conversaAtual?.id) {
+          console.log('[ChatInternoPage] Adicionando mensagem à conversa aberta');
+          // Verificar se a mensagem já existe para evitar duplicatas
+          setMensagens((prev) => {
+            // Verificar se a mensagem já existe pelo ID
+            const existe = prev.some((m) => m.id === mensagem.id);
+            if (existe) {
+              console.log('[ChatInternoPage] Mensagem já existe, ignorando duplicata');
+              return prev;
+            }
+            console.log('[ChatInternoPage] Adicionando nova mensagem ao array');
+            return [...prev, mensagem];
+          });
           marcarMensagensComoLidas(mensagem.conversaId);
           
           // ATUALIZAÇÃO IMEDIATA: Zerar contador quando mensagem é recebida na conversa aberta
@@ -232,6 +247,11 @@ export const ChatInternoPage: React.FC = () => {
   useEffect(() => {
     carregarConversas();
   }, []);
+
+  useEffect(() => {
+    // Atualizar ref sempre que conversaSelecionada mudar
+    conversaSelecionadaRef.current = conversaSelecionada;
+  }, [conversaSelecionada]);
 
   useEffect(() => {
     if (conversaSelecionada) {

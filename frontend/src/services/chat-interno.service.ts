@@ -23,6 +23,7 @@ export interface ParticipanteConversa {
     nome: string;
     email: string;
     role: string;
+    fotoPerfil?: string | null;
   };
   ultimaLeitura?: string;
   notificacoes: boolean;
@@ -37,6 +38,7 @@ export interface MensagemInterna {
     nome: string;
     email: string;
     role: string;
+    fotoPerfil?: string | null;
   };
   tipo: 'TEXTO' | 'IMAGEM' | 'PDF' | 'EMOJI';
   conteudo: string;
@@ -56,6 +58,7 @@ export interface UsuarioOnline {
     nome: string;
     email: string;
     role: string;
+    fotoPerfil?: string | null;
   };
 }
 

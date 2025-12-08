@@ -31,7 +31,6 @@ import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import StoreIcon from '@mui/icons-material/Store';
 import ChatIcon from '@mui/icons-material/Chat';
-import ChatBubbleIcon from '@mui/icons-material/ChatBubble';
 import TodayIcon from '@mui/icons-material/Today';
 import MedicationIcon from '@mui/icons-material/Medication';
 import DescriptionIcon from '@mui/icons-material/Description';
@@ -169,12 +168,6 @@ export const DashboardLayout: React.FC = () => {
       role: ['CLINICA_ADMIN', 'SUPER_ADMIN', 'SECRETARIA'],
     },
     {
-      text: 'Chat Interno',
-      icon: <ChatBubbleIcon />,
-      path: '/chat-interno',
-      role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN', 'SECRETARIA'],
-    },
-    {
       text: 'Gerenciar',
       icon: <SettingsIcon />,
       path: '#',
@@ -290,9 +283,26 @@ export const DashboardLayout: React.FC = () => {
               fontSize: { xs: '0.875rem', md: '1rem' },
             }}
           >
-            Olá, {user?.email}
+            {user?.nome ? (() => {
+              const nomes = user.nome.trim().split(/\s+/);
+              const primeiroNome = nomes[0] || '';
+              const ultimoNome = nomes.length > 1 ? nomes[nomes.length - 1] : '';
+              return `Olá, ${primeiroNome}${ultimoNome ? ' ' + ultimoNome : ''}`;
+            })() : 'Olá'}
           </Typography>
           <NotificationBell />
+          <Button
+            color="inherit"
+            component={Link}
+            to="/perfil"
+            size={isMobile ? 'small' : 'medium'}
+            sx={{ 
+              fontSize: { xs: '0.75rem', md: '0.875rem' },
+              mr: 1,
+            }}
+          >
+            Perfil
+          </Button>
           <Button 
             color="inherit" 
             onClick={logout}

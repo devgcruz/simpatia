@@ -106,6 +106,47 @@ class AuthController {
             return res.status(401).json({ message: error.message || 'Refresh token inválido' });
         }
     }
+
+    async handleMe(req: Request, res: Response) {
+        try {
+            const userData = await authService.getUserData(req.user!.id);
+            return res.status(200).json(userData);
+        } catch (error: any) {
+            return res.status(500).json({ message: error.message || 'Erro ao buscar dados do usuário' });
+        }
+    }
+
+    async handleUpdateProfile(req: Request, res: Response) {
+        try {
+            const { senhaAtual, novaSenha, fotoPerfil } = req.body;
+            // Garantir que userId seja sempre um número
+            const userId = typeof req.user!.id === 'string' ? parseInt(req.user!.id, 10) : req.user!.id;
+
+            console.log('[Auth Controller] Atualizando perfil:', { 
+                userId, 
+                userIdType: typeof userId,
+                user: req.user,
+                temSenha: !!novaSenha, 
+                temFoto: fotoPerfil !== undefined 
+            });
+            
+            await authService.updateProfile(userId, { senhaAtual, novaSenha, fotoPerfil });
+            
+            // Retornar dados atualizados
+            const userData = await authService.getUserData(userId);
+            return res.status(200).json(userData);
+        } catch (error: any) {
+            console.error('[Auth Controller] Erro ao atualizar perfil:', error);
+            console.error('[Auth Controller] Stack trace:', error.stack);
+            if (error.message === 'Senha atual incorreta' || error.message === 'Senha atual é obrigatória para alterar a senha') {
+                return res.status(400).json({ message: error.message });
+            }
+            if (error.message === 'Usuário não encontrado ou inativo') {
+                return res.status(404).json({ message: error.message });
+            }
+            return res.status(500).json({ message: error.message || 'Erro ao atualizar perfil' });
+        }
+    }
 }
 
 export default new AuthController();

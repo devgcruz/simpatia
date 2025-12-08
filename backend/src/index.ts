@@ -26,6 +26,7 @@ import pausaExcecaoRoutes from './routes/pausa-excecao.routes';
 import prescricaoRoutes from './routes/prescricao.routes';
 import medicamentoRoutes from './routes/medicamento.routes';
 import secretariaRoutes from './routes/secretaria.routes';
+import alergiaRoutes from './routes/alergia.routes';
 import { initializeWebSocket } from './services/websocket.service';
 import { initializeChatInternoWebSocket } from './services/websocket-chat-interno.service';
 
@@ -110,14 +111,15 @@ app.use((req, res, next) => {
   if (req.path && req.path.startsWith('/socket.io')) {
     return next();
   }
-  express.json()(req, res, next);
+  // Aumentar limite para 5MB para permitir upload de fotos em base64
+  express.json({ limit: '5mb' })(req, res, next);
 });
 
 app.use((req, res, next) => {
   if (req.path && req.path.startsWith('/socket.io')) {
     return next();
   }
-  express.urlencoded({ extended: true })(req, res, next);
+  express.urlencoded({ extended: true, limit: '5mb' })(req, res, next);
 });
 
 app.use((req, res, next) => {
@@ -170,6 +172,7 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/prescricoes', prescricaoRoutes);
 app.use('/api/medicamentos', medicamentoRoutes);
 app.use('/api/secretarias', secretariaRoutes);
+app.use('/api/alergias', alergiaRoutes);
 
 httpServer.listen(PORT, () => {
   const isHttps = USE_HTTPS && 'key' in (httpServer as any).options;

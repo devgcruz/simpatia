@@ -49,6 +49,7 @@ export const ChatInternoWidget: React.FC = () => {
     iniciarDigitando,
     pararDigitando,
     obterNomeConversa,
+    zerarMensagensNaoLidasAoFocarInput,
   } = useChatWidget();
 
   console.log('[ChatInternoWidget] Render. totalMensagensNaoLidas:', totalMensagensNaoLidas);
@@ -303,6 +304,7 @@ export const ChatInternoWidget: React.FC = () => {
                   onSend={handleEnviarMensagem}
                   onTypingStart={iniciarDigitando}
                   onTypingStop={pararDigitando}
+                  onFocus={zerarMensagensNaoLidasAoFocarInput}
                   enviando={enviando}
                   disabled={!isConnected}
                 />

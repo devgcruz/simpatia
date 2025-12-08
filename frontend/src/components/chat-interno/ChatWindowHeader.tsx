@@ -30,22 +30,40 @@ export const ChatWindowHeader: React.FC<ChatWindowHeaderProps> = ({
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
+  // Obter o outro participante (para conversas individuais)
+  const outroParticipante = React.useMemo(() => {
+    if (conversa.tipo === 'GRUPO' || !userId) {
+      return null;
+    }
+    return conversa.participantes?.find((p) => p.usuarioId !== userId);
+  }, [conversa, userId]);
+
+  // Obter foto de perfil do outro participante (para conversas individuais)
+  const fotoPerfil = React.useMemo(() => {
+    if (conversa.tipo === 'GRUPO') {
+      return null;
+    }
+    return outroParticipante?.usuario?.fotoPerfil || null;
+  }, [conversa.tipo, outroParticipante]);
+
+  // Obter inicial do nome para fallback
+  const inicialNome = React.useMemo(() => {
+    if (conversa.tipo === 'GRUPO') {
+      return null;
+    }
+    const nome = outroParticipante?.usuario?.nome || '';
+    return nome.charAt(0).toUpperCase();
+  }, [conversa.tipo, outroParticipante]);
+
   // Determinar o status online para conversas individuais
   const getStatusText = () => {
     if (conversa.tipo === 'GRUPO') {
       return 'Grupo';
     }
 
-    // Para conversas individuais, verificar se o outro participante está online
-    if (conversa.participantes && conversa.participantes.length > 0) {
-      const outroParticipante = conversa.participantes.find(
-        (p) => p.usuarioId !== userId
-      );
-      
-      if (outroParticipante) {
-        const online = isUsuarioOnline(outroParticipante.usuarioId);
-        return online ? 'Online' : 'Offline';
-      }
+    if (outroParticipante) {
+      const online = isUsuarioOnline(outroParticipante.usuarioId);
+      return online ? 'Online' : 'Offline';
     }
 
     return 'Offline';
@@ -69,13 +87,18 @@ export const ChatWindowHeader: React.FC<ChatWindowHeaderProps> = ({
         </IconButton>
       )}
       <Avatar
+        src={fotoPerfil || undefined}
         sx={{
           width: 40,
           height: 40,
           bgcolor: conversa.tipo === 'GRUPO' ? 'secondary.main' : 'primary.main',
         }}
       >
-        {conversa.tipo === 'GRUPO' ? <GroupIcon /> : <PersonIcon />}
+        {conversa.tipo === 'GRUPO' ? (
+          <GroupIcon />
+        ) : fotoPerfil ? null : (
+          inicialNome || <PersonIcon />
+        )}
       </Avatar>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 500, fontSize: '1rem' }} noWrap>

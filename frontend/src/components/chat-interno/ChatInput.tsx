@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Box, TextField, IconButton, CircularProgress } from '@mui/material';
 import { Send as SendIcon } from '@mui/icons-material';
 
@@ -8,6 +8,7 @@ interface ChatInputProps {
   onSend: () => void;
   onTypingStart: () => void;
   onTypingStop: () => void;
+  onFocus?: () => void;
   enviando: boolean;
   disabled: boolean;
 }
@@ -18,9 +19,25 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   onSend,
   onTypingStart,
   onTypingStop,
+  onFocus,
   enviando,
   disabled,
 }) => {
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const previousEnviandoRef = useRef(enviando);
+
+  // Manter foco no input após enviar mensagem
+  useEffect(() => {
+    // Se estava enviando e agora não está mais, significa que a mensagem foi enviada
+    if (previousEnviandoRef.current && !enviando) {
+      // Pequeno delay para garantir que o estado foi atualizado
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 0);
+    }
+    previousEnviandoRef.current = enviando;
+  }, [enviando]);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
     onChange(newValue);
@@ -40,6 +57,12 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     }
   };
 
+  const handleFocus = () => {
+    if (onFocus) {
+      onFocus();
+    }
+  };
+
   return (
     <Box
       sx={{
@@ -53,6 +76,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       }}
     >
       <TextField
+        inputRef={inputRef}
         fullWidth
         multiline
         maxRows={4}
@@ -60,6 +84,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         value={value}
         onChange={handleChange}
         onKeyPress={handleKeyPress}
+        onFocus={handleFocus}
         disabled={enviando || disabled}
         variant="outlined"
         size="small"

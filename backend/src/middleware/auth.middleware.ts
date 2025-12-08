@@ -36,8 +36,9 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction) 
 
     // 5. Injetamos os dados do payload (id, role, clinicaId)
     //    dentro do objeto 'req.user'
+    // Garantir que o ID seja sempre um número
     req.user = {
-      id: payload.sub,
+      id: typeof payload.sub === 'string' ? parseInt(payload.sub, 10) : payload.sub,
       role: payload.role,
       clinicaId: payload.clinicaId,
     };

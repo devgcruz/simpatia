@@ -17,6 +17,8 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Alert,
+  Chip,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import PersonIcon from '@mui/icons-material/Person';
@@ -26,6 +28,7 @@ import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import BusinessIcon from '@mui/icons-material/Business';
 import CategoryIcon from '@mui/icons-material/Category';
 import ScienceIcon from '@mui/icons-material/Science';
+import WarningIcon from '@mui/icons-material/Warning';
 import { IPrescricao, IPaciente, IMedicamento, IDoutor } from '../../types/models';
 import { useAuth } from '../../hooks/useAuth';
 import { getMedicamentos } from '../../services/medicamento.service';
@@ -37,6 +40,9 @@ import { IModeloPrescricaoPDF, modeloPrescricaoPadrao } from '../../types/prescr
 import DescriptionIcon from '@mui/icons-material/Description';
 import { toast } from 'sonner';
 import moment from 'moment';
+import { AlergiaFormModal } from './AlergiaFormModal';
+import { AlergiaAlertaModal } from './AlergiaAlertaModal';
+import { verificarAlergia, getAlergiasByPaciente, IAlergiaMedicamento, VerificacaoAlergia } from '../../services/alergia.service';
 
 interface Props {
   open: boolean;
@@ -76,6 +82,17 @@ export const PrescricaoFormModal: React.FC<Props> = ({
   const [quantidadeComprimidos, setQuantidadeComprimidos] = useState<number | ''>('');
   const [empresas, setEmpresas] = useState<string[]>([]);
   const [categorias, setCategorias] = useState<string[]>([]);
+  
+  // Estados para alergias
+  const [openAlergiaModal, setOpenAlergiaModal] = useState(false);
+  const [openPerguntaAlergiaModal, setOpenPerguntaAlergiaModal] = useState(false);
+  const [alergiasPaciente, setAlergiasPaciente] = useState<IAlergiaMedicamento[]>([]);
+  const [mostrouModalAlergia, setMostrouModalAlergia] = useState(false);
+  const [openAlergiaAlertaModal, setOpenAlergiaAlertaModal] = useState(false);
+  const [alergiaAlertaInfo, setAlergiaAlertaInfo] = useState<{
+    medicamentoNome: string;
+    verificacao: VerificacaoAlergia;
+  } | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -84,12 +101,42 @@ export const PrescricaoFormModal: React.FC<Props> = ({
         setPacienteSelecionado(
           pacientes.find((p) => p.id === prescricao.pacienteId) || null
         );
+        setMostrouModalAlergia(true);
       } else {
         setConteudo('');
         setPacienteSelecionado(null);
+        setMostrouModalAlergia(false);
       }
     }
   }, [open, prescricao, pacientes]);
+
+  // Carregar alergias do paciente quando selecionado
+  useEffect(() => {
+    const loadAlergias = async () => {
+      if (pacienteSelecionado) {
+        try {
+          const alergias = await getAlergiasByPaciente(pacienteSelecionado.id);
+          setAlergiasPaciente(alergias);
+        } catch (error) {
+          console.error('Erro ao carregar alergias:', error);
+        }
+      } else {
+        setAlergiasPaciente([]);
+      }
+    };
+    loadAlergias();
+  }, [pacienteSelecionado]);
+
+  // Mostrar pergunta sobre alergias quando paciente é selecionado pela primeira vez (apenas para nova prescrição)
+  useEffect(() => {
+    if (open && !prescricao && pacienteSelecionado && !mostrouModalAlergia) {
+      const timer = setTimeout(() => {
+        setOpenPerguntaAlergiaModal(true);
+        setMostrouModalAlergia(true);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [open, prescricao, pacienteSelecionado, mostrouModalAlergia]);
 
   // Carregar dados completos do doutor quando o modal abrir
   useEffect(() => {
@@ -186,7 +233,7 @@ export const PrescricaoFormModal: React.FC<Props> = ({
   }, [buscaMedicamento, buscaPrincipioAtivo, buscaEmpresa, buscaCategoria]);
 
   // Adicionar medicamento à prescrição
-  const handleAdicionarMedicamento = () => {
+  const handleAdicionarMedicamento = async () => {
     if (!medicamentoSelecionado) {
       toast.error('Selecione um medicamento');
       return;
@@ -195,6 +242,31 @@ export const PrescricaoFormModal: React.FC<Props> = ({
     if (quantidadeMedicamento <= 0) {
       toast.error('A quantidade deve ser maior que zero');
       return;
+    }
+
+    // Validar alergia antes de adicionar
+    if (pacienteSelecionado) {
+      try {
+        const resultado = await verificarAlergia(
+          pacienteSelecionado.id,
+          medicamentoSelecionado.nomeProduto,
+          medicamentoSelecionado.principioAtivo || undefined,
+          medicamentoSelecionado.classeTerapeutica || undefined,
+          undefined // excipientes não disponível no medicamento
+        );
+
+        if (resultado.temAlergia) {
+          // Bloquear completamente - mostrar modal e não permitir continuar
+          setAlergiaAlertaInfo({
+            medicamentoNome: medicamentoSelecionado.nomeProduto,
+            verificacao: resultado,
+          });
+          setOpenAlergiaAlertaModal(true);
+          return; // Bloquear a adição do medicamento
+        }
+      } catch (error) {
+        console.error('Erro ao verificar alergia:', error);
+      }
     }
 
     const nomeMedicamento = medicamentoSelecionado.nomeProduto;
@@ -417,6 +489,7 @@ export const PrescricaoFormModal: React.FC<Props> = ({
           printWindow.onload = () => {
             setTimeout(() => {
               printWindow.print();
+              setMostrouModalAlergia(false);
               onClose();
               setConteudo('');
               setPacienteSelecionado(null);
@@ -448,18 +521,29 @@ export const PrescricaoFormModal: React.FC<Props> = ({
 
   return (
     <>
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog 
+      open={open} 
+      onClose={() => {
+        setMostrouModalAlergia(false);
+        onClose();
+      }} 
+      maxWidth="md" 
+      fullWidth
+    >
       <DialogTitle>
         <Box display="flex" justifyContent="space-between" alignItems="center">
           <Typography variant="h6">
             {prescricao ? 'Editar Prescrição' : 'Nova Prescrição'}
           </Typography>
-          <IconButton onClick={onClose}>
+          <IconButton onClick={() => {
+            setMostrouModalAlergia(false);
+            onClose();
+          }}>
             <CloseIcon />
           </IconButton>
         </Box>
       </DialogTitle>
-      <DialogContent dividers>
+      <DialogContent dividers sx={{ overflow: 'visible' }}>
         <Box sx={{ mb: 2 }}>
           <Typography variant="body2" color="text.secondary" gutterBottom>
             Médico: <strong>{user?.nome || 'N/A'}</strong>
@@ -469,13 +553,82 @@ export const PrescricaoFormModal: React.FC<Props> = ({
           </Typography>
         </Box>
 
+        {alergiasPaciente.length > 0 && (
+          <Alert 
+            severity="error" 
+            icon={<WarningIcon />} 
+            sx={{ 
+              mb: 2,
+              flexShrink: 0,
+              '& .MuiAlert-message': {
+                width: '100%',
+              }
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+              <Typography variant="subtitle2" fontWeight="bold" sx={{ whiteSpace: 'nowrap' }}>
+                Alergias Conhecidas ({alergiasPaciente.length}):
+              </Typography>
+              <Box 
+                sx={{ 
+                  display: 'flex', 
+                  flexWrap: 'wrap', 
+                  gap: 0.75,
+                  maxHeight: 80,
+                  overflowY: 'auto',
+                  overflowX: 'hidden',
+                  pr: 0.5,
+                  '&::-webkit-scrollbar': {
+                    width: '6px',
+                  },
+                  '&::-webkit-scrollbar-track': {
+                    backgroundColor: 'rgba(0,0,0,0.05)',
+                    borderRadius: '3px',
+                  },
+                  '&::-webkit-scrollbar-thumb': {
+                    backgroundColor: 'rgba(0,0,0,0.2)',
+                    borderRadius: '3px',
+                    '&:hover': {
+                      backgroundColor: 'rgba(0,0,0,0.3)',
+                    },
+                  },
+                }}
+              >
+                {alergiasPaciente.map((alergia) => (
+                  <Chip
+                    key={alergia.id}
+                    label={alergia.principioAtivo || alergia.nomeMedicamento}
+                    color="error"
+                    size="small"
+                    variant="outlined"
+                    title={`${alergia.nomeMedicamento} - ${alergia.principioAtivo}${alergia.classeQuimica ? ` (Classe: ${alergia.classeQuimica})` : ''}`}
+                    sx={{ 
+                      fontWeight: 600,
+                      borderWidth: 2,
+                      flexShrink: 0,
+                      '&:hover': {
+                        backgroundColor: 'error.light',
+                      }
+                    }}
+                  />
+                ))}
+              </Box>
+            </Box>
+          </Alert>
+        )}
+
         <Box sx={{ mb: 2 }}>
           <Autocomplete
             disabled={!!prescricao}
             options={pacientes}
             getOptionLabel={(option) => option.nome}
             value={pacienteSelecionado}
-            onChange={(_, newValue) => setPacienteSelecionado(newValue)}
+            onChange={(_, newValue) => {
+              setPacienteSelecionado(newValue);
+              if (!prescricao && newValue) {
+                setMostrouModalAlergia(false);
+              }
+            }}
             renderInput={(params) => (
               <TextField
                 {...params}
@@ -496,7 +649,16 @@ export const PrescricaoFormModal: React.FC<Props> = ({
           />
         </Box>
 
-        <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+        <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', gap: 1 }}>
+          <Button
+            variant="outlined"
+            color="warning"
+            startIcon={<WarningIcon />}
+            onClick={() => setOpenAlergiaModal(true)}
+            disabled={!pacienteSelecionado}
+          >
+            Cadastrar Alergia
+          </Button>
           <Button
             variant="outlined"
             startIcon={<MedicationIcon />}
@@ -519,7 +681,13 @@ export const PrescricaoFormModal: React.FC<Props> = ({
         />
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose} disabled={loading}>
+        <Button 
+          onClick={() => {
+            setMostrouModalAlergia(false);
+            onClose();
+          }} 
+          disabled={loading}
+        >
           Cancelar
         </Button>
         {!prescricao && (
@@ -792,7 +960,74 @@ export const PrescricaoFormModal: React.FC<Props> = ({
         </Button>
       </DialogActions>
     </Dialog>
-    </>
-  );
+
+    {/* Modal de Pergunta sobre Alergias */}
+    <Dialog
+      open={openPerguntaAlergiaModal}
+      onClose={() => setOpenPerguntaAlergiaModal(false)}
+      maxWidth="sm"
+      fullWidth
+    >
+      <DialogTitle>
+        <Box display="flex" alignItems="center" gap={1}>
+          <WarningIcon color="warning" />
+          <Typography variant="h6">Alergia a Medicamentos</Typography>
+        </Box>
+      </DialogTitle>
+      <DialogContent>
+        <Typography variant="body1" sx={{ mb: 2 }}>
+          O paciente possui alguma alergia a algum medicamento?
+        </Typography>
+      </DialogContent>
+      <DialogActions>
+        <Button
+          onClick={() => {
+            setOpenPerguntaAlergiaModal(false);
+          }}
+          variant="outlined"
+        >
+          Não
+        </Button>
+        <Button
+          onClick={() => {
+            setOpenPerguntaAlergiaModal(false);
+            setOpenAlergiaModal(true);
+          }}
+          variant="contained"
+          color="warning"
+          startIcon={<WarningIcon />}
+        >
+          Sim
+        </Button>
+      </DialogActions>
+    </Dialog>
+
+    {/* Modal de Alergia */}
+    <AlergiaFormModal
+      open={openAlergiaModal}
+      onClose={() => setOpenAlergiaModal(false)}
+      paciente={pacienteSelecionado}
+      onAlergiaCadastrada={async () => {
+        if (pacienteSelecionado) {
+          const alergias = await getAlergiasByPaciente(pacienteSelecionado.id);
+          setAlergiasPaciente(alergias);
+        }
+      }}
+    />
+
+    {/* Modal de Alerta de Alergia - Bloqueia prescrição */}
+    {alergiaAlertaInfo && (
+      <AlergiaAlertaModal
+        open={openAlergiaAlertaModal}
+        onClose={() => {
+          setOpenAlergiaAlertaModal(false);
+          setAlergiaAlertaInfo(null);
+        }}
+        medicamentoNome={alergiaAlertaInfo.medicamentoNome}
+        verificacao={alergiaAlertaInfo.verificacao}
+      />
+    )}
+  </>
+);
 };
 

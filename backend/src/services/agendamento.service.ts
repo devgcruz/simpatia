@@ -80,6 +80,15 @@ const agendamentoInclude = {
 class AgendamentoService {
 
     /**
+     * Converte minutos do dia para string de horário (ex: 780 -> "13:00")
+     */
+    private minutesToTime(minutes: number): string {
+        const hours = Math.floor(minutes / 60);
+        const mins = minutes % 60;
+        return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+    }
+
+    /**
      * Verifica se dois intervalos se sobrepõem
      */
     private intervalsOverlap(
@@ -217,9 +226,26 @@ class AgendamentoService {
             throw new Error("Não é possível agendar em um dia bloqueado para este doutor.");
         }
 
-        // Se não houver horário de almoço configurado, não há restrição
-        if (!pausaInicioDefault || !pausaFimDefault) {
-            return;
+        // Buscar horário de trabalho do doutor para esse dia da semana
+        // Se houver horário cadastrado com pausaInicio/pausaFim, usar esses valores
+        // Senão, usar os valores padrão do doutor
+        const horario = await prisma.horario.findFirst({
+            where: {
+                doutorId: doutorId,
+                diaSemana: diaSemana,
+                ativo: true,
+            },
+        });
+
+        // Prioridade: 1. Exceção de pausa, 2. Horário do dia da semana, 3. Valores padrão do doutor
+        let pausaInicioFinal = pausaInicioDefault;
+        let pausaFimFinal = pausaFimDefault;
+
+        // Se houver horário cadastrado para o dia com pausa, usar esses valores
+        if (horario && horario.pausaInicio && horario.pausaFim) {
+            pausaInicioFinal = horario.pausaInicio;
+            pausaFimFinal = horario.pausaFim;
+            console.log(`[validarHorarioAlmoco] Usando valores do horário do dia da semana: ${pausaInicioFinal} - ${pausaFimFinal}`);
         }
 
         // Buscar exceção de pausa para esta data específica
@@ -229,13 +255,72 @@ class AgendamentoService {
             excecaoPausa = await pausaExcecaoService.findByDate(dataStr, undefined, doutorId);
         }
         
-        // Usar horário de exceção se existir, senão usar o padrão
-        const pausaInicio = excecaoPausa ? excecaoPausa.pausaInicio : pausaInicioDefault;
-        const pausaFim = excecaoPausa ? excecaoPausa.pausaFim : pausaFimDefault;
+        // Se houver exceção de pausa, ela tem prioridade sobre tudo
+        if (excecaoPausa) {
+            pausaInicioFinal = excecaoPausa.pausaInicio;
+            pausaFimFinal = excecaoPausa.pausaFim;
+            console.log(`[validarHorarioAlmoco] Usando valores da exceção de pausa: ${pausaInicioFinal} - ${pausaFimFinal}`);
+        }
+
+        // Se não houver horário de almoço configurado, não há restrição
+        if (!pausaInicioFinal || !pausaFimFinal) {
+            return;
+        }
+
+        const pausaInicio = pausaInicioFinal;
+        const pausaFim = pausaFimFinal;
+
+        // Log para debug (remover em produção se necessário)
+        console.log(`[validarHorarioAlmoco] ========== INÍCIO VALIDAÇÃO ==========`);
+        console.log(`[validarHorarioAlmoco] doutorId=${doutorId}, dataStr=${dataStr}, diaSemana=${diaSemana}`);
+        console.log(`[validarHorarioAlmoco] pausaInicioDefault="${pausaInicioDefault}", pausaFimDefault="${pausaFimDefault}"`);
+        console.log(`[validarHorarioAlmoco] horario encontrado:`, horario ? `SIM (pausa: ${horario.pausaInicio || 'não'} - ${horario.pausaFim || 'não'})` : 'NÃO');
+        console.log(`[validarHorarioAlmoco] excecaoPausa encontrada:`, excecaoPausa ? `SIM (${excecaoPausa.pausaInicio} - ${excecaoPausa.pausaFim})` : 'NÃO');
+        console.log(`[validarHorarioAlmoco] valores finais: pausaInicio="${pausaInicio}", pausaFim="${pausaFim}"`);
+        console.log(`[validarHorarioAlmoco] dataHora=${dataHora.toISOString()}, duracaoMin=${duracaoMin}`);
+        
+        // VALIDAÇÃO CRÍTICA: Verificar se os valores estão corretos
+        if (pausaFim && pausaFim !== pausaFimDefault && !excecaoPausa) {
+            console.error(`[validarHorarioAlmoco] ⚠️ ATENÇÃO: pausaFim (${pausaFim}) diferente de pausaFimDefault (${pausaFimDefault}) sem exceção!`);
+        }
+        
+        // Validar que os valores de pausa estão no formato correto e são válidos
+        if (pausaInicio && pausaFim) {
+            // Validar formato (HH:MM)
+            const formatoValido = /^([0-1][0-9]|2[0-3]):[0-5][0-9]$/.test(pausaInicio) && /^([0-1][0-9]|2[0-3]):[0-5][0-9]$/.test(pausaFim);
+            if (!formatoValido) {
+                console.error(`[validarHorarioAlmoco] ⚠️ ERRO: Formato de horário inválido! pausaInicio="${pausaInicio}", pausaFim="${pausaFim}"`);
+                throw new Error(`Horário de pausa inválido. Formato esperado: HH:MM`);
+            }
+            
+            const inicioParts = pausaInicio.split(':').map(Number);
+            const fimParts = pausaFim.split(':').map(Number);
+            const inicioH = inicioParts[0] ?? 0;
+            const inicioM = inicioParts[1] ?? 0;
+            const fimH = fimParts[0] ?? 0;
+            const fimM = fimParts[1] ?? 0;
+            const inicioMin = inicioH * 60 + inicioM;
+            const fimMin = fimH * 60 + fimM;
+            
+            if (fimMin <= inicioMin) {
+                console.error(`[validarHorarioAlmoco] ⚠️ ERRO: Intervalo de pausa inválido! pausaFim (${pausaFim}) deve ser maior que pausaInicio (${pausaInicio})`);
+                throw new Error(`Horário de pausa inválido. O horário de fim (${pausaFim}) deve ser maior que o horário de início (${pausaInicio}).`);
+            }
+            
+            // VALIDAÇÃO ADICIONAL: Verificar se o intervalo de pausa parece muito longo (pode indicar erro de cadastro)
+            const duracaoPausa = fimMin - inicioMin;
+            if (duracaoPausa > 120) {
+                console.warn(`[validarHorarioAlmoco] ⚠️ AVISO: Intervalo de pausa muito longo (${duracaoPausa} minutos = ${Math.floor(duracaoPausa / 60)}h${duracaoPausa % 60}min). Verifique se os valores estão corretos.`);
+            }
+        }
 
         // Converter horários para minutos do dia
-        const [pausaInicioH, pausaInicioM] = pausaInicio.split(':').map(Number);
-        const [pausaFimH, pausaFimM] = pausaFim.split(':').map(Number);
+        const pausaInicioParts = pausaInicio.split(':').map(Number);
+        const pausaFimParts = pausaFim.split(':').map(Number);
+        const pausaInicioH = pausaInicioParts[0] ?? 0;
+        const pausaInicioM = pausaInicioParts[1] ?? 0;
+        const pausaFimH = pausaFimParts[0] ?? 0;
+        const pausaFimM = pausaFimParts[1] ?? 0;
         
         const pausaInicioMinutos = pausaInicioH * 60 + pausaInicioM;
         const pausaFimMinutos = pausaFimH * 60 + pausaFimM;
@@ -244,17 +329,51 @@ class AgendamentoService {
         const agendamentoInicioMinutos = dataHora.getHours() * 60 + dataHora.getMinutes();
         const agendamentoFimMinutos = agendamentoInicioMinutos + duracaoMin;
 
+        // Log para debug
+        console.log(`[validarHorarioAlmoco] pausaInicioMinutos=${pausaInicioMinutos} (${pausaInicio}), pausaFimMinutos=${pausaFimMinutos} (${pausaFim})`);
+        console.log(`[validarHorarioAlmoco] agendamentoInicioMinutos=${agendamentoInicioMinutos}, agendamentoFimMinutos=${agendamentoFimMinutos}`);
+
         // Verificar se há sobreposição entre agendamento e horário de almoço
-        // O agendamento não pode começar durante a pausa
-        // O agendamento não pode terminar durante a pausa
-        // O agendamento não pode envolver completamente a pausa
-        const conflita =
-            (agendamentoInicioMinutos >= pausaInicioMinutos && agendamentoInicioMinutos < pausaFimMinutos) ||
-            (agendamentoFimMinutos > pausaInicioMinutos && agendamentoFimMinutos <= pausaFimMinutos) ||
-            (agendamentoInicioMinutos <= pausaInicioMinutos && agendamentoFimMinutos >= pausaFimMinutos);
+        // Regras:
+        // 1. O agendamento não pode começar durante a pausa (mas pode começar exatamente quando termina)
+        // 2. O agendamento não pode terminar durante a pausa (mas pode terminar exatamente quando começa ou quando termina)
+        // 3. O agendamento não pode envolver completamente a pausa
+        // IMPORTANTE: 
+        // - Um agendamento que começa exatamente quando a pausa termina (ex: pausa 12:00-13:00, agendamento 13:00) NÃO conflita
+        // - Um agendamento que termina exatamente quando a pausa começa (ex: pausa 12:00-13:00, agendamento 11:30-12:00) NÃO conflita
+        // - Um agendamento que termina exatamente quando a pausa termina (ex: pausa 12:00-13:00, agendamento 12:30-13:00) NÃO conflita
+        // - A pausa é EXCLUSIVA: 12:00-13:00 significa pausa de 12:00 até 12:59:59, então 13:00 já está livre
+        
+        // Verificar cada condição separadamente para melhor debug
+        const condicao1 = agendamentoInicioMinutos >= pausaInicioMinutos && agendamentoInicioMinutos < pausaFimMinutos;
+        const condicao2 = agendamentoFimMinutos > pausaInicioMinutos && agendamentoFimMinutos < pausaFimMinutos;
+        const condicao3 = agendamentoInicioMinutos < pausaInicioMinutos && agendamentoFimMinutos > pausaFimMinutos;
+        
+        const conflita = condicao1 || condicao2 || condicao3;
+        
+        console.log(`[validarHorarioAlmoco] Análise de conflito:`);
+        console.log(`[validarHorarioAlmoco]   - Agendamento: ${this.minutesToTime(agendamentoInicioMinutos)} até ${this.minutesToTime(agendamentoFimMinutos)}`);
+        console.log(`[validarHorarioAlmoco]   - Pausa: ${pausaInicio} até ${pausaFim}`);
+        console.log(`[validarHorarioAlmoco]   - Condição 1 (começa durante): ${condicao1} (${agendamentoInicioMinutos} >= ${pausaInicioMinutos} && ${agendamentoInicioMinutos} < ${pausaFimMinutos})`);
+        console.log(`[validarHorarioAlmoco]   - Condição 2 (termina durante): ${condicao2} (${agendamentoFimMinutos} > ${pausaInicioMinutos} && ${agendamentoFimMinutos} < ${pausaFimMinutos})`);
+        console.log(`[validarHorarioAlmoco]   - Condição 3 (envolve completamente): ${condicao3} (${agendamentoInicioMinutos} < ${pausaInicioMinutos} && ${agendamentoFimMinutos} > ${pausaFimMinutos})`);
+
+        console.log(`[validarHorarioAlmoco] conflita=${conflita}`);
+        console.log(`[validarHorarioAlmoco] ========== FIM VALIDAÇÃO ==========`);
 
         if (conflita) {
-            throw new Error(`Não é possível agendar no horário de almoço do doutor (${pausaInicio} - ${pausaFim}).`);
+            // Usar os valores originais (pausaInicio e pausaFim) na mensagem de erro para garantir que mostra os valores corretos
+            // Garantir que os valores estão no formato correto (HH:MM)
+            const pausaInicioFormatado = pausaInicio || 'não definido';
+            const pausaFimFormatado = pausaFim || 'não definido';
+            const mensagemErro = `Não é possível agendar no horário de almoço do doutor (${pausaInicioFormatado} às ${pausaFimFormatado}).`;
+            console.error(`[validarHorarioAlmoco] ❌ ERRO: ${mensagemErro}`);
+            console.error(`[validarHorarioAlmoco] Valores usados: pausaInicio="${pausaInicio}", pausaFim="${pausaFim}"`);
+            console.error(`[validarHorarioAlmoco] Valores padrão: pausaInicioDefault="${pausaInicioDefault}", pausaFimDefault="${pausaFimDefault}"`);
+            if (excecaoPausa) {
+                console.error(`[validarHorarioAlmoco] Exceção de pausa: pausaInicio="${excecaoPausa.pausaInicio}", pausaFim="${excecaoPausa.pausaFim}"`);
+            }
+            throw new Error(mensagemErro);
         }
     }
 
@@ -459,7 +578,7 @@ class AgendamentoService {
                 doutorId: targetDoutorId,
                 servicoId,
                 isEncaixe,
-                confirmadoPorMedico: isEncaixe ? false : undefined, // Encaixe precisa de confirmação do médico
+                ...(isEncaixe && { confirmadoPorMedico: false }), // Encaixe precisa de confirmação do médico
             },
             include: agendamentoInclude,
         });
@@ -569,7 +688,7 @@ class AgendamentoService {
                 relatoPaciente: relatoPaciente || undefined, // Salva o relato do paciente
                 entendimentoIA: entendimentoIA || undefined, // Salva o entendimento da IA
                 isEncaixe,
-                confirmadoPorMedico: isEncaixe ? false : undefined, // Encaixe precisa de confirmação do médico
+                ...(isEncaixe && { confirmadoPorMedico: false }), // Encaixe precisa de confirmação do médico
             } as any, // Type assertion temporária até regenerar Prisma Client
             include: agendamentoInclude,
         });

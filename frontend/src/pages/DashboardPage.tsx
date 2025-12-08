@@ -762,6 +762,7 @@ export const DashboardPage: React.FC = () => {
     }
 
     // 2. Verificar se horário pertence ao expediente do médico
+    // Garantir que estamos usando o dia da semana correto no timezone do Brasil
     const diaSemana = dataHora.day(); // 0 = Domingo, 6 = Sábado
     
     // Verificar se o dia está bloqueado
@@ -773,7 +774,20 @@ export const DashboardPage: React.FC = () => {
     let horarioTrabalho;
     try {
       const horarios = await getHorariosByDoutor(doutorId);
+      
+      // Buscar horário ativo para este dia da semana
       horarioTrabalho = horarios.find(h => h.diaSemana === diaSemana && h.ativo);
+      
+      // Log de debug apenas se não encontrar (para ajudar a diagnosticar o problema)
+      if (!horarioTrabalho) {
+        console.warn('⚠️ Horário não encontrado para agendamento:', {
+          diaSemana,
+          diaSemanaNome: moment.weekdays(diaSemana),
+          dataHora: dataHora.format('YYYY-MM-DD HH:mm'),
+          horariosEncontrados: horarios.length,
+          horarios: horarios.map(h => ({ diaSemana: h.diaSemana, ativo: h.ativo, inicio: h.inicio, fim: h.fim }))
+        });
+      }
     } catch (err) {
       console.error('Erro ao buscar horários do doutor:', err);
       // Se não conseguir buscar, usar horários padrão do doutor (se existirem)
@@ -800,11 +814,21 @@ export const DashboardPage: React.FC = () => {
       };
     }
 
+    // Verificar se o início do agendamento não ultrapassa o fim do expediente
+    // Permitir agendamentos que comecem até o último horário possível (considerando a duração)
+    if (horaInicioAgendamento >= fimExpedienteMin) {
+      return { 
+        valido: false, 
+        mensagem: `Este horário está após o fim do expediente (${horarioTrabalho.fim}).` 
+      };
+    }
+    
     // Verificar se o término do agendamento (considerando duração) está dentro do expediente
+    // Permitir agendamentos que terminem exatamente no fim do expediente (>= em vez de >)
     if (horaFimAgendamento > fimExpedienteMin) {
       return { 
         valido: false, 
-        mensagem: `Este horário com duração de ${duracaoServico} minutos ultrapassa o fim do expediente (${horarioTrabalho.fim}).` 
+        mensagem: `Este horário com duração de ${duracaoServico} minutos ultrapassa o fim do expediente (${horarioTrabalho.fim}). O último horário disponível para este serviço é ${moment().startOf('day').add(fimExpedienteMin - duracaoServico, 'minutes').format('HH:mm')}.` 
       };
     }
 

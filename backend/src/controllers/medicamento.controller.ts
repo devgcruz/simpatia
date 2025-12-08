@@ -154,6 +154,31 @@ class MedicamentoController {
       return res.status(400).json({ message: error.message });
     }
   }
+
+  async handleGetPrincipiosAtivos(req: Request, res: Response) {
+    try {
+      const { busca } = req.query;
+      const principiosAtivos = await medicamentoService.getPrincipiosAtivos(busca as string);
+      return res.status(200).json(principiosAtivos);
+    } catch (error: any) {
+      return res.status(500).json({ message: error.message });
+    }
+  }
+
+  async handleVerificarPrincipioAtivo(req: Request, res: Response) {
+    try {
+      const { principioAtivo } = req.body;
+
+      if (!principioAtivo || !principioAtivo.trim()) {
+        return res.status(400).json({ message: 'Princípio ativo é obrigatório.' });
+      }
+
+      const existe = await medicamentoService.verificarPrincipioAtivoExiste(principioAtivo);
+      return res.status(200).json({ existe });
+    } catch (error: any) {
+      return res.status(500).json({ message: error.message });
+    }
+  }
 }
 
 export default new MedicamentoController();

@@ -15,6 +15,7 @@ import { PrescricoesPage } from './pages/PrescricoesPage';
 import { SecretariasPage } from './pages/SecretariasPage';
 import { ChatInternoPage } from './components/chat-interno/ChatInternoPage';
 import { ConfiguracoesPage } from './pages/ConfiguracoesPage';
+import { PerfilPage } from './pages/PerfilPage';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
 import { Toaster } from 'sonner';
@@ -48,6 +49,7 @@ function App() {
               <Route path="/prescricoes" element={<PrescricoesPage />} />
               <Route path="/chat-interno" element={<ChatInternoPage />} />
               <Route path="/configuracoes" element={<ConfiguracoesPage />} />
+              <Route path="/perfil" element={<PerfilPage />} />
             </Route>
           </Route>
 

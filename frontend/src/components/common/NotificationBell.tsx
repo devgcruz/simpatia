@@ -59,9 +59,9 @@ export function NotificationBell() {
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
   const open = Boolean(anchorEl);
   const notificationIdRef = useRef(0);
-  // Cache para evitar notificações duplicadas
+  // Cache para evitar notificações duplicadas (sem delay - processamento imediato)
   const notificationCacheRef = useRef<Map<string, number>>(new Map());
-  const NOTIFICATION_DEBOUNCE_MS = 2000; // 2 segundos
+  const NOTIFICATION_DEBOUNCE_MS = 0; // Sem delay - processamento imediato
 
   // Carregar notificações do localStorage ao montar
   useEffect(() => {
@@ -99,14 +99,15 @@ export function NotificationBell() {
     if (!isDoutor) return;
 
     // Verificar se já foi adicionada recentemente (evitar duplicação)
-    // Usar agendamentoId como chave principal (sem timestamp) para evitar duplicatas do mesmo agendamento
+    // Usar uma chave única baseada no agendamentoId e tipo de ação para permitir múltiplas notificações do mesmo agendamento (ex: criado, cancelado, reagendado)
     const cacheKey = data?.agendamentoId 
-      ? `agendamento-${data.agendamentoId}` 
-      : `${title}-${body}`;
+      ? `agendamento-${data.agendamentoId}-${title}` 
+      : `${title}-${body}-${Date.now()}`;
     const lastAdded = notificationCacheRef.current.get(cacheKey);
     const now = Date.now();
     
-    if (lastAdded && (now - lastAdded) < NOTIFICATION_DEBOUNCE_MS) {
+    // Apenas verificar duplicatas se houver um debounce configurado (agora é 0, então sempre processa)
+    if (NOTIFICATION_DEBOUNCE_MS > 0 && lastAdded && (now - lastAdded) < NOTIFICATION_DEBOUNCE_MS) {
       console.log('[NotificationBell] Notificação duplicada ignorada (cache):', cacheKey, 'última adição há', Math.round((now - lastAdded) / 1000), 'segundos');
       return;
     }
@@ -132,11 +133,16 @@ export function NotificationBell() {
     };
 
     setNotifications((prev) => {
-      // Verificar se já existe uma notificação com o mesmo agendamentoId
+      // Permitir múltiplas notificações do mesmo agendamento se forem de tipos diferentes (ex: criado, cancelado, reagendado)
+      // Apenas verificar duplicatas exatas (mesmo título e mesmo agendamentoId)
       if (data?.agendamentoId) {
-        const exists = prev.some(n => n.data?.agendamentoId === data.agendamentoId);
+        const exists = prev.some(n => 
+          n.data?.agendamentoId === data.agendamentoId && 
+          n.title === title &&
+          n.body === body
+        );
         if (exists) {
-          console.log('[NotificationBell] Notificação já existe para agendamento:', data.agendamentoId);
+          console.log('[NotificationBell] Notificação duplicada exata ignorada para agendamento:', data.agendamentoId);
           return prev;
         }
       }

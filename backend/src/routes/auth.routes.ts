@@ -26,9 +26,10 @@ router.post('/refresh', authController.handleRefreshToken);
 // --- ROTA NOVA ---
 // GET /api/auth/me
 // Esta rota verifica o token (via cookie) e retorna os dados do usuário.
-router.get('/me', authMiddleware, (req: Request, res: Response) => {
-    res.status(200).json(req.user);
-});
+router.get('/me', authMiddleware, authController.handleMe);
+
+// Rota para atualizar perfil (senha e foto)
+router.put('/profile', authMiddleware, authController.handleUpdateProfile);
 
 export default router;
 

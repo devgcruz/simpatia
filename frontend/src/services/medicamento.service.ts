@@ -54,3 +54,16 @@ export const bulkCreateMedicamentos = async (medicamentos: MedicamentoInput[]) =
   return response.data;
 };
 
+export const getPrincipiosAtivos = async (busca?: string): Promise<string[]> => {
+  const params = busca ? { busca } : {};
+  const response = await api.get<string[]>('/medicamentos/principios-ativos', { params });
+  return response.data;
+};
+
+export const verificarPrincipioAtivoExiste = async (principioAtivo: string): Promise<boolean> => {
+  const response = await api.post<{ existe: boolean }>('/medicamentos/verificar-principio-ativo', {
+    principioAtivo,
+  });
+  return response.data.existe;
+};
+

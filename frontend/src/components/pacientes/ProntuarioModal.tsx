@@ -42,7 +42,6 @@ import WarningIcon from '@mui/icons-material/Warning';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import StopIcon from '@mui/icons-material/Stop';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import AddIcon from '@mui/icons-material/Add';
 import DescriptionIcon from '@mui/icons-material/Description';
 import SendIcon from '@mui/icons-material/Send';
 import VisibilityIcon from '@mui/icons-material/Visibility';
@@ -61,6 +60,10 @@ import { getProntuarioChatMessages, sendProntuarioChatMessage } from '../../serv
 import { getPrescricoesPaciente, createPrescricao, getPrescricaoByProtocolo } from '../../services/prescricao.service';
 import { getMedicamentos } from '../../services/medicamento.service';
 import { IMedicamento } from '../../types/models';
+import { AlergiaFormModal } from '../prescricoes/AlergiaFormModal';
+import { AlergiaAlertaModal } from '../prescricoes/AlergiaAlertaModal';
+import { getAlergiasByPaciente, verificarAlergia, deleteAlergia, IAlergiaMedicamento, VerificacaoAlergia } from '../../services/alergia.service';
+import { ConfirmarExclusaoAlergiaModal } from '../prescricoes/ConfirmarExclusaoAlergiaModal';
 import { useAuth } from '../../hooks/useAuth';
 import moment from 'moment';
 import 'moment/locale/pt-br';
@@ -145,6 +148,29 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
   const [prescricoes, setPrescricoes] = useState<IPrescricao[]>([]);
   const [loadingPrescricoes, setLoadingPrescricoes] = useState(false);
   const [prescricoesError, setPrescricoesError] = useState<string | null>(null);
+  
+  // Estados para modal de alergias
+  const [openAlergiaModal, setOpenAlergiaModal] = useState(false);
+  const [openPerguntaAlergiaModal, setOpenPerguntaAlergiaModal] = useState(false);
+  const [alergiasPaciente, setAlergiasPaciente] = useState<IAlergiaMedicamento[]>([]);
+  const [mostrouPerguntaAlergia, setMostrouPerguntaAlergia] = useState(false);
+  const [openAlergiaAlertaModal, setOpenAlergiaAlertaModal] = useState(false);
+  const [alergiaAlertaInfo, setAlergiaAlertaInfo] = useState<{
+    medicamentoNome: string;
+    verificacao: VerificacaoAlergia;
+  } | null>(null);
+  const [openConfirmarExclusaoAlergia, setOpenConfirmarExclusaoAlergia] = useState(false);
+  const [alergiaParaExcluir, setAlergiaParaExcluir] = useState<IAlergiaMedicamento | null>(null);
+  const [loadingExclusaoAlergia, setLoadingExclusaoAlergia] = useState(false);
+  
+  // Estado para modal de alerta de horário
+  const [openModalAlertaHorario, setOpenModalAlertaHorario] = useState(false);
+  const [infoAlertaHorario, setInfoAlertaHorario] = useState<{
+    estaAtrasado: boolean;
+    diferencaFormatada: string;
+    horarioAgendado: string;
+    diferencaMinutos: number;
+  } | null>(null);
   
   // Estados para busca de medicamentos
   const [openMedicamentoModal, setOpenMedicamentoModal] = useState(false);
@@ -663,6 +689,34 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
     }
   }, [open, activeTab, agendamento?.paciente.id]);
 
+  // Carregar alergias do paciente quando o agendamento for carregado
+  useEffect(() => {
+    const loadAlergias = async () => {
+      if (agendamento?.paciente?.id) {
+        try {
+          const alergias = await getAlergiasByPaciente(agendamento.paciente.id);
+          setAlergiasPaciente(alergias);
+        } catch (error) {
+          console.error('Erro ao carregar alergias:', error);
+        }
+      } else {
+        setAlergiasPaciente([]);
+      }
+    };
+    loadAlergias();
+  }, [agendamento?.paciente?.id]);
+
+  // Mostrar pergunta sobre alergias quando o modal de prescrição abrir pela primeira vez
+  useEffect(() => {
+    if (openPrescricaoModal && agendamento?.paciente && !mostrouPerguntaAlergia) {
+      const timer = setTimeout(() => {
+        setOpenPerguntaAlergiaModal(true);
+        setMostrouPerguntaAlergia(true);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [openPrescricaoModal, agendamento?.paciente, mostrouPerguntaAlergia]);
+
   // Carregar dados do paciente quando a aba de dados for selecionada
   useEffect(() => {
     if (open && activeTab === 2 && agendamento?.paciente) {
@@ -710,6 +764,36 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
   }, [open, activeTab, agendamento?.paciente, isDoutor]);
 
   const handleIniciarAtendimento = () => {
+    // Verificar se está iniciando fora do horário agendado com janela muito grande
+    if (agendamento?.dataHora) {
+      const horarioAgendado = moment(agendamento.dataHora);
+      const horarioAtual = moment();
+      const diferencaMinutos = Math.abs(horarioAtual.diff(horarioAgendado, 'minutes'));
+      
+      // Limite de 30 minutos para considerar "janela muito grande"
+      const LIMITE_JANELA_MINUTOS = 30;
+      
+      if (diferencaMinutos > LIMITE_JANELA_MINUTOS) {
+        const estaAtrasado = horarioAtual.isAfter(horarioAgendado);
+        const diferencaFormatada = moment.duration(diferencaMinutos, 'minutes').humanize();
+        
+        // Mostrar modal de alerta antes de iniciar
+        setInfoAlertaHorario({
+          estaAtrasado,
+          diferencaFormatada,
+          horarioAgendado: horarioAgendado.format('DD/MM/YYYY [às] HH:mm'),
+          diferencaMinutos,
+        });
+        setOpenModalAlertaHorario(true);
+        return; // Não iniciar ainda, aguardar confirmação do usuário
+      }
+    }
+    
+    // Se não houver problema de horário, iniciar diretamente
+    iniciarAtendimentoConfirmado();
+  };
+
+  const iniciarAtendimentoConfirmado = () => {
     // Limpar estado salvo anterior se houver (para evitar conflitos)
     if (agendamento?.id) {
       limparEstadoAtendimento(agendamento.id);
@@ -718,6 +802,17 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
     setAtendimentoIniciado(true);
     setInicioAtendimento(new Date());
     toast.success('Atendimento iniciado!');
+  };
+
+  const handleConfirmarIniciarApesarHorario = () => {
+    setOpenModalAlertaHorario(false);
+    setInfoAlertaHorario(null);
+    iniciarAtendimentoConfirmado();
+  };
+
+  const handleCancelarIniciarAtendimento = () => {
+    setOpenModalAlertaHorario(false);
+    setInfoAlertaHorario(null);
   };
 
   const handlePausarAtendimento = () => {
@@ -1029,7 +1124,7 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
   }, [buscaMedicamento, buscaPrincipioAtivo, buscaEmpresa, buscaCategoria]);
 
   // Adicionar medicamento à prescrição
-  const handleAdicionarMedicamento = () => {
+  const handleAdicionarMedicamento = async () => {
     if (!medicamentoSelecionado) {
       toast.error('Selecione um medicamento');
       return;
@@ -1038,6 +1133,31 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
     if (quantidadeMedicamento <= 0) {
       toast.error('A quantidade deve ser maior que zero');
       return;
+    }
+
+    // Validar alergia antes de adicionar
+    if (agendamento?.paciente) {
+      try {
+        const resultado = await verificarAlergia(
+          agendamento.paciente.id,
+          medicamentoSelecionado.nomeProduto,
+          medicamentoSelecionado.principioAtivo || undefined,
+          medicamentoSelecionado.classeTerapeutica || undefined,
+          undefined // excipientes não disponível no medicamento
+        );
+
+        if (resultado.temAlergia) {
+          // Bloquear completamente - mostrar modal e não permitir continuar
+          setAlergiaAlertaInfo({
+            medicamentoNome: medicamentoSelecionado.nomeProduto,
+            verificacao: resultado,
+          });
+          setOpenAlergiaAlertaModal(true);
+          return; // Bloquear a adição do medicamento
+        }
+      } catch (error) {
+        console.error('Erro ao verificar alergia:', error);
+      }
     }
 
     const nomeMedicamento = medicamentoSelecionado.nomeProduto;
@@ -1594,14 +1714,21 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
 
                 <Box sx={{ mt: 1.5, flexShrink: 0 }}>
                   <Divider sx={{ my: 1.5 }} />
-                  {alergias.length > 0 ? (
+                  {alergiasPaciente.length > 0 ? (
                     <Alert severity="error" icon={<WarningIcon />} sx={{ py: 0.5 }}>
                       <Typography variant="caption" fontWeight="bold" display="block" gutterBottom>
                         ALERTA: Alergias Conhecidas
                       </Typography>
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
-                        {alergias.map((alergia, idx) => (
-                          <Chip key={idx} label={alergia} color="error" size="small" sx={{ fontSize: '0.7rem', height: 20 }} />
+                        {alergiasPaciente.map((alergia) => (
+                          <Chip
+                            key={alergia.id}
+                            label={alergia.principioAtivo || alergia.nomeMedicamento}
+                            color="error"
+                            size="small"
+                            sx={{ fontSize: '0.7rem', height: 22 }}
+                            title={`${alergia.nomeMedicamento} - ${alergia.principioAtivo}${alergia.classeQuimica ? ` (Classe: ${alergia.classeQuimica})` : ''}`}
+                          />
                         ))}
                       </Box>
                     </Alert>
@@ -1619,7 +1746,7 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                       }}
                     >
                       <Typography variant="caption" fontWeight="bold" display="block" sx={{ color: 'grey.700' }}>
-                        ALERTA: Nenhuma
+                        ALERTA: Nenhuma alergia conhecida
                       </Typography>
                     </Alert>
                   )}
@@ -2344,53 +2471,102 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                 />
               </Grid>
               <Grid item xs={12}>
-                <Typography variant="body2" sx={{ mb: 1, mt: 2, color: 'error.main', fontWeight: 500 }}>
-                  Alergias (Campo crítico de alerta)
-                </Typography>
-                <TextField
-                  label="Adicionar Alergia"
-                  value={novaAlergia}
-                  onChange={(e) => setNovaAlergia(e.target.value)}
-                  fullWidth
-                  margin="normal"
-                  placeholder="Digite o nome da alergia (ex: Dipirona, Penicilina)"
-                  onKeyPress={handleKeyPressAlergia}
-                  InputProps={{
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton
-                          onClick={handleAddAlergia}
-                          disabled={!novaAlergia.trim() || alergiasList.includes(novaAlergia.trim())}
-                          edge="end"
-                          color="primary"
-                          size="small"
-                        >
-                          <AddIcon />
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-                {alergiasList.length > 0 && (
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 2, mb: 1 }}>
-                    {alergiasList.map((alergia, index) => (
-                      <Chip
-                        key={index}
-                        label={alergia}
-                        onDelete={() => handleRemoveAlergia(alergia)}
-                        deleteIcon={<CloseIcon />}
-                        color="error"
-                        variant="outlined"
-                        sx={{ fontSize: '0.875rem' }}
-                      />
-                    ))}
+                <Box sx={{ mt: 2, mb: 2 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="h6" sx={{ color: 'error.main', fontWeight: 600 }}>
+                      ⚠️ Alergias a Medicamentos
+                    </Typography>
+                    <Button
+                      variant="contained"
+                      color="warning"
+                      size="small"
+                      startIcon={<WarningIcon />}
+                      onClick={() => setOpenAlergiaModal(true)}
+                    >
+                      Gerenciar Alergias
+                    </Button>
                   </Box>
-                )}
-                {alergiasList.length === 0 && (
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 1 }}>
-                    Nenhuma alergia cadastrada. Use o campo acima para adicionar alergias.
-                  </Typography>
-                )}
+                  
+                  <Alert severity="warning" sx={{ mb: 2 }}>
+                    <Typography variant="body2">
+                      Use o botão acima para cadastrar alergias com princípio ativo. Isso permite verificação automática durante prescrições.
+                    </Typography>
+                  </Alert>
+
+                  {alergiasPaciente.length > 0 ? (
+                    <Box>
+                      <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1.5 }}>
+                        Alergias Cadastradas ({alergiasPaciente.length}):
+                      </Typography>
+                      <List dense>
+                        {alergiasPaciente.map((alergia) => (
+                          <ListItem
+                            key={alergia.id}
+                            sx={{
+                              border: '1px solid',
+                              borderColor: 'error.main',
+                              borderRadius: 1,
+                              mb: 1,
+                              bgcolor: 'error.light',
+                              '&:hover': {
+                                bgcolor: 'error.light',
+                              },
+                            }}
+                            secondaryAction={
+                              <IconButton
+                                edge="end"
+                                size="small"
+                                onClick={() => {
+                                  setAlergiaParaExcluir(alergia);
+                                  setOpenConfirmarExclusaoAlergia(true);
+                                }}
+                              >
+                                <CloseIcon fontSize="small" />
+                              </IconButton>
+                            }
+                          >
+                            <ListItemText
+                              primary={
+                                <Typography variant="body2" fontWeight="bold">
+                                  {alergia.nomeMedicamento}
+                                </Typography>
+                              }
+                              secondary={
+                                <Box>
+                                  <Typography variant="caption" color="text.secondary" display="block">
+                                    <strong>Princípio Ativo:</strong> {alergia.principioAtivo}
+                                  </Typography>
+                                  {alergia.classeQuimica && (
+                                    <Typography variant="caption" color="text.secondary" display="block">
+                                      <strong>Classe Química:</strong> {alergia.classeQuimica}
+                                    </Typography>
+                                  )}
+                                  {alergia.excipientes && (
+                                    <Typography variant="caption" color="text.secondary" display="block">
+                                      <strong>Excipientes:</strong> {alergia.excipientes}
+                                    </Typography>
+                                  )}
+                                  {alergia.observacoes && (
+                                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                                      {alergia.observacoes}
+                                    </Typography>
+                                  )}
+                                </Box>
+                              }
+                            />
+                          </ListItem>
+                        ))}
+                      </List>
+                    </Box>
+                  ) : (
+                    <Alert severity="info">
+                      <Typography variant="body2">
+                        Nenhuma alergia cadastrada no novo sistema. Use o botão "Gerenciar Alergias" para cadastrar.
+                      </Typography>
+                    </Alert>
+                  )}
+
+                </Box>
               </Grid>
               <Grid item xs={12}>
                 <TextField
@@ -2628,12 +2804,115 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
         </DialogActions>
       </Dialog>
 
+      {/* Modal de Alerta de Horário */}
+      <Dialog
+        open={openModalAlertaHorario}
+        onClose={handleCancelarIniciarAtendimento}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <WarningIcon color="warning" />
+            <Typography variant="h6" fontWeight="bold">
+              Atenção: Horário Fora do Agendado
+            </Typography>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          {infoAlertaHorario && (
+            <Box>
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                <Typography variant="body1" gutterBottom>
+                  O atendimento está sendo iniciado <strong>{infoAlertaHorario.estaAtrasado ? 'atrasado' : 'adiantado'}</strong> em relação ao horário agendado.
+                </Typography>
+              </Alert>
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  <strong>Horário Agendado:</strong> {infoAlertaHorario.horarioAgendado}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  <strong>Horário Atual:</strong> {moment().format('DD/MM/YYYY [às] HH:mm')}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  <strong>Diferença:</strong> {infoAlertaHorario.diferencaFormatada} ({infoAlertaHorario.diferencaMinutos} minutos)
+                </Typography>
+              </Box>
+              <Alert severity="info" sx={{ mt: 2 }}>
+                <Typography variant="body2">
+                  Deseja continuar e iniciar o atendimento mesmo assim?
+                </Typography>
+              </Alert>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={handleCancelarIniciarAtendimento}
+            variant="outlined"
+            color="inherit"
+          >
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleConfirmarIniciarApesarHorario}
+            variant="contained"
+            color="warning"
+            startIcon={<PlayArrowIcon />}
+          >
+            Iniciar Mesmo Assim
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Modal de Pergunta sobre Alergias */}
+      <Dialog
+        open={openPerguntaAlergiaModal}
+        onClose={() => setOpenPerguntaAlergiaModal(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box display="flex" alignItems="center" gap={1}>
+            <WarningIcon color="warning" />
+            <Typography variant="h6">Alergia a Medicamentos</Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ mb: 2 }}>
+            O paciente possui alguma alergia a algum medicamento?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setOpenPerguntaAlergiaModal(false);
+            }}
+            variant="outlined"
+          >
+            Não
+          </Button>
+          <Button
+            onClick={() => {
+              setOpenPerguntaAlergiaModal(false);
+              setOpenAlergiaModal(true);
+            }}
+            variant="contained"
+            color="warning"
+            startIcon={<WarningIcon />}
+          >
+            Sim
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Modal de Prescrição */}
       <Dialog 
         open={openPrescricaoModal} 
         onClose={() => {
           setOpenPrescricaoModal(false);
           setTextoPrescricao('');
+          setMostrouPerguntaAlergia(false);
         }}
         maxWidth="md"
         fullWidth
@@ -2644,12 +2923,77 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
             <IconButton onClick={() => {
               setOpenPrescricaoModal(false);
               setTextoPrescricao('');
+              setMostrouPerguntaAlergia(false);
             }}>
               <CloseIcon />
             </IconButton>
           </Box>
         </DialogTitle>
-        <DialogContent dividers>
+        <DialogContent dividers sx={{ overflow: 'visible' }}>
+          {alergiasPaciente.length > 0 && (
+            <Alert 
+              severity="error" 
+              icon={<WarningIcon />} 
+              sx={{ 
+                mb: 2,
+                flexShrink: 0,
+                '& .MuiAlert-message': {
+                  width: '100%',
+                }
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+                <Typography variant="subtitle2" fontWeight="bold" sx={{ whiteSpace: 'nowrap' }}>
+                  Alergias Conhecidas ({alergiasPaciente.length}):
+                </Typography>
+                <Box 
+                  sx={{ 
+                    display: 'flex', 
+                    flexWrap: 'wrap', 
+                    gap: 0.75,
+                    maxHeight: 80,
+                    overflowY: 'auto',
+                    overflowX: 'hidden',
+                    pr: 0.5,
+                    '&::-webkit-scrollbar': {
+                      width: '6px',
+                    },
+                    '&::-webkit-scrollbar-track': {
+                      backgroundColor: 'rgba(0,0,0,0.05)',
+                      borderRadius: '3px',
+                    },
+                    '&::-webkit-scrollbar-thumb': {
+                      backgroundColor: 'rgba(0,0,0,0.2)',
+                      borderRadius: '3px',
+                      '&:hover': {
+                        backgroundColor: 'rgba(0,0,0,0.3)',
+                      },
+                    },
+                  }}
+                >
+                  {alergiasPaciente.map((alergia) => (
+                    <Chip
+                      key={alergia.id}
+                      label={alergia.principioAtivo || alergia.nomeMedicamento}
+                      color="error"
+                      size="small"
+                      variant="outlined"
+                      title={`${alergia.nomeMedicamento} - ${alergia.principioAtivo}${alergia.classeQuimica ? ` (Classe: ${alergia.classeQuimica})` : ''}`}
+                      sx={{ 
+                        fontWeight: 600,
+                        borderWidth: 2,
+                        flexShrink: 0,
+                        '&:hover': {
+                          backgroundColor: 'error.light',
+                        }
+                      }}
+                    />
+                  ))}
+                </Box>
+              </Box>
+            </Alert>
+          )}
+
           <Box sx={{ mb: 2 }}>
             <Typography variant="body2" color="text.secondary" gutterBottom>
               Paciente: <strong>{agendamento?.paciente.nome}</strong>
@@ -2659,7 +3003,16 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
             </Typography>
           </Box>
 
-          <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+          <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', gap: 1 }}>
+            <Button
+              variant="outlined"
+              color="warning"
+              startIcon={<WarningIcon />}
+              onClick={() => setOpenAlergiaModal(true)}
+              disabled={!agendamento?.paciente}
+            >
+              Cadastrar Alergia
+            </Button>
             <Button
               variant="outlined"
               startIcon={<MedicationIcon />}
@@ -2714,13 +3067,13 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
 
                 console.log('Todos os dados validados, salvando prescrição...');
                 // Salvar prescrição no banco de dados
-                // Se não houver agendamento, salvar como prescrição avulsa (agendamentoId = undefined)
+                // Se houver agendamento, vincular a prescrição ao atendimento
                 try {
                   await createPrescricao({
                     conteudo: textoPrescricao.trim(),
                     pacienteId: agendamento.paciente.id,
                     doutorId: doutorAtual.id,
-                    agendamentoId: undefined, // Sempre salvar como prescrição avulsa quando criada pelo modal "Nova Prescrição"
+                    agendamentoId: agendamento.id, // Vincular prescrição ao atendimento quando criada durante um atendimento
                   });
                   console.log('Prescrição salva com sucesso');
                 } catch (error) {
@@ -3227,6 +3580,59 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Modal de Alergia */}
+      <AlergiaFormModal
+        open={openAlergiaModal}
+        onClose={() => setOpenAlergiaModal(false)}
+        paciente={agendamento?.paciente || null}
+        onAlergiaCadastrada={async () => {
+          if (agendamento?.paciente) {
+            const alergias = await getAlergiasByPaciente(agendamento.paciente.id);
+            setAlergiasPaciente(alergias);
+          }
+        }}
+      />
+
+      {/* Modal de Alerta de Alergia - Bloqueia prescrição */}
+      {alergiaAlertaInfo && (
+        <AlergiaAlertaModal
+          open={openAlergiaAlertaModal}
+          onClose={() => {
+            setOpenAlergiaAlertaModal(false);
+            setAlergiaAlertaInfo(null);
+          }}
+          medicamentoNome={alergiaAlertaInfo.medicamentoNome}
+          verificacao={alergiaAlertaInfo.verificacao}
+        />
+      )}
+
+      {/* Modal de Confirmação de Exclusão de Alergia */}
+      <ConfirmarExclusaoAlergiaModal
+        open={openConfirmarExclusaoAlergia}
+        onClose={() => {
+          setOpenConfirmarExclusaoAlergia(false);
+          setAlergiaParaExcluir(null);
+        }}
+        onConfirm={async (justificativa) => {
+          if (!alergiaParaExcluir) return;
+          setLoadingExclusaoAlergia(true);
+          try {
+            await deleteAlergia(alergiaParaExcluir.id, justificativa);
+            setAlergiasPaciente((prev) => prev.filter((a) => a.id !== alergiaParaExcluir.id));
+            toast.success('Alergia removida com sucesso');
+            setOpenConfirmarExclusaoAlergia(false);
+            setAlergiaParaExcluir(null);
+          } catch (error: any) {
+            console.error('Erro ao remover alergia:', error);
+            toast.error(error.response?.data?.message || 'Erro ao remover alergia');
+          } finally {
+            setLoadingExclusaoAlergia(false);
+          }
+        }}
+        alergia={alergiaParaExcluir}
+        loading={loadingExclusaoAlergia}
+      />
     </>
   );
 };

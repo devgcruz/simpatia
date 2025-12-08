@@ -67,6 +67,7 @@ model Doutor {
   email         String  @unique
   senha         String
   especialidade String?
+  fotoPerfil    String? // URL da foto de perfil
 
   role  Role    @default(DOUTOR)
   ativo Boolean @default(true)
@@ -152,6 +153,7 @@ model Paciente {
   prescricoes  Prescricao[]
   chatStatus   ChatStatus          @default(BOT)
   chatMessages ChatMessage[]
+  alergiasMedicamentos AlergiaMedicamento[]
 
   clinicaId Int?
   clinica   Clinica? @relation(fields: [clinicaId], references: [id], onDelete: Cascade)
@@ -308,9 +310,38 @@ model Medicamento {
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 
+  alergias AlergiaMedicamento[]
+
   @@index([nomeProduto])
   @@index([numeroRegistroProduto])
   @@index([classeTerapeutica])
+  @@index([ativo])
+}
+
+model AlergiaMedicamento {
+  id            Int       @id @default(autoincrement())
+  pacienteId    Int
+  medicamentoId Int?
+  nomeMedicamento String  // Nome do medicamento (pode ser de um medicamento cadastrado ou livre)
+  principioAtivo String   @db.Text // Princípio ativo (OBRIGATÓRIO - base da verificação)
+  classeQuimica String?  @db.Text // Classe química/farmacológica (para reatividade cruzada)
+  excipientes   String?  @db.Text // Excipientes/aditivos (ex: látex, corantes, lactose, etc.)
+  observacoes   String?  @db.Text // Observações sobre a alergia
+  cadastradoPor Int      // ID do doutor que cadastrou
+  ativo         Boolean  @default(true) // Soft delete: true = ativo, false = deletado
+  deletadoPor   Int?     // ID do doutor que deletou
+  justificativaExclusao String? @db.Text // Justificativa para exclusão
+  deletadoEm    DateTime? // Data e hora da exclusão
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  paciente   Paciente    @relation(fields: [pacienteId], references: [id], onDelete: Cascade)
+  medicamento Medicamento? @relation(fields: [medicamentoId], references: [id], onDelete: SetNull)
+
+  @@index([pacienteId])
+  @@index([medicamentoId])
+  @@index([nomeMedicamento])
+  @@index([principioAtivo])
   @@index([ativo])
 }
 

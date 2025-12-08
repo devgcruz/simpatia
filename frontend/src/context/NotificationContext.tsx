@@ -72,7 +72,7 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
     if (event.action === 'created' && agendamento && agendamento.id) {
       // Verificar se já processamos este agendamento (evitar duplicação)
       const agendamentoId = agendamento.id;
-      const eventKey = getEventKey(agendamentoId, agendamento.dataHora);
+      const eventKey = `created-${agendamentoId}-${agendamento.dataHora}`;
       
       if (processedEventsRef.current.has(eventKey)) {
         console.log('[NotificationContext] Evento já processado, ignorando:', eventKey);
@@ -139,6 +139,54 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
         body: `${agendamento.paciente?.nome || 'Paciente'} - ${dataHoraFormatada}`,
         icon: '/icon-192x192.svg',
         tag: `agendamento-cancelado-${agendamento.id}`,
+        soundType: 'appointment', // Usar som de agendamento
+        data: {
+          agendamentoId: agendamento.id,
+          doutorId: event.doutorId,
+          url: '/atendimento-do-dia',
+        },
+      };
+    }
+    // 3. Reagendamentos e outras atualizações (quando dataHora ou status mudam)
+    else if (event.action === 'updated' && agendamento && agendamento.id && agendamento.status !== 'cancelado') {
+      // Verificar se já processamos esta atualização (evitar duplicação)
+      const agendamentoId = agendamento.id;
+      const eventKey = `updated-${agendamentoId}-${agendamento.dataHora}-${agendamento.status}`;
+      
+      if (processedEventsRef.current.has(eventKey)) {
+        console.log('[NotificationContext] Atualização já processada, ignorando:', eventKey);
+        return;
+      }
+
+      // Marcar como processado
+      processedEventsRef.current.add(eventKey);
+      console.log('[NotificationContext] Processando atualização de agendamento:', eventKey);
+      
+      // Limpar cache antigo
+      if (processedEventsRef.current.size > 100) {
+        const firstKey = Array.from(processedEventsRef.current)[0];
+        processedEventsRef.current.delete(firstKey);
+      }
+
+      // Formatar data/hora do agendamento
+      const dataHora = moment(agendamento.dataHora);
+      const dataHoraFormatada = dataHora.format('DD/MM/YYYY [às] HH:mm');
+
+      // Determinar o título baseado no status
+      let title = 'Agendamento Atualizado';
+      if (agendamento.status === 'confirmado') {
+        title = 'Agendamento Confirmado';
+      } else if (agendamento.status === 'encaixe_pendente') {
+        title = 'Encaixe Pendente';
+      } else if (agendamento.status === 'encaixe_confirmed') {
+        title = 'Encaixe Confirmado';
+      }
+
+      notificationData = {
+        title: title,
+        body: `${agendamento.paciente?.nome || 'Paciente'} - ${dataHoraFormatada}`,
+        icon: '/icon-192x192.svg',
+        tag: `agendamento-updated-${agendamento.id}`,
         soundType: 'appointment', // Usar som de agendamento
         data: {
           agendamentoId: agendamento.id,

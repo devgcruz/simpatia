@@ -39,10 +39,10 @@ export const ChatList: React.FC<ChatListProps> = ({
 }) => {
   const conversasFiltradas = termoBusca
     ? conversas.filter(
-        (c) =>
-          obterNomeConversa(c).toLowerCase().includes(termoBusca.toLowerCase()) ||
-          c.descricao?.toLowerCase().includes(termoBusca.toLowerCase())
-      )
+      (c) =>
+        obterNomeConversa(c).toLowerCase().includes(termoBusca.toLowerCase()) ||
+        c.descricao?.toLowerCase().includes(termoBusca.toLowerCase())
+    )
     : conversas;
 
   const conversasValidas = conversasFiltradas.filter((conversa) => {

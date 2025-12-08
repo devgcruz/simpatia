@@ -25,6 +25,7 @@ export const useChatWidget = () => {
 
     // Refs for state access inside callbacks/effects without dependencies
     const conversasRef = useRef<ConversaInterna[]>([]);
+    const conversaSelecionadaRef = useRef<ConversaInterna | null>(null);
     const notificacoesAtivasRef = useRef<Map<number, Notification>>(new Map());
 
     // Derived state - cálculo direto para garantir atualização imediata
@@ -43,10 +44,14 @@ export const useChatWidget = () => {
         });
     }, [totalMensagensNaoLidas, conversas]);
 
-    // Sync ref
+    // Sync refs
     useEffect(() => {
         conversasRef.current = conversas;
     }, [conversas]);
+
+    useEffect(() => {
+        conversaSelecionadaRef.current = conversaSelecionada;
+    }, [conversaSelecionada]);
 
     // Helpers
     const obterNomeConversa = useCallback((conversa: ConversaInterna): string => {
@@ -227,7 +232,9 @@ export const useChatWidget = () => {
                 const msgConversaId = Number(mensagem.conversaId);
                 const msgRemetenteId = Number(mensagem.remetenteId);
                 const userId = Number(user.id);
-                const conversaSelecionadaId = conversaSelecionada ? Number(conversaSelecionada.id) : null;
+                // Usar ref para obter o valor mais recente
+                const conversaAtual = conversaSelecionadaRef.current;
+                const conversaSelecionadaId = conversaAtual ? Number(conversaAtual.id) : null;
 
                 console.log('[useChatWidget] Processing message:', {
                     msgConversaId,
@@ -240,7 +247,16 @@ export const useChatWidget = () => {
                 // 1. Message for currently open conversation
                 if (msgConversaId === conversaSelecionadaId && aberto) {
                     console.log('[useChatWidget] Updating open conversation');
-                    setMensagens((prev) => [...prev, mensagem]);
+                    // Verificar se a mensagem já existe para evitar duplicatas
+                    setMensagens((prev) => {
+                        const existe = prev.some((m) => m.id === mensagem.id);
+                        if (existe) {
+                            console.log('[useChatWidget] Mensagem já existe, ignorando duplicata');
+                            return prev;
+                        }
+                        console.log('[useChatWidget] Adicionando nova mensagem ao array');
+                        return [...prev, mensagem];
+                    });
                     marcarMensagensComoLidas(msgConversaId);
 
                     atualizarConversas((prev) =>
@@ -496,6 +512,25 @@ export const useChatWidget = () => {
         }
     }, [aberto, carregarConversas, carregarUsuariosDisponiveis, carregarUsuariosOnline, limparTodasNotificacoes]);
 
+    // Recarregar mensagens quando o chat é aberto e há uma conversa selecionada
+    // Isso garante que mensagens recebidas enquanto o chat estava fechado sejam exibidas
+    useEffect(() => {
+        if (aberto && conversaSelecionada) {
+            console.log('[useChatWidget] Chat aberto com conversa selecionada, recarregando mensagens da conversa:', conversaSelecionada.id);
+            
+            // Zerar mensagens não lidas imediatamente (otimista)
+            atualizarConversas((prev) =>
+                prev.map((c) =>
+                    c.id === conversaSelecionada.id ? { ...c, mensagensNaoLidas: 0 } : c
+                )
+            );
+            
+            // Carregar mensagens e marcar como lidas
+            carregarMensagens(conversaSelecionada.id);
+            marcarMensagensComoLidas(conversaSelecionada.id);
+        }
+    }, [aberto, conversaSelecionada?.id, carregarMensagens, marcarMensagensComoLidas, atualizarConversas]);
+
     // Atualizar lista de usuários online periodicamente (a cada 30 segundos)
     useEffect(() => {
         if (!aberto) return;
@@ -506,6 +541,23 @@ export const useChatWidget = () => {
 
         return () => clearInterval(interval);
     }, [aberto, carregarUsuariosOnline]);
+
+    // Zerar mensagens não lidas quando o input receber foco
+    const zerarMensagensNaoLidasAoFocarInput = useCallback(() => {
+        if (conversaSelecionada && aberto) {
+            console.log('[useChatWidget] Input recebeu foco, zerando mensagens não lidas da conversa:', conversaSelecionada.id);
+            
+            // Zerar mensagens não lidas imediatamente (otimista)
+            atualizarConversas((prev) =>
+                prev.map((c) =>
+                    c.id === conversaSelecionada.id ? { ...c, mensagensNaoLidas: 0 } : c
+                )
+            );
+            
+            // Marcar como lidas no backend
+            marcarMensagensComoLidas(conversaSelecionada.id);
+        }
+    }, [conversaSelecionada, aberto, atualizarConversas, marcarMensagensComoLidas]);
 
     return {
         // State
@@ -531,5 +583,6 @@ export const useChatWidget = () => {
         iniciarDigitando: () => conversaSelecionada && iniciarDigitando(conversaSelecionada.id),
         pararDigitando: () => conversaSelecionada && pararDigitando(conversaSelecionada.id),
         obterNomeConversa,
+        zerarMensagensNaoLidasAoFocarInput,
     };
 };

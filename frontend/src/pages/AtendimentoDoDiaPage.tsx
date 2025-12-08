@@ -45,6 +45,7 @@ import { AgendamentoFormModal } from '../components/agendamentos/AgendamentoForm
 import { HistoricoPacienteModal } from '../components/pacientes/HistoricoPacienteModal';
 import { ProntuarioModal } from '../components/pacientes/ProntuarioModal';
 import { finalizeAgendamento } from '../services/agendamento.service';
+import { getAlergiasByPaciente, IAlergiaMedicamento } from '../services/alergia.service';
 
 moment.locale('pt-br');
 
@@ -421,6 +422,35 @@ export const AtendimentoDoDiaPage: React.FC = () => {
       .filter((a) => a.length > 0);
   };
 
+  // Estado para armazenar alergias dos pacientes
+  const [alergiasPorPaciente, setAlergiasPorPaciente] = useState<Record<number, IAlergiaMedicamento[]>>({});
+
+  // Carregar alergias dos pacientes quando os agendamentos mudarem
+  useEffect(() => {
+    const loadAlergias = async () => {
+      const pacientesIds = new Set(agendamentos.map(ag => ag.paciente.id));
+      const alergiasMap: Record<number, IAlergiaMedicamento[]> = {};
+
+      await Promise.all(
+        Array.from(pacientesIds).map(async (pacienteId) => {
+          try {
+            const alergias = await getAlergiasByPaciente(pacienteId);
+            alergiasMap[pacienteId] = alergias;
+          } catch (error) {
+            console.error(`Erro ao carregar alergias do paciente ${pacienteId}:`, error);
+            alergiasMap[pacienteId] = [];
+          }
+        })
+      );
+
+      setAlergiasPorPaciente(alergiasMap);
+    };
+
+    if (agendamentos.length > 0) {
+      loadAlergias();
+    }
+  }, [agendamentos]);
+
   const agendamentosPassados = useMemo(() => {
     const dataSelecionadaMoment = moment(dataSelecionada);
     const agora = moment();
@@ -674,29 +704,50 @@ export const AtendimentoDoDiaPage: React.FC = () => {
                                 {agendamento.paciente.telefone}
                               </Typography>
                             </Stack>
-                            {agendamento.paciente.alergias && parseAlergias(agendamento.paciente.alergias).length > 0 && (
-                              <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap">
-                                <WarningIcon color="error" fontSize="small" />
-                                <Typography variant="caption" color="error" fontWeight="bold">
-                                  Alergias:
-                                </Typography>
-                                {parseAlergias(agendamento.paciente.alergias).slice(0, 2).map((alergia, idx) => (
-                                  <Chip
-                                    key={idx}
-                                    label={alergia}
-                                    size="small"
-                                    color="error"
-                                    variant="outlined"
-                                    sx={{ fontSize: '0.65rem', height: 20 }}
-                                  />
-                                ))}
-                                {parseAlergias(agendamento.paciente.alergias).length > 2 && (
-                                  <Typography variant="caption" color="text.secondary">
-                                    +{parseAlergias(agendamento.paciente.alergias).length - 2}
+                            {(() => {
+                              const alergias = alergiasPorPaciente[agendamento.paciente.id] || [];
+                              const alergiasAntigas = parseAlergias(agendamento.paciente.alergias);
+                              const temAlergias = alergias.length > 0 || alergiasAntigas.length > 0;
+
+                              if (!temAlergias) return null;
+
+                              return (
+                                <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap">
+                                  <WarningIcon color="error" fontSize="small" />
+                                  <Typography variant="caption" color="error" fontWeight="bold">
+                                    Alergias:
                                   </Typography>
-                                )}
-                              </Stack>
-                            )}
+                                  {/* Mostrar alergias do novo sistema (princípio ativo) */}
+                                  {alergias.slice(0, 2).map((alergia) => (
+                                    <Chip
+                                      key={alergia.id}
+                                      label={alergia.principioAtivo || alergia.nomeMedicamento}
+                                      size="small"
+                                      color="error"
+                                      variant="outlined"
+                                      sx={{ fontSize: '0.65rem', height: 20 }}
+                                      title={`${alergia.nomeMedicamento} - ${alergia.principioAtivo}`}
+                                    />
+                                  ))}
+                                  {/* Mostrar alergias antigas se não houver do novo sistema */}
+                                  {alergias.length === 0 && alergiasAntigas.slice(0, 2).map((alergia, idx) => (
+                                    <Chip
+                                      key={`old-${idx}`}
+                                      label={alergia}
+                                      size="small"
+                                      color="error"
+                                      variant="outlined"
+                                      sx={{ fontSize: '0.65rem', height: 20 }}
+                                    />
+                                  ))}
+                                  {(alergias.length > 2 || (alergias.length === 0 && alergiasAntigas.length > 2)) && (
+                                    <Typography variant="caption" color="text.secondary">
+                                      +{alergias.length > 0 ? alergias.length - 2 : alergiasAntigas.length - 2}
+                                    </Typography>
+                                  )}
+                                </Stack>
+                              );
+                            })()}
                             <Chip
                               label={getStatusLabel(agendamento.status)}
                               color={getStatusColor(agendamento.status)}

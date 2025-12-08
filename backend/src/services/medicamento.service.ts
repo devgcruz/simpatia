@@ -204,6 +204,61 @@ class MedicamentoService {
 
     return medicamentos;
   }
+
+  async getPrincipiosAtivos(busca?: string) {
+    const where: any = {
+      ativo: true,
+      principioAtivo: {
+        not: null,
+      },
+    };
+
+    if (busca && busca.trim()) {
+      where.principioAtivo = {
+        contains: busca.trim(),
+        mode: 'insensitive',
+      };
+    }
+
+    const medicamentos = await prisma.medicamento.findMany({
+      where,
+      select: {
+        principioAtivo: true,
+      },
+      orderBy: {
+        principioAtivo: 'asc',
+      },
+      take: 200, // Buscar mais para depois filtrar
+    });
+
+    // Extrair e filtrar princípios ativos únicos
+    const principiosAtivos = medicamentos
+      .map((m) => m.principioAtivo)
+      .filter((pa): pa is string => pa !== null && pa.trim() !== '')
+      .filter((pa, index, self) => {
+        // Remover duplicatas (case-insensitive)
+        const paLower = pa.toLowerCase();
+        return self.findIndex((p) => p.toLowerCase() === paLower) === index;
+      })
+      .slice(0, 50) // Limitar a 50 resultados finais
+      .sort();
+
+    return principiosAtivos;
+  }
+
+  async verificarPrincipioAtivoExiste(principioAtivo: string): Promise<boolean> {
+    const medicamento = await prisma.medicamento.findFirst({
+      where: {
+        ativo: true,
+        principioAtivo: {
+          equals: principioAtivo.trim(),
+          mode: 'insensitive',
+        },
+      },
+    });
+
+    return !!medicamento;
+  }
 }
 
 export default new MedicamentoService();

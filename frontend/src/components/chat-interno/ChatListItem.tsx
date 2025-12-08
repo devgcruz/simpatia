@@ -20,16 +20,38 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
   isUsuarioOnline,
   userId,
 }) => {
+  // Obter o outro participante (para conversas individuais)
+  const outroParticipante = React.useMemo(() => {
+    if (conversa.tipo === 'GRUPO' || !userId) {
+      return null;
+    }
+    return conversa.participantes?.find((p) => p.usuarioId !== userId);
+  }, [conversa, userId]);
+
   // Verificar se o outro participante está online (apenas para conversas individuais)
   const outroParticipanteOnline = React.useMemo(() => {
-    if (conversa.tipo === 'GRUPO' || !isUsuarioOnline || !userId) {
+    if (conversa.tipo === 'GRUPO' || !isUsuarioOnline || !userId || !outroParticipante) {
       return false;
     }
-    const outroParticipante = conversa.participantes?.find(
-      (p) => p.usuarioId !== userId
-    );
-    return outroParticipante ? isUsuarioOnline(outroParticipante.usuarioId) : false;
-  }, [conversa, isUsuarioOnline, userId]);
+    return isUsuarioOnline(outroParticipante.usuarioId);
+  }, [conversa, isUsuarioOnline, userId, outroParticipante]);
+
+  // Obter foto de perfil do outro participante (para conversas individuais)
+  const fotoPerfil = React.useMemo(() => {
+    if (conversa.tipo === 'GRUPO') {
+      return null;
+    }
+    return outroParticipante?.usuario?.fotoPerfil || null;
+  }, [conversa.tipo, outroParticipante]);
+
+  // Obter inicial do nome para fallback
+  const inicialNome = React.useMemo(() => {
+    if (conversa.tipo === 'GRUPO') {
+      return null;
+    }
+    const nome = outroParticipante?.usuario?.nome || '';
+    return nome.charAt(0).toUpperCase();
+  }, [conversa.tipo, outroParticipante]);
   const ultimaMensagem = conversa.mensagens && conversa.mensagens.length > 0 
     ? conversa.mensagens[0].conteudo 
     : 'Nenhuma mensagem';
@@ -85,6 +107,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
           }}
         >
           <Avatar
+            src={fotoPerfil || undefined}
             sx={{
               width: 48,
               height: 48,
@@ -96,7 +119,11 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
               }),
             }}
           >
-            {conversa.tipo === 'GRUPO' ? <GroupIcon /> : <PersonIcon />}
+            {conversa.tipo === 'GRUPO' ? (
+              <GroupIcon />
+            ) : fotoPerfil ? null : (
+              inicialNome || <PersonIcon />
+            )}
           </Avatar>
         </Badge>
       </ListItemAvatar>

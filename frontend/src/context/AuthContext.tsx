@@ -1,5 +1,5 @@
 // src/context/AuthContext.tsx
-import React, { createContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useState, useEffect, ReactNode } from 'react';
 import { api } from '../services/api';
 import { IAuthContext, IUser } from './types';
 import { disconnectWebSocket } from '../hooks/useWebSocket';
@@ -29,6 +29,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     checkAuthStatus();
   }, []);
+
+  const refreshUser = async () => {
+    try {
+      const response = await api.get('/auth/me');
+      const userData: IUser = response.data;
+      setUser(userData);
+    } catch (error) {
+      console.error('Erro ao atualizar dados do usuário:', error);
+    }
+  };
 
   const login = async (email: string, senha: string) => {
     setIsLoading(true);
@@ -72,6 +82,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     isLoading,
     login,
     logout,
+    refreshUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

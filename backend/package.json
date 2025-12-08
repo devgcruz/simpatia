@@ -14,7 +14,9 @@
     "test-api-login": "ts-node-dev --transpile-only scripts/test-api-login.ts",
     "import-medicamentos": "ts-node-dev --transpile-only scripts/import-medicamentos.ts",
     "fix-medicamentos-encoding": "ts-node-dev --transpile-only scripts/fix-medicamentos-encoding.ts",
-    "reimport-medicamentos": "ts-node-dev --transpile-only scripts/reimport-medicamentos-correct-encoding.ts"
+    "reimport-medicamentos": "ts-node-dev --transpile-only scripts/reimport-medicamentos-correct-encoding.ts",
+    "verificar-duplicatas-medicamentos": "ts-node-dev --transpile-only src/scripts/verificar-duplicatas-medicamentos.ts",
+    "limpar-duplicatas-medicamentos": "ts-node-dev --transpile-only src/scripts/limpar-duplicatas-medicamentos.ts"
   },
   "keywords": [],
   "author": "",

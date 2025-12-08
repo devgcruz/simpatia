@@ -99,12 +99,13 @@ class AgendamentoController {
             const agendamentoAtualizado = await agendamentoService.update(id, data, user);
             
             // Emitir evento WebSocket para atualização em tempo real
-            const action = data.status === 'cancelado' ? 'updated' : 'updated';
+            // Sempre usar 'updated' - o frontend detectará cancelamentos pelo status
+            console.log(`[Agendamento Controller] Emitindo evento WebSocket para update: agendamentoId=${agendamentoAtualizado.id}, status=${agendamentoAtualizado.status}, doutorId=${agendamentoAtualizado.doutorId}`);
             emitAgendamentoEvent({
                 id: agendamentoAtualizado.id,
                 doutorId: agendamentoAtualizado.doutorId,
-                clinicaId: user.clinicaId,
-                action,
+                clinicaId: user.clinicaId || agendamentoAtualizado.doutor?.clinicaId || agendamentoAtualizado.paciente?.clinicaId,
+                action: 'updated',
                 agendamento: agendamentoAtualizado,
             });
 

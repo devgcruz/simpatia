@@ -25,12 +25,17 @@ import {
   FormControlLabel,
   FormLabel,
   Alert,
+  List,
+  ListItem,
+  ListItemText,
+  CircularProgress,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import WarningIcon from '@mui/icons-material/Warning';
 import moment from 'moment';
 import { IPaciente, IDoutor } from '../../types/models';
 import { getDoutores } from '../../services/doutor.service';
@@ -59,7 +64,6 @@ const steps = [
   'Dados Pessoais',
   'Contato e Endereço',
   'Informações Clínicas',
-  'Alergias',
   'Restrições',
   'Revisão e Confirmação',
 ];
@@ -74,7 +78,6 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
   const [activeStep, setActiveStep] = useState(0);
   
   // Estados para perguntas obrigatórias
-  const [temAlergia, setTemAlergia] = useState<string>('');
   const [temRestricao, setTemRestricao] = useState<string>('');
   
   const [form, setForm] = useState<Omit<IPaciente, 'id' | 'clinicaId'>>({
@@ -101,8 +104,6 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
   
   const [doutores, setDoutores] = useState<IDoutor[]>([]);
   const [loadingDoutores, setLoadingDoutores] = useState(false);
-  const [alergiasList, setAlergiasList] = useState<string[]>([]);
-  const [novaAlergia, setNovaAlergia] = useState<string>('');
   const [restricoes, setRestricoes] = useState<string>('');
 
   useEffect(() => {
@@ -122,39 +123,16 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
     }
   }, [open, isDoutor]);
 
-  // Função para converter string de alergias em array
-  const parseAlergias = (alergiasString: string): string[] => {
-    if (!alergiasString || alergiasString.trim() === '') return [];
-    return alergiasString
-      .split(',')
-      .map((a) => a.trim())
-      .filter((a) => a.length > 0);
-  };
-
-  // Função para converter array de alergias em string
-  const formatAlergias = (alergias: string[]): string => {
-    return alergias.join(', ');
-  };
-
   useEffect(() => {
     if (!open) {
-      setNovaAlergia('');
-      setActiveStep(0);
-      setTemAlergia('');
-      setTemRestricao('');
-      setRestricoes('');
       return;
     }
 
     if (initialData) {
-      const alergiasParsed = parseAlergias(initialData.alergias || '');
-      setAlergiasList(alergiasParsed);
-      setTemAlergia(alergiasParsed.length > 0 ? 'sim' : 'nao');
       // Separar restrições de observações (assumindo que restrições estão no início de observacoes)
       const obs = initialData.observacoes || '';
       setRestricoes(obs);
       setTemRestricao(obs.trim() ? 'sim' : 'nao');
-      setNovaAlergia('');
       setForm({
         nome: initialData.nome || '',
         telefone: initialData.telefone || '',
@@ -172,7 +150,7 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
         estado: initialData.estado || '',
         convenio: initialData.convenio || '',
         numeroCarteirinha: initialData.numeroCarteirinha || '',
-        alergias: formatAlergias(alergiasParsed),
+        alergias: initialData.alergias || '',
         observacoes: initialData.observacoes || '',
         doutorId: initialData.doutorId || (isSecretaria && doutorIdForcado ? doutorIdForcado : undefined),
         pesoKg: initialData.pesoKg ?? undefined,
@@ -182,9 +160,6 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
       const doutorIdInicial = isDoutor && user?.id 
         ? user.id 
         : (isSecretaria && doutorIdForcado ? doutorIdForcado : undefined);
-      setAlergiasList([]);
-      setNovaAlergia('');
-      setTemAlergia('');
       setTemRestricao('');
       setRestricoes('');
       setActiveStep(0);
@@ -262,28 +237,6 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
     return cep;
   };
 
-  const handleAddAlergia = () => {
-    const alergiaTrimmed = novaAlergia.trim();
-    if (alergiaTrimmed && !alergiasList.includes(alergiaTrimmed)) {
-      const novasAlergias = [...alergiasList, alergiaTrimmed];
-      setAlergiasList(novasAlergias);
-      setForm((prev) => ({ ...prev, alergias: formatAlergias(novasAlergias) }));
-      setNovaAlergia('');
-    }
-  };
-
-  const handleRemoveAlergia = (alergiaToRemove: string) => {
-    const novasAlergias = alergiasList.filter((a) => a !== alergiaToRemove);
-    setAlergiasList(novasAlergias);
-    setForm((prev) => ({ ...prev, alergias: formatAlergias(novasAlergias) }));
-  };
-
-  const handleKeyPressAlergia = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleAddAlergia();
-    }
-  };
 
   // Validação de etapas
   const validarEtapa = (etapa: number): boolean => {
@@ -294,9 +247,7 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
         return true; // Opcional
       case 2: // Informações Clínicas
         return true; // Opcional
-      case 3: // Alergias
-        return temAlergia !== '' && (temAlergia === 'nao' || alergiasList.length > 0);
-      case 4: // Restrições
+      case 3: // Restrições
         return temRestricao !== '' && (temRestricao === 'nao' || restricoes.trim().length > 0);
       default:
         return true;
@@ -335,7 +286,7 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
       ...form,
       cpf: form.cpf ? form.cpf.replace(/\D/g, '') : '',
       cep: form.cep ? form.cep.replace(/\D/g, '') : '',
-      alergias: formatAlergias(alergiasList),
+      alergias: form.alergias || '',
       observacoes: observacoesFinais,
       doutorId: isDoutor && !isEditing && user?.id 
         ? user.id 
@@ -626,97 +577,7 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
           </Box>
         );
 
-      case 3: // Alergias
-        return (
-          <Box>
-            <Typography variant="h6" sx={{ mb: 3, fontWeight: 600 }}>
-              Alergias
-            </Typography>
-            <Alert severity="info" sx={{ mb: 3 }}>
-              Esta informação é crítica para a segurança do paciente. Por favor, responda com atenção.
-            </Alert>
-            
-            <FormControl component="fieldset" fullWidth sx={{ mb: 3 }}>
-              <FormLabel component="legend" required>
-                O paciente possui alguma alergia?
-              </FormLabel>
-              <RadioGroup
-                value={temAlergia}
-                onChange={(e) => {
-                  setTemAlergia(e.target.value);
-                  if (e.target.value === 'nao') {
-                    setAlergiasList([]);
-                    setForm((prev) => ({ ...prev, alergias: '' }));
-                  }
-                }}
-                row
-              >
-                <FormControlLabel value="sim" control={<Radio />} label="Sim" />
-                <FormControlLabel value="nao" control={<Radio />} label="Não" />
-              </RadioGroup>
-            </FormControl>
-
-            {temAlergia === 'sim' && (
-              <Box>
-                <Typography variant="body2" sx={{ mb: 2, color: 'error.main', fontWeight: 500 }}>
-                  Descreva todas as alergias conhecidas:
-                </Typography>
-                <TextField
-                  label="Adicionar Alergia"
-                  value={novaAlergia}
-                  onChange={(e) => setNovaAlergia(e.target.value)}
-                  fullWidth
-                  margin="normal"
-                  placeholder="Digite o nome da alergia (ex: Dipirona, Penicilina)"
-                  onKeyPress={handleKeyPressAlergia}
-                  InputProps={{
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton
-                          onClick={handleAddAlergia}
-                          disabled={!novaAlergia.trim() || alergiasList.includes(novaAlergia.trim())}
-                          edge="end"
-                          color="primary"
-                          size="small"
-                        >
-                          <AddIcon />
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-                {alergiasList.length > 0 && (
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 2, mb: 1 }}>
-                    {alergiasList.map((alergia, index) => (
-                      <Chip
-                        key={index}
-                        label={alergia}
-                        onDelete={() => handleRemoveAlergia(alergia)}
-                        deleteIcon={<CloseIcon />}
-                        color="error"
-                        variant="outlined"
-                        sx={{ fontSize: '0.875rem' }}
-                      />
-                    ))}
-                  </Box>
-                )}
-                {alergiasList.length === 0 && (
-                  <Alert severity="warning" sx={{ mt: 2 }}>
-                    Por favor, adicione pelo menos uma alergia ou altere a resposta para "Não".
-                  </Alert>
-                )}
-              </Box>
-            )}
-
-            {temAlergia === '' && (
-              <Alert severity="warning" sx={{ mt: 2 }}>
-                Por favor, responda se o paciente possui alergias antes de continuar.
-              </Alert>
-            )}
-          </Box>
-        );
-
-      case 4: // Restrições
+      case 3: // Restrições
         return (
           <Box>
             <Typography variant="h6" sx={{ mb: 3, fontWeight: 600 }}>
@@ -805,22 +666,6 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
                   </Typography>
                 </Grid>
               )}
-              {alergiasList.length > 0 && (
-                <Grid item xs={12}>
-                  <Typography variant="subtitle2" color="error.main" sx={{ fontWeight: 600 }}>Alergias</Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
-                    {alergiasList.map((alergia, index) => (
-                      <Chip key={index} label={alergia} color="error" variant="outlined" />
-                    ))}
-                  </Box>
-                </Grid>
-              )}
-              {temAlergia === 'nao' && (
-                <Grid item xs={12}>
-                  <Typography variant="subtitle2" color="text.secondary">Alergias</Typography>
-                  <Typography variant="body1" sx={{ mb: 2 }}>Nenhuma alergia registrada</Typography>
-                </Grid>
-              )}
               {restricoes.trim() && (
                 <Grid item xs={12}>
                   <Typography variant="subtitle2" color="text.secondary">Restrições</Typography>
@@ -872,50 +717,7 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
               <Divider sx={{ my: 3 }} />
               {renderStepContent(2)}
               <Divider sx={{ my: 3 }} />
-              <Box>
-                <Typography variant="h6" sx={{ mb: 3, fontWeight: 600 }}>
-                  Alergias
-                </Typography>
-                <TextField
-                  label="Adicionar Alergia"
-                  value={novaAlergia}
-                  onChange={(e) => setNovaAlergia(e.target.value)}
-                  fullWidth
-                  margin="normal"
-                  placeholder="Digite o nome da alergia (ex: Dipirona, Penicilina)"
-                  onKeyPress={handleKeyPressAlergia}
-                  InputProps={{
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton
-                          onClick={handleAddAlergia}
-                          disabled={!novaAlergia.trim() || alergiasList.includes(novaAlergia.trim())}
-                          edge="end"
-                          color="primary"
-                          size="small"
-                        >
-                          <AddIcon />
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-                {alergiasList.length > 0 && (
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 2, mb: 1 }}>
-                    {alergiasList.map((alergia, index) => (
-                      <Chip
-                        key={index}
-                        label={alergia}
-                        onDelete={() => handleRemoveAlergia(alergia)}
-                        deleteIcon={<CloseIcon />}
-                        color="error"
-                        variant="outlined"
-                        sx={{ fontSize: '0.875rem' }}
-                      />
-                    ))}
-                  </Box>
-                )}
-              </Box>
+              {renderStepContent(3)}
             </Box>
           )}
         </DialogContent>
@@ -961,6 +763,7 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
           )}
         </DialogActions>
       </Box>
+
     </Dialog>
   );
 };

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Box, Paper, Typography } from '@mui/material';
+import { Box, Paper, Typography, Avatar } from '@mui/material';
 import { MensagemInterna } from '../../services/chat-interno.service';
 
 interface ChatMessagesProps {
@@ -57,9 +57,17 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({ mensagens, userId })
             }}
           >
             {!isMine && (
-              <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'text.secondary', mb: 0.5 }}>
-                {formatarHora(mensagem.createdAt)}
-              </Typography>
+              <Avatar
+                src={mensagem.remetente.fotoPerfil || undefined}
+                sx={{
+                  width: 32,
+                  height: 32,
+                  bgcolor: 'primary.main',
+                  fontSize: '0.875rem',
+                }}
+              >
+                {mensagem.remetente.fotoPerfil ? null : mensagem.remetente.nome.charAt(0).toUpperCase()}
+              </Avatar>
             )}
             <Paper
               elevation={0}
