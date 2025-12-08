@@ -65,134 +65,195 @@ function formatPrice(price: number): string {
 
 /**
  * Cria a ferramenta para classificar sintomas/procedimentos e encontrar o serviço adequado.
+ * 
+ * Esta ferramenta analisa a descrição fornecida pelo paciente e identifica o serviço mais adequado
+ * no catálogo da clínica, retornando um resultado estruturado com confiança na correspondência.
+ * 
  * @param clinicaId O ID da clínica específica.
  */
 export function createClassificarSintomaTool(clinicaId: number) {
   return new DynamicStructuredTool({
     name: 'classificar_sintoma_para_servico',
     description:
-      'FERRAMENTA DISPONÍVEL: Use esta ferramenta quando o paciente mencionar sintomas ou procedimentos como "cárie", "dor de dente", "botox", "limpeza de pele", "clareamento", "restauração", "retorno da nutri", etc. Esta ferramenta busca no catálogo de serviços e retorna o servicoId e sugestão de doutorId. IMPORTANTE: Esta é uma FERRAMENTA que você DEVE CHAMAR, não código para escrever. Use chamando a ferramenta com o sintoma mencionado pelo paciente. APÓS usar esta ferramenta e obter servicoId e doutorId, você DEVE IMEDIATAMENTE verificar disponibilidade para HOJE usando verificar_disponibilidade_horarios antes de perguntar a data ao paciente.',
+      'FERRAMENTA CRÍTICA: Use esta ferramenta IMEDIATAMENTE quando o paciente descrever um sintoma (ex: "dor de dente", "febre", "cárie"), procedimento (ex: "botox", "limpeza de pele", "clareamento") ou necessidade médica/estética. Esta ferramenta busca no catálogo de serviços da clínica e retorna o servicoId adequado junto com sugestão de doutorId e nível de confiança na correspondência. IMPORTANTE: NÃO pergunte detalhes ao paciente antes de usar esta ferramenta - use o que ele já disse. Se não encontrar correspondência exata, a ferramenta retornará candidatos possíveis ou instruções para pedir clarificação. Após obter servicoId e doutorId, verifique disponibilidade usando verificar_disponibilidade_horarios.',
     schema: z.object({
-      sintomaOuProcedimento: z
+      descricao: z
         .string()
         .describe(
-          'O sintoma ou procedimento mencionado pelo paciente (ex: "dor de dente", "botox", "limpeza de pele", "clareamento")',
+          'A descrição do que o paciente está sentindo ou pedindo (ex: "dor de dente", "cárie no dente de trás", "quero fazer botox", "limpeza de pele porque tenho espinhas", "clareamento dental")',
         ),
     }),
-    func: async ({ sintomaOuProcedimento }) => {
+    func: async ({ descricao }) => {
       try {
-        const servicos = await servicosService.getAll(clinicaId);
+        console.log(`[ClassificarSintomaTool] Classificando: "${descricao}" para clínica ${clinicaId}`);
+
+        // Buscar todos os serviços ativos da clínica usando Prisma diretamente
+        const servicos = await prisma.servico.findMany({
+          where: {
+            clinicaId,
+            ativo: true,
+          },
+          select: {
+            id: true,
+            nome: true,
+            descricao: true,
+            duracaoMin: true,
+            preco: true,
+          },
+          orderBy: {
+            nome: 'asc',
+          },
+        });
+
+        if (servicos.length === 0) {
+          return JSON.stringify({
+            servicoId: null,
+            nomeServico: null,
+            doutorSugeridoId: null,
+            confianca: 'BAIXA' as const,
+            erro: 'Nenhum serviço cadastrado nesta clínica.',
+            candidatos: [],
+          });
+        }
+
+        const termoBusca = descricao.toLowerCase().trim();
+        const palavrasBusca = termoBusca.split(/\s+/).filter(p => p.length > 2); // Remove palavras muito curtas
+
+        // Buscar correspondências: primeiro por nome exato, depois por palavras-chave
+        const servicosComScore = servicos.map(servico => {
+          const nomeLower = servico.nome.toLowerCase();
+          const descLower = (servico.descricao || '').toLowerCase();
+          const textoCompleto = `${nomeLower} ${descLower}`;
+
+          let score = 0;
+
+          // Correspondência exata no nome (alta confiança)
+          if (nomeLower === termoBusca || nomeLower.includes(termoBusca)) {
+            score += 100;
+          }
+
+          // Correspondência de palavras-chave no nome
+          palavrasBusca.forEach(palavra => {
+            if (nomeLower.includes(palavra)) {
+              score += 30;
+            }
+          });
+
+          // Correspondência na descrição
+          palavrasBusca.forEach(palavra => {
+            if (descLower.includes(palavra)) {
+              score += 20;
+            }
+          });
+
+          // Mapeamento de termos comuns para categorias
+          const mapeamentoCategorias: Record<string, string[]> = {
+            'odontologia': ['dente', 'dental', 'odont', 'cárie', 'carie', 'restauração', 'extração', 'aparelho'],
+            'estética': ['botox', 'toxina', 'harmonização', 'pele', 'facial', 'estética', 'estetica', 'limpeza'],
+            'nutrição': ['nutri', 'dieta', 'alimentação', 'alimentacao', 'nutricionista'],
+          };
+
+          // Verificar correspondência por categoria
+          for (const [categoria, termos] of Object.entries(mapeamentoCategorias)) {
+            const temTermoCategoria = termos.some(termo => termoBusca.includes(termo));
+            const servicoNaCategoria = termos.some(termo => textoCompleto.includes(termo));
+            
+            if (temTermoCategoria && servicoNaCategoria) {
+              score += 15;
+            }
+          }
+
+          return { servico, score };
+        });
+
+        // Ordenar por score (maior primeiro)
+        servicosComScore.sort((a, b) => b.score - a.score);
+
+        // Filtrar apenas serviços com score > 0
+        const servicosRelevantes = servicosComScore.filter(item => item.score > 0);
+
+        // Determinar confiança e serviço encontrado
+        let servicoEncontrado: typeof servicos[0] | null = null;
+        let confianca: 'ALTA' | 'BAIXA' = 'BAIXA';
+
+        if (servicosRelevantes.length > 0 && servicosRelevantes[0]) {
+          const melhorMatch = servicosRelevantes[0];
+          servicoEncontrado = melhorMatch.servico;
+          
+          // Alta confiança se score >= 50 ou se há correspondência exata
+          if (melhorMatch.score >= 50 || melhorMatch.servico.nome.toLowerCase().includes(termoBusca)) {
+            confianca = 'ALTA';
+          }
+        }
+
+        // Buscar doutor adequado
         const doutores = await doutorService.getAllParaIA(clinicaId);
+        let doutorSugeridoId: number | null = null;
 
-        const termoBusca = sintomaOuProcedimento.toLowerCase().trim();
+        if (servicoEncontrado) {
+          // Tentar encontrar doutor por especialidade relacionada
+          const palavrasChaveEspecialidade = palavrasBusca;
+          
+          const doutorAdequado = doutores.find((d) => {
+            if (!d.especialidade) return false;
+            const especialidadeLower = d.especialidade.toLowerCase();
+            return palavrasChaveEspecialidade.some((palavra) => especialidadeLower.includes(palavra));
+          });
 
-        // Mapeamento de termos comuns para palavras-chave
-        const mapeamentoTermos: Record<string, string[]> = {
-          'cárie': ['odontologia', 'dente', 'dental', 'odontológico', 'avaliação', 'restauração', 'tratamento'],
-          'carie': ['odontologia', 'dente', 'dental', 'odontológico', 'avaliação', 'restauração', 'tratamento'],
-          'dor de dente': ['odontologia', 'dente', 'dental', 'odontológico', 'avaliação'],
-          'dor no dente': ['odontologia', 'dente', 'dental', 'odontológico', 'avaliação'],
-          'botox': ['botox', 'harmonização', 'facial', 'toxina'],
-          'limpeza de pele': ['limpeza', 'facial', 'estética', 'pele'],
-          'clareamento': ['clareamento', 'dental', 'dente'],
-          'nutri': ['nutrição', 'nutricionista', 'dieta', 'alimentação'],
-          'retorno': ['retorno', 'consulta'],
+          // Se há apenas 1 doutor, usar automaticamente
+          if (doutores.length === 1 && doutores[0]) {
+            doutorSugeridoId = doutores[0].id;
+          } else if (doutorAdequado) {
+            doutorSugeridoId = doutorAdequado.id;
+          }
+        }
+
+        // Preparar candidatos para resposta (top 3)
+        const candidatos = servicosRelevantes.slice(0, 3).map(item => ({
+          servicoId: item.servico.id,
+          nomeServico: item.servico.nome,
+          score: item.score,
+        }));
+
+        // Montar resposta estruturada
+        if (!servicoEncontrado) {
+          return JSON.stringify({
+            servicoId: null,
+            nomeServico: null,
+            doutorSugeridoId: null,
+            confianca: 'BAIXA' as const,
+            erro: `Não encontrei um serviço específico para "${descricao}".`,
+            candidatos: candidatos.length > 0 ? candidatos : [],
+            instrucao: candidatos.length > 0 && candidatos[0]
+              ? `Encontrei ${candidatos.length} serviço(s) possível(is). Use o primeiro candidato (servicoId: ${candidatos[0].servicoId}) ou pergunte ao paciente qual serviço ele prefere.`
+              : 'Nenhum serviço correspondente encontrado. Pergunte ao paciente qual serviço específico ele precisa ou use a ferramenta listar_servicos_clinica para mostrar as opções disponíveis.',
+          });
+        }
+
+        const resultado = {
+          servicoId: servicoEncontrado.id,
+          nomeServico: servicoEncontrado.nome,
+          doutorSugeridoId,
+          confianca,
+          candidatos: candidatos.length > 1 ? candidatos.slice(1) : [], // Outros candidatos além do escolhido
         };
 
-        // Encontrar palavras-chave relevantes
-        let palavrasChave: string[] = [];
-        for (const [termo, chaves] of Object.entries(mapeamentoTermos)) {
-          if (termoBusca.includes(termo) || termo.includes(termoBusca)) {
-            palavrasChave.push(...chaves);
-          }
-        }
+        console.log(`[ClassificarSintomaTool] ✅ Resultado: servicoId=${resultado.servicoId}, confianca=${resultado.confianca}, doutorId=${resultado.doutorSugeridoId || 'null'}`);
 
-        // Se não encontrou no mapeamento, usar o termo original
-        if (palavrasChave.length === 0) {
-          palavrasChave = [termoBusca];
-        }
-
-        // Buscar serviços que correspondem
-        let servicosCorrespondentes = servicos.filter((s) => {
-          const nomeLower = s.nome.toLowerCase();
-          const descLower = s.descricao?.toLowerCase() || '';
-          return palavrasChave.some((chave) => nomeLower.includes(chave) || descLower.includes(chave));
-        });
-
-        // Se não encontrou correspondência exata, buscar serviço semelhante por categoria
-        if (servicosCorrespondentes.length === 0) {
-          // Tenta encontrar por categoria geral
-          if (termoBusca.includes('dente') || termoBusca.includes('cárie') || termoBusca.includes('carie') || termoBusca.includes('odont')) {
-            // Busca qualquer serviço odontológico
-            servicosCorrespondentes = servicos.filter((s) => {
-              const nomeLower = s.nome.toLowerCase();
-              const descLower = s.descricao?.toLowerCase() || '';
-              return nomeLower.includes('odont') || nomeLower.includes('dente') || nomeLower.includes('dental') || 
-                     descLower.includes('odont') || descLower.includes('dente') || descLower.includes('dental') ||
-                     nomeLower.includes('avaliação') || nomeLower.includes('consulta');
-            });
-          } else if (termoBusca.includes('estética') || termoBusca.includes('estetica') || termoBusca.includes('pele') || termoBusca.includes('botox')) {
-            // Busca qualquer serviço estético
-            servicosCorrespondentes = servicos.filter((s) => {
-              const nomeLower = s.nome.toLowerCase();
-              const descLower = s.descricao?.toLowerCase() || '';
-              return nomeLower.includes('estética') || nomeLower.includes('estetica') || nomeLower.includes('facial') || 
-                     descLower.includes('estética') || descLower.includes('estetica') || descLower.includes('facial');
-            });
-          } else if (termoBusca.includes('nutri') || termoBusca.includes('dieta') || termoBusca.includes('alimentação')) {
-            // Busca qualquer serviço de nutrição
-            servicosCorrespondentes = servicos.filter((s) => {
-              const nomeLower = s.nome.toLowerCase();
-              const descLower = s.descricao?.toLowerCase() || '';
-              return nomeLower.includes('nutri') || nomeLower.includes('dieta') || 
-                     descLower.includes('nutri') || descLower.includes('dieta');
-            });
-          }
-          
-          // Se ainda não encontrou, pega o primeiro serviço disponível como fallback
-          if (servicosCorrespondentes.length === 0 && servicos.length > 0 && servicos[0]) {
-            servicosCorrespondentes = [servicos[0]];
-          }
-        }
-
-        // Encontrar doutor adequado baseado na especialidade
-        const servicoEncontrado = servicosCorrespondentes[0];
-        if (!servicoEncontrado) {
-          // Último fallback: retorna erro mas instrui a IA a usar o primeiro serviço disponível
-          return `Não encontrei um serviço específico para "${sintomaOuProcedimento}". Use o primeiro serviço disponível no catálogo e prossiga com o agendamento. NÃO pergunte ao paciente qual serviço ele quer - escolha o mais semelhante automaticamente.`;
-        }
-
-        const doutorAdequado = doutores.find((d) => {
-          if (!d.especialidade) return false;
-          const especialidadeLower = d.especialidade.toLowerCase();
-          return palavrasChave.some((chave) => especialidadeLower.includes(chave));
-        });
-
-        // Se há apenas 1 doutor na clínica, usar automaticamente mesmo sem especialidade correspondente
-        let doutorFinal = doutorAdequado;
-        if (!doutorFinal && doutores.length === 1 && doutores[0]) {
-          console.log(`[ClassificarSintomaTool] Clínica tem apenas 1 doutor - usando automaticamente: ${doutores[0].nome} (ID: ${doutores[0].id})`);
-          doutorFinal = doutores[0];
-        }
-
-        const resposta = `Encontrei o serviço adequado: "${servicoEncontrado.nome}" (ID: ${servicoEncontrado.id}, Duração: ${servicoEncontrado.duracaoMin} min).`;
-        const doutorInfo = doutorFinal
-          ? ` Sugiro o doutor ${doutorFinal.nome} (ID: ${doutorFinal.id}${doutorFinal.especialidade ? `, Especialidade: ${doutorFinal.especialidade}` : ''}).`
-          : '';
-
-        return resposta + doutorInfo;
+        return JSON.stringify(resultado);
       } catch (error: any) {
-        console.error('Erro em ClassificarSintomaTool:', error);
-        // Em caso de erro, tenta retornar o primeiro serviço disponível
-        try {
-          const servicos = await servicosService.getAll(clinicaId);
-          if (servicos.length > 0 && servicos[0]) {
-            return `Erro ao classificar, mas use o serviço "${servicos[0].nome}" (ID: ${servicos[0].id}) e prossiga com o agendamento. NÃO pergunte ao paciente - escolha automaticamente.`;
-          }
-        } catch (e) {
-          // Ignora erro secundário
-        }
-        return `Erro ao classificar o sintoma. Use o primeiro serviço disponível no catálogo e prossiga. NÃO pergunte ao paciente.`;
+        console.error('[ClassificarSintomaTool] ❌ Erro:', error);
+        
+        // Em caso de erro, retornar estrutura de erro
+        return JSON.stringify({
+          servicoId: null,
+          nomeServico: null,
+          doutorSugeridoId: null,
+          confianca: 'BAIXA' as const,
+          erro: `Erro ao classificar: ${error.message || 'Erro desconhecido'}`,
+          candidatos: [],
+          instrucao: 'Ocorreu um erro ao buscar serviços. Use a ferramenta listar_servicos_clinica para ver as opções disponíveis e pergunte ao paciente qual serviço ele precisa.',
+        });
       }
     },
   });
