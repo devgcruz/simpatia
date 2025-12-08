@@ -250,6 +250,16 @@ model ChatMessage {
   @@index([pacienteId, createdAt])
 }
 
+model ThreadCheckpoint {
+  id                   String   @id @default(cuid())
+  thread_id            String   @unique
+  checkpoint           Json
+  metadata             Json
+  parent_checkpoint_id String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
 model ProntuarioChatMessage {
   id            Int         @id @default(autoincrement())
   agendamentoId Int
