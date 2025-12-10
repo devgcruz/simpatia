@@ -34,6 +34,8 @@ export const getAtestadosPaciente = async (pacienteId: number): Promise<IAtestad
 
 export const createAtestado = async (data: {
   diasAfastamento: number;
+  horaInicial?: string;
+  horaFinal?: string;
   cid?: string;
   exibirCid: boolean;
   conteudo: string;
@@ -49,6 +51,8 @@ export const createAtestado = async (data: {
 
 export const updateAtestado = async (id: number, data: {
   diasAfastamento?: number;
+  horaInicial?: string;
+  horaFinal?: string;
   cid?: string;
   exibirCid?: boolean;
   conteudo?: string;

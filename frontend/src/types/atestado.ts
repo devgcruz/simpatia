@@ -4,6 +4,8 @@ export interface IAtestado {
   id: number;
   protocolo: string;
   diasAfastamento: number;
+  horaInicial?: string | null;
+  horaFinal?: string | null;
   cid?: string | null;
   exibirCid: boolean;
   conteudo: string;

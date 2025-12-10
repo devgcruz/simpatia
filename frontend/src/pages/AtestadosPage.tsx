@@ -215,8 +215,8 @@ export const AtestadosPage: React.FC = () => {
         ? moment(atestado.agendamento.dataHora).format('HH:mm')
         : moment(atestado.createdAt).format('HH:mm');
 
-      // Determinar tipo de afastamento
-      const tipoAfastamento = atestado.diasAfastamento < 1 ? 'horas' : 'dias';
+      // Determinar tipo de afastamento: se tem horaInicial e horaFinal, é horas
+      const tipoAfastamento = (atestado.horaInicial && atestado.horaFinal) ? 'horas' : (atestado.diasAfastamento < 1 ? 'horas' : 'dias');
 
       // Usar data do atestado ou data de criação
       const dataAtestadoFormatada = atestado.dataAtestado
@@ -232,6 +232,8 @@ export const AtestadosPage: React.FC = () => {
           horaAtendimento={horaAtendimento}
           diasAfastamento={atestado.diasAfastamento}
           tipoAfastamento={tipoAfastamento}
+          horaInicial={atestado.horaInicial || undefined}
+          horaFinal={atestado.horaFinal || undefined}
           cid={atestado.cid || undefined}
           exibirCid={atestado.exibirCid}
           conteudo={atestado.conteudo || ''}

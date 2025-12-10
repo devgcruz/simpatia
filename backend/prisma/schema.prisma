@@ -244,7 +244,9 @@ model Prescricao {
 model Atestado {
   id              Int      @id @default(autoincrement())
   protocolo       String   @unique @default(uuid()) // Protocolo único do atestado
-  diasAfastamento Int      // Dias de afastamento
+  diasAfastamento Float    // Dias de afastamento (pode ser decimal para horas)
+  horaInicial     String?  // Hora inicial do período (formato HH:mm) - usado quando tipo é horas
+  horaFinal       String?  // Hora final do período (formato HH:mm) - usado quando tipo é horas
   cid             String? // CID (opcional)
   exibirCid       Boolean  @default(false) // Se deve exibir o CID no atestado
   conteudo        String   @db.Text // Observações/Recomendações

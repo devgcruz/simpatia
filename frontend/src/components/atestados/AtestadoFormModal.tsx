@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -45,6 +45,8 @@ interface Props {
   }) => Promise<void>;
   atestado?: IAtestado | null;
   pacientes: IPaciente[];
+  agendamentoId?: number; // ID do agendamento quando criado pelo prontuário
+  ocultarCampoPaciente?: boolean; // Se true, oculta o campo de seleção de paciente (usado no prontuário)
   onAtestadoCriado?: () => void;
 }
 
@@ -54,11 +56,15 @@ export const AtestadoFormModal: React.FC<Props> = ({
   onSubmit,
   atestado,
   pacientes,
+  agendamentoId,
+  ocultarCampoPaciente = false,
   onAtestadoCriado,
 }) => {
   const { user } = useAuth();
   const [diasAfastamento, setDiasAfastamento] = useState<number>(1);
   const [tipoAfastamento, setTipoAfastamento] = useState<'dias' | 'horas'>('dias');
+  const [horaInicial, setHoraInicial] = useState<string>('08:00');
+  const [horaFinal, setHoraFinal] = useState<string>('08:50');
   const [cid, setCid] = useState('');
   const [exibirCid, setExibirCid] = useState(false);
   const [conteudo, setConteudo] = useState('');
@@ -69,8 +75,18 @@ export const AtestadoFormModal: React.FC<Props> = ({
   const [doutorCompleto, setDoutorCompleto] = useState<IDoutor | null>(null);
   const [loadingDoutor, setLoadingDoutor] = useState(false);
 
+  // Ref para controlar se já inicializou os valores
+  const inicializadoRef = React.useRef(false);
+  const openAnteriorRef = React.useRef(false);
+
   useEffect(() => {
-    if (open) {
+    // Se o modal acabou de abrir (open mudou de false para true)
+    if (open && !openAnteriorRef.current) {
+      inicializadoRef.current = false;
+    }
+    
+    // Se o modal está aberto e ainda não inicializou
+    if (open && !inicializadoRef.current) {
       if (atestado) {
         setDiasAfastamento(atestado.diasAfastamento);
         setTipoAfastamento(atestado.diasAfastamento < 1 ? 'horas' : 'dias');
@@ -79,6 +95,8 @@ export const AtestadoFormModal: React.FC<Props> = ({
         setConteudo(atestado.conteudo || '');
         setLocalAtendimento(atestado.localAtendimento || 'Consultório');
         setDataAtestado(atestado.dataAtestado ? moment(atestado.dataAtestado).format('YYYY-MM-DD') : moment().format('YYYY-MM-DD'));
+        setHoraInicial('08:00');
+        setHoraFinal('08:50');
         setPacienteSelecionado(
           pacientes.find((p) => p.id === atestado.pacienteId) || null
         );
@@ -90,10 +108,25 @@ export const AtestadoFormModal: React.FC<Props> = ({
         setConteudo('');
         setLocalAtendimento('Consultório');
         setDataAtestado(moment().format('YYYY-MM-DD'));
-        setPacienteSelecionado(null);
+        setHoraInicial('08:00');
+        setHoraFinal('08:50');
+        // Se houver apenas um paciente na lista ou se o campo estiver oculto, pré-selecionar automaticamente
+        if (ocultarCampoPaciente || pacientes.length === 1) {
+          setPacienteSelecionado(pacientes[0]);
+        } else {
+          setPacienteSelecionado(null);
+        }
       }
+      inicializadoRef.current = true;
     }
-  }, [open, atestado, pacientes]);
+    
+    // Se o modal fechou, resetar a flag
+    if (!open && openAnteriorRef.current) {
+      inicializadoRef.current = false;
+    }
+    
+    openAnteriorRef.current = open;
+  }, [open, atestado, pacientes, ocultarCampoPaciente]);
 
   // Carregar dados completos do doutor quando o modal abrir
   useEffect(() => {
@@ -131,8 +164,29 @@ export const AtestadoFormModal: React.FC<Props> = ({
 
     setLoading(true);
     try {
-      // Converter horas para dias decimais se necessário
-      const diasCalculados = tipoAfastamento === 'horas' ? diasAfastamento / 24 : diasAfastamento;
+      // Calcular dias de afastamento baseado no tipo
+      let diasCalculados: number;
+      if (tipoAfastamento === 'horas' && horaInicial && horaFinal) {
+        // Calcular diferença em horas entre horaInicial e horaFinal
+        const [horaIni, minIni] = horaInicial.split(':').map(Number);
+        const [horaFim, minFim] = horaFinal.split(':').map(Number);
+        const minutosInicial = horaIni * 60 + minIni;
+        const minutosFinal = horaFim * 60 + minFim;
+        let minutosDiferenca = minutosFinal - minutosInicial;
+        
+        // Se a hora final for menor que a inicial, assumir que é no dia seguinte
+        if (minutosDiferenca < 0) {
+          minutosDiferenca += 24 * 60; // Adicionar 24 horas
+        }
+        
+        // Converter minutos para dias decimais
+        diasCalculados = minutosDiferenca / (24 * 60);
+      } else if (tipoAfastamento === 'horas') {
+        diasCalculados = diasAfastamento / 24;
+      } else {
+        diasCalculados = diasAfastamento;
+      }
+      
       await onSubmit({
         diasAfastamento: diasCalculados,
         cid: cid.trim() || undefined,
@@ -171,12 +225,34 @@ export const AtestadoFormModal: React.FC<Props> = ({
     try {
       setLoading(true);
       
-      // Calcular dias de afastamento (se for horas, converter para dias decimais)
-      const diasCalculados = tipoAfastamento === 'horas' ? diasAfastamento / 24 : diasAfastamento;
+      // Calcular dias de afastamento baseado no tipo
+      let diasCalculados: number;
+      if (tipoAfastamento === 'horas' && horaInicial && horaFinal) {
+        // Calcular diferença em horas entre horaInicial e horaFinal
+        const [horaIni, minIni] = horaInicial.split(':').map(Number);
+        const [horaFim, minFim] = horaFinal.split(':').map(Number);
+        const minutosInicial = horaIni * 60 + minIni;
+        const minutosFinal = horaFim * 60 + minFim;
+        let minutosDiferenca = minutosFinal - minutosInicial;
+        
+        // Se a hora final for menor que a inicial, assumir que é no dia seguinte
+        if (minutosDiferenca < 0) {
+          minutosDiferenca += 24 * 60; // Adicionar 24 horas
+        }
+        
+        // Converter minutos para dias decimais
+        diasCalculados = minutosDiferenca / (24 * 60);
+      } else if (tipoAfastamento === 'horas') {
+        diasCalculados = diasAfastamento / 24;
+      } else {
+        diasCalculados = diasAfastamento;
+      }
       
       // Salvar atestado no banco de dados
       const atestadoCriado = await createAtestado({
         diasAfastamento: diasCalculados,
+        horaInicial: tipoAfastamento === 'horas' && horaInicial ? horaInicial : undefined,
+        horaFinal: tipoAfastamento === 'horas' && horaFinal ? horaFinal : undefined,
         cid: cid.trim() || undefined,
         exibirCid,
         conteudo: conteudo.trim(),
@@ -184,7 +260,7 @@ export const AtestadoFormModal: React.FC<Props> = ({
         dataAtestado: dataAtestado ? new Date(dataAtestado).toISOString() : undefined,
         pacienteId: pacienteSelecionado.id,
         doutorId: user.id,
-        agendamentoId: undefined, // Atestado avulso
+        agendamentoId: agendamentoId || undefined, // Vincular ao agendamento se fornecido
       });
 
       // Buscar atestado completo com protocolo
@@ -216,6 +292,8 @@ export const AtestadoFormModal: React.FC<Props> = ({
           horaAtendimento={horaAtendimento}
           diasAfastamento={diasCalculados}
           tipoAfastamento={tipoAfastamento}
+          horaInicial={atestadoCompleto.horaInicial || (tipoAfastamento === 'horas' ? horaInicial : undefined)}
+          horaFinal={atestadoCompleto.horaFinal || (tipoAfastamento === 'horas' ? horaFinal : undefined)}
           cid={atestadoCompleto.cid || undefined}
           exibirCid={atestadoCompleto.exibirCid}
           conteudo={atestadoCompleto.conteudo || ''}
@@ -307,32 +385,37 @@ export const AtestadoFormModal: React.FC<Props> = ({
           </Typography>
         </Box>
 
-        <Box sx={{ mb: 2 }}>
-          <Autocomplete
-            disabled={!!atestado}
-            options={pacientes}
-            getOptionLabel={(option) => option.nome}
-            value={pacienteSelecionado}
-            onChange={(_, newValue) => setPacienteSelecionado(newValue)}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label="Paciente"
-                placeholder="Selecione o paciente"
-                required
-                InputProps={{
-                  ...params.InputProps,
-                  startAdornment: (
-                    <>
-                      <PersonIcon sx={{ ml: 1, mr: 0.5, color: 'action.active' }} />
-                      {params.InputProps.startAdornment}
-                    </>
-                  ),
-                }}
-              />
-            )}
-          />
-        </Box>
+        {!ocultarCampoPaciente && (
+          <Box sx={{ mb: 2 }}>
+            <Autocomplete
+              disabled={!!atestado}
+              options={pacientes}
+              getOptionLabel={(option) => option.nome}
+              isOptionEqualToValue={(option, value) => option.id === value.id}
+              value={pacienteSelecionado}
+              onChange={(_, newValue) => {
+                setPacienteSelecionado(newValue);
+              }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Paciente"
+                  placeholder="Selecione o paciente"
+                  required
+                  InputProps={{
+                    ...params.InputProps,
+                    startAdornment: (
+                      <>
+                        <PersonIcon sx={{ ml: 1, mr: 0.5, color: 'action.active' }} />
+                        {params.InputProps.startAdornment}
+                      </>
+                    ),
+                  }}
+                />
+              )}
+            />
+          </Box>
+        )}
 
         <Box sx={{ mb: 2 }}>
           <TextField
@@ -348,30 +431,61 @@ export const AtestadoFormModal: React.FC<Props> = ({
           />
         </Box>
 
-        <Box sx={{ mb: 2, display: 'flex', gap: 2 }}>
-          <FormControl sx={{ minWidth: 120 }}>
+        <Box sx={{ mb: 2 }}>
+          <FormControl sx={{ minWidth: 120, mb: 2, width: '100%' }}>
             <InputLabel>Tipo</InputLabel>
             <Select
               value={tipoAfastamento}
-              onChange={(e) => setTipoAfastamento(e.target.value as 'dias' | 'horas')}
+              onChange={(e) => {
+                const novoValor = e.target.value as 'dias' | 'horas';
+                setTipoAfastamento(novoValor);
+              }}
               label="Tipo"
             >
               <MenuItem value="dias">Dias</MenuItem>
               <MenuItem value="horas">Horas</MenuItem>
             </Select>
           </FormControl>
-          <TextField
-            label={tipoAfastamento === 'dias' ? 'Dias de Afastamento' : 'Horas de Afastamento'}
-            type="number"
-            value={diasAfastamento}
-            onChange={(e) => {
-              const value = parseInt(e.target.value) || 1;
-              setDiasAfastamento(Math.max(1, value));
-            }}
-            inputProps={{ min: 1 }}
-            required
-            fullWidth
-          />
+          
+          {tipoAfastamento === 'dias' ? (
+            <TextField
+              label="Dias de Afastamento"
+              type="number"
+              value={diasAfastamento}
+              onChange={(e) => {
+                const value = parseInt(e.target.value) || 1;
+                setDiasAfastamento(Math.max(1, value));
+              }}
+              inputProps={{ min: 1 }}
+              required
+              fullWidth
+            />
+          ) : (
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <TextField
+                label="Hora Inicial"
+                type="time"
+                value={horaInicial}
+                onChange={(e) => setHoraInicial(e.target.value)}
+                InputLabelProps={{
+                  shrink: true,
+                }}
+                required
+                fullWidth
+              />
+              <TextField
+                label="Hora Final"
+                type="time"
+                value={horaFinal}
+                onChange={(e) => setHoraFinal(e.target.value)}
+                InputLabelProps={{
+                  shrink: true,
+                }}
+                required
+                fullWidth
+              />
+            </Box>
+          )}
         </Box>
 
         <Box sx={{ mb: 2 }}>

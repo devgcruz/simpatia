@@ -2087,6 +2087,7 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                     : null;
 
                   const prescricoesHistorico = historico.prescricoes || historico.agendamento?.prescricoes || [];
+                  const atestadosHistorico = historico.atestados || historico.agendamento?.atestados || [];
                   
                   // Função para extrair o primeiro medicamento do conteúdo
                   const extrairPrimeiroMedicamento = (conteudo: string): string => {
@@ -2206,6 +2207,150 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                                         {isPrescricaoAvulsa && (
                                           <Chip
                                             label="Prescrição Fora do Atendimento"
+                                            size="small"
+                                            color="warning"
+                                            variant="filled"
+                                            sx={{ ml: 0.5, fontSize: '0.65rem', height: '20px' }}
+                                          />
+                                        )}
+                                      </Box>
+                                    );
+                                  })}
+                                </Box>
+                              )}
+                              {atestadosHistorico.length > 0 && (
+                                <Box sx={{ mt: 1 }}>
+                                  <Typography variant="caption" fontWeight="bold" display="block" sx={{ mb: 0.5 }}>
+                                    Atestados Médicos:
+                                  </Typography>
+                                  {atestadosHistorico.map((atestado: any) => {
+                                    const diasAfastamento = atestado.diasAfastamento || 0;
+                                    
+                                    // Formatar texto do período de afastamento
+                                    let diasTexto: string;
+                                    if (diasAfastamento < 1) {
+                                      // Se for menos de 1 dia, calcular em minutos
+                                      const minutos = Math.round(diasAfastamento * 24 * 60);
+                                      if (minutos < 60) {
+                                        diasTexto = `${minutos} minutos`;
+                                      } else {
+                                        const horas = Math.floor(minutos / 60);
+                                        const minutosRestantes = minutos % 60;
+                                        if (minutosRestantes === 0) {
+                                          diasTexto = horas === 1 ? '1 hora' : `${horas} horas`;
+                                        } else {
+                                          diasTexto = `${horas}h${minutosRestantes.toString().padStart(2, '0')}`;
+                                        }
+                                      }
+                                    } else {
+                                      const dias = Math.floor(diasAfastamento);
+                                      diasTexto = dias === 1 ? '1 dia' : `${dias} dias`;
+                                    }
+                                    
+                                    const isAtestadoAvulso = !atestado.agendamentoId || atestado.agendamentoId === null;
+                                    const labelTexto = `#${atestado.id} - ${diasTexto}`;
+                                    
+                                    return (
+                                      <Box key={atestado.id} sx={{ display: 'inline-block', mr: 0.5, mb: 0.5 }}>
+                                        <Tooltip
+                                          title={`Atestado: ${diasTexto}${atestado.cid && atestado.exibirCid ? ` - CID: ${atestado.cid}` : ''}${atestado.conteudo ? `\n${atestado.conteudo}` : ''}`}
+                                          arrow
+                                          enterDelay={500}
+                                          placement="top"
+                                          slotProps={{
+                                            tooltip: {
+                                              sx: {
+                                                maxWidth: 400,
+                                                whiteSpace: 'pre-line',
+                                                fontSize: '0.875rem',
+                                                lineHeight: 1.5,
+                                              },
+                                            },
+                                          }}
+                                        >
+                                          <Chip
+                                            label={labelTexto}
+                                            size="small"
+                                            variant="outlined"
+                                            color="info"
+                                            onClick={async () => {
+                                              try {
+                                                const atestadoCompleto = await getAtestadoByProtocolo(atestado.protocolo);
+                                                const { getDoutorById } = await import('../../services/doutor.service');
+                                                const doutor = await getDoutorById(atestadoCompleto.doutorId);
+                                                
+                                                const clinicaNome = doutor.clinica?.nome || 'Clínica';
+                                                const clinicaEndereco = doutor.clinica?.endereco || '';
+                                                const clinicaTelefone = doutor.clinica?.telefone || '';
+                                                const clinicaEmail = doutor.clinica?.email || doutor.email || '';
+                                                const clinicaSite = doutor.clinica?.site || '';
+                                                
+                                                const horaAtendimento = atestadoCompleto.agendamento?.dataHora
+                                                  ? moment(atestadoCompleto.agendamento.dataHora).format('HH:mm')
+                                                  : moment(atestadoCompleto.createdAt).format('HH:mm');
+                                                
+                                                // Determinar tipo de afastamento: se tem horaInicial e horaFinal, é horas
+                                                const tipoAfastamento = (atestadoCompleto.horaInicial && atestadoCompleto.horaFinal) ? 'horas' : (atestadoCompleto.diasAfastamento < 1 ? 'horas' : 'dias');
+                                                const dataAtestadoFormatada = atestadoCompleto.dataAtestado
+                                                  ? moment(atestadoCompleto.dataAtestado).format('YYYY-MM-DD')
+                                                  : moment(atestadoCompleto.createdAt).format('YYYY-MM-DD');
+                                                
+                                                const pdfDoc = (
+                                                  <AtestadoPdfView
+                                                    pacienteNome={atestadoCompleto.paciente?.nome || ''}
+                                                    pacienteCPF={atestadoCompleto.paciente?.cpf || undefined}
+                                                    dataAtendimento={dataAtestadoFormatada}
+                                                    horaAtendimento={horaAtendimento}
+                                                    diasAfastamento={atestadoCompleto.diasAfastamento}
+                                                    tipoAfastamento={tipoAfastamento}
+                                                    horaInicial={atestadoCompleto.horaInicial || undefined}
+                                                    horaFinal={atestadoCompleto.horaFinal || undefined}
+                                                    cid={atestadoCompleto.cid || undefined}
+                                                    exibirCid={atestadoCompleto.exibirCid}
+                                                    conteudo={atestadoCompleto.conteudo || ''}
+                                                    localAtendimento={atestadoCompleto.localAtendimento || 'Consultório'}
+                                                    doutorNome={doutor.nome || ''}
+                                                    doutorEspecialidade={doutor.especialidade || ''}
+                                                    doutorCRM={doutor.crm}
+                                                    doutorCRMUF={doutor.crmUf}
+                                                    doutorRQE={doutor.rqe}
+                                                    clinicaNome={clinicaNome}
+                                                    clinicaEndereco={clinicaEndereco}
+                                                    clinicaTelefone={clinicaTelefone}
+                                                    clinicaEmail={clinicaEmail}
+                                                    clinicaSite={clinicaSite}
+                                                  />
+                                                );
+                                                
+                                                const blob = await pdf(pdfDoc).toBlob();
+                                                const url = URL.createObjectURL(blob);
+                                                const printWindow = window.open(url, '_blank');
+                                                if (printWindow) {
+                                                  printWindow.onload = () => {
+                                                    setTimeout(() => {
+                                                      printWindow.print();
+                                                      setTimeout(() => URL.revokeObjectURL(url), 1000);
+                                                    }, 250);
+                                                  };
+                                                }
+                                              } catch (error: any) {
+                                                console.error('Erro ao visualizar atestado:', error);
+                                                toast.error('Erro ao visualizar atestado');
+                                              }
+                                            }}
+                                            sx={{ 
+                                              cursor: 'pointer',
+                                              '&:hover': {
+                                                backgroundColor: 'info.light',
+                                                color: 'info.main',
+                                                borderColor: 'info.main',
+                                              }
+                                            }}
+                                          />
+                                        </Tooltip>
+                                        {isAtestadoAvulso && (
+                                          <Chip
+                                            label="Atestado Fora do Atendimento"
                                             size="small"
                                             color="warning"
                                             variant="filled"
@@ -3840,6 +3985,8 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
           }}
           atestado={null}
           pacientes={[agendamento.paciente]}
+          agendamentoId={agendamento?.id} // Vincular ao agendamento atual
+          ocultarCampoPaciente={true} // Ocultar campo de paciente pois já está vinculado ao atendimento
           onAtestadoCriado={async () => {
             // Recarregar lista de atestados
             if (agendamento?.paciente.id) {

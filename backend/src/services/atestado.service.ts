@@ -2,6 +2,8 @@ import { prisma } from '../lib/prisma';
 
 interface ICreateAtestado {
   diasAfastamento: number;
+  horaInicial?: string;
+  horaFinal?: string;
   cid?: string;
   exibirCid: boolean;
   conteudo: string;
@@ -14,6 +16,8 @@ interface ICreateAtestado {
 
 interface IUpdateAtestado {
   diasAfastamento?: number;
+  horaInicial?: string;
+  horaFinal?: string;
   cid?: string;
   exibirCid?: boolean;
   conteudo?: string;

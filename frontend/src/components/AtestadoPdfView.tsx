@@ -8,6 +8,8 @@ interface AtestadoPdfViewProps {
   horaAtendimento: string; // Formato HH:mm
   diasAfastamento: number; // Pode ser decimal (ex: 0.5 para 12 horas)
   tipoAfastamento: 'dias' | 'horas';
+  horaInicial?: string; // Formato HH:mm - para período de horas
+  horaFinal?: string; // Formato HH:mm - para período de horas
   cid?: string;
   exibirCid: boolean;
   conteudo: string;
@@ -132,6 +134,8 @@ const AtestadoPdfView: React.FC<AtestadoPdfViewProps> = ({
   horaAtendimento,
   diasAfastamento,
   tipoAfastamento,
+  horaInicial,
+  horaFinal,
   cid,
   exibirCid,
   conteudo,
@@ -170,17 +174,49 @@ const AtestadoPdfView: React.FC<AtestadoPdfViewProps> = ({
 
   // Formatar tempo de afastamento
   const formatarTempoAfastamento = () => {
+    // PRIORIDADE: Se houver período de horas definido (horaInicial e horaFinal), sempre usar ele
+    if (horaInicial && horaFinal) {
+      const formatarHora = (hora: string) => {
+        // Converter de HH:mm para HHhmm
+        const [h, m] = hora.split(':');
+        return `${h}h${m}`;
+      };
+      return `das ${formatarHora(horaInicial)} às ${formatarHora(horaFinal)}`;
+    }
+    
+    // Caso contrário, calcular baseado no tipo e diasAfastamento
     if (tipoAfastamento === 'horas') {
-      const horas = Math.floor(diasAfastamento * 24);
-      return horas === 1 ? '1 hora' : `${horas} horas`;
+      // Calcular horas/minutos a partir de diasAfastamento
+      const minutos = Math.round(diasAfastamento * 24 * 60);
+      if (minutos < 60) {
+        return minutos === 1 ? '1 minuto' : `${minutos} minutos`;
+      } else {
+        const horas = Math.floor(minutos / 60);
+        const minutosRestantes = minutos % 60;
+        if (minutosRestantes === 0) {
+          return horas === 1 ? '1 hora' : `${horas} horas`;
+        } else {
+          return `${horas}h${minutosRestantes.toString().padStart(2, '0')}`;
+        }
+      }
     } else {
       const dias = Math.floor(diasAfastamento);
       if (dias === 1) {
         return '1 dia';
       } else if (diasAfastamento < 1) {
-        // Se for menos de 1 dia, mostrar em horas
-        const horas = Math.floor(diasAfastamento * 24);
-        return horas === 1 ? '1 hora' : `${horas} horas`;
+        // Se for menos de 1 dia, calcular em minutos/horas
+        const minutos = Math.round(diasAfastamento * 24 * 60);
+        if (minutos < 60) {
+          return minutos === 1 ? '1 minuto' : `${minutos} minutos`;
+        } else {
+          const horas = Math.floor(minutos / 60);
+          const minutosRestantes = minutos % 60;
+          if (minutosRestantes === 0) {
+            return horas === 1 ? '1 hora' : `${horas} horas`;
+          } else {
+            return `${horas}h${minutosRestantes.toString().padStart(2, '0')}`;
+          }
+        }
       } else {
         return `${dias} dias`;
       }

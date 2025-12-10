@@ -155,6 +155,25 @@ class PacienteService {
                                 createdAt: 'desc',
                             },
                         },
+                        atestados: {
+                            select: {
+                                id: true,
+                                protocolo: true,
+                                diasAfastamento: true,
+                                horaInicial: true,
+                                horaFinal: true,
+                                cid: true,
+                                exibirCid: true,
+                                conteudo: true,
+                                localAtendimento: true,
+                                dataAtestado: true,
+                                createdAt: true,
+                                agendamentoId: true,
+                            },
+                            orderBy: {
+                                createdAt: 'desc',
+                            },
+                        },
                     },
                 },
             },
@@ -211,6 +230,10 @@ class PacienteService {
                         ...p,
                         agendamentoId: agendamento.id,
                     })),
+                    atestados: (agendamento.atestados || []).map((a: any) => ({
+                        ...a,
+                        agendamentoId: agendamento.id,
+                    })),
                 }
                 : null,
                 servico: agendamento
@@ -228,6 +251,7 @@ class PacienteService {
                 }
                 : null,
                 prescricoes: agendamento?.prescricoes || [],
+                atestados: agendamento?.atestados || [],
             };
         }).concat(
             // Adicionar prescrições avulsas como "históricos" especiais

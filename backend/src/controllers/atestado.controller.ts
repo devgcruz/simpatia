@@ -4,7 +4,7 @@ import atestadoService from '../services/atestado.service';
 class AtestadoController {
   async create(req: Request, res: Response) {
     try {
-      const { diasAfastamento, cid, exibirCid, conteudo, localAtendimento, dataAtestado, pacienteId, doutorId, agendamentoId } = req.body;
+      const { diasAfastamento, horaInicial, horaFinal, cid, exibirCid, conteudo, localAtendimento, dataAtestado, pacienteId, doutorId, agendamentoId } = req.body;
 
       if (!diasAfastamento || !pacienteId || !doutorId) {
         return res.status(400).json({ error: 'Dados obrigatórios faltando' });
@@ -12,6 +12,8 @@ class AtestadoController {
 
       const atestado = await atestadoService.create({
         diasAfastamento,
+        horaInicial: horaInicial || undefined,
+        horaFinal: horaFinal || undefined,
         cid,
         exibirCid: exibirCid || false,
         conteudo: conteudo || '',
@@ -94,10 +96,12 @@ class AtestadoController {
   async update(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const { diasAfastamento, cid, exibirCid, conteudo, localAtendimento, dataAtestado } = req.body;
+      const { diasAfastamento, horaInicial, horaFinal, cid, exibirCid, conteudo, localAtendimento, dataAtestado } = req.body;
 
       const updateData: any = {};
       if (diasAfastamento !== undefined) updateData.diasAfastamento = diasAfastamento;
+      if (horaInicial !== undefined) updateData.horaInicial = horaInicial;
+      if (horaFinal !== undefined) updateData.horaFinal = horaFinal;
       if (cid !== undefined) updateData.cid = cid;
       if (exibirCid !== undefined) updateData.exibirCid = exibirCid;
       if (conteudo !== undefined) updateData.conteudo = conteudo;

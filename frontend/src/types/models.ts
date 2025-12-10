@@ -106,6 +106,20 @@ export interface IHistoricoPaciente {
       createdAt: string;
       agendamentoId?: number | null;
     }>;
+    atestados?: Array<{
+      id: number;
+      protocolo: string;
+      diasAfastamento: number;
+      horaInicial?: string | null;
+      horaFinal?: string | null;
+      cid?: string | null;
+      exibirCid: boolean;
+      conteudo: string;
+      localAtendimento?: string | null;
+      dataAtestado?: string | null;
+      createdAt: string;
+      agendamentoId?: number | null;
+    }>;
   } | null;
   servico?: Pick<IServico, 'id' | 'nome' | 'duracaoMin'> | null;
   doutor?: Pick<IDoutor, 'id' | 'nome' | 'email'> | null;
@@ -113,6 +127,18 @@ export interface IHistoricoPaciente {
     id: number;
     protocolo: string;
     conteudo: string;
+    createdAt: string;
+    agendamentoId?: number | null;
+  }>;
+  atestados?: Array<{
+    id: number;
+    protocolo: string;
+    diasAfastamento: number;
+    cid?: string | null;
+    exibirCid: boolean;
+    conteudo: string;
+    localAtendimento?: string | null;
+    dataAtestado?: string | null;
     createdAt: string;
     agendamentoId?: number | null;
   }>;
