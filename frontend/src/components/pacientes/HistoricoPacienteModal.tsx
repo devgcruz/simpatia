@@ -56,6 +56,17 @@ export const HistoricoPacienteModal: React.FC<Props> = ({ open, onClose, pacient
     return primeiraLinha.length > 30 ? `${primeiraLinha.substring(0, 30)}...` : primeiraLinha;
   };
 
+  // Função para formatar texto da prescrição para tooltip (mantém quebras entre medicamentos)
+  const formatarTextoPrescricaoTooltip = (conteudo: string): string => {
+    if (!conteudo) return 'Sem conteúdo';
+    // Manter quebras de linha entre medicamentos, mas limpar espaços múltiplos dentro de cada linha
+    return conteudo
+      .split('\n')
+      .map(line => line.trim().replace(/\s+/g, ' '))
+      .filter(line => line.length > 0)
+      .join('\n');
+  };
+
   const handleAbrirEdicaoHistorico = (historico: IHistoricoPaciente) => {
     setEditingHistorico(historico);
     setDescricaoEditando(historico.descricao || '');
@@ -454,14 +465,20 @@ export const HistoricoPacienteModal: React.FC<Props> = ({ open, onClose, pacient
                                         return (
                                           <Box key={prescricao.id} sx={{ display: 'inline-block', mr: 0.5, mb: 0.5 }}>
                                             <Tooltip
-                                              title={
-                                                <Box component="div" sx={{ whiteSpace: 'pre-wrap', maxWidth: 400 }}>
-                                                  {prescricao.conteudo || 'Sem conteúdo'}
-                                                </Box>
-                                              }
+                                              title={formatarTextoPrescricaoTooltip(prescricao.conteudo || '')}
                                               arrow
-                                              enterDelay={1000}
+                                              enterDelay={500}
                                               placement="top"
+                                              slotProps={{
+                                                tooltip: {
+                                                  sx: {
+                                                    maxWidth: 900,
+                                                    whiteSpace: 'pre-line',
+                                                    fontSize: '0.875rem',
+                                                    lineHeight: 1.5,
+                                                  },
+                                                },
+                                              }}
                                             >
                                               <Chip
                                                 label={labelTexto}

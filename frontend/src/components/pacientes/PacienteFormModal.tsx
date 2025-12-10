@@ -29,6 +29,8 @@ import {
   ListItem,
   ListItemText,
   CircularProgress,
+  Avatar,
+  Stack,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
@@ -36,10 +38,14 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import WarningIcon from '@mui/icons-material/Warning';
+import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
+import PersonIcon from '@mui/icons-material/Person';
 import moment from 'moment';
 import { IPaciente, IDoutor } from '../../types/models';
 import { getDoutores } from '../../services/doutor.service';
 import { useAuth } from '../../hooks/useAuth';
+import { uploadFotoPaciente } from '../../services/upload.service';
+import { toast } from 'sonner';
 
 moment.locale('pt-br');
 
@@ -100,11 +106,13 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
     doutorId: undefined,
     pesoKg: undefined,
     alturaCm: undefined,
+    foto: undefined,
   });
   
   const [doutores, setDoutores] = useState<IDoutor[]>([]);
   const [loadingDoutores, setLoadingDoutores] = useState(false);
   const [restricoes, setRestricoes] = useState<string>('');
+  const [uploadingFoto, setUploadingFoto] = useState(false);
 
   useEffect(() => {
     if (open && !isDoutor) {
@@ -155,6 +163,7 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
         doutorId: initialData.doutorId || (isSecretaria && doutorIdForcado ? doutorIdForcado : undefined),
         pesoKg: initialData.pesoKg ?? undefined,
         alturaCm: initialData.alturaCm ?? undefined,
+        foto: initialData.foto || undefined,
       });
     } else {
       const doutorIdInicial = isDoutor && user?.id 
@@ -183,6 +192,7 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
         doutorId: isSecretaria && doutorIdForcado ? doutorIdForcado : doutorIdInicial,
         pesoKg: undefined,
         alturaCm: undefined,
+        foto: undefined,
       });
     }
   }, [initialData, open, isDoutor, isSecretaria, user?.id, doutorIdForcado]);
@@ -235,6 +245,46 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
       return apenasNumeros.replace(/(\d{5})(\d{3})/, '$1-$2');
     }
     return cep;
+  };
+
+  // Função para obter iniciais do nome
+  const getIniciais = (nome: string): string => {
+    if (!nome) return '';
+    const partes = nome.trim().split(' ');
+    if (partes.length === 1) return partes[0].substring(0, 2).toUpperCase();
+    return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
+  };
+
+  // Handler para upload de foto
+  const handleFotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validar tipo de arquivo
+    if (!file.type.startsWith('image/')) {
+      toast.error('Por favor, selecione um arquivo de imagem');
+      return;
+    }
+
+    // Validar tamanho (máximo 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('A imagem deve ter no máximo 5MB');
+      return;
+    }
+
+    try {
+      setUploadingFoto(true);
+      const response = await uploadFotoPaciente(file);
+      setForm((prev) => ({ ...prev, foto: response.url }));
+      toast.success('Foto enviada com sucesso!');
+    } catch (error: any) {
+      console.error('Erro ao fazer upload da foto:', error);
+      toast.error(error?.response?.data?.message || 'Erro ao fazer upload da foto');
+    } finally {
+      setUploadingFoto(false);
+      // Resetar o input para permitir selecionar o mesmo arquivo novamente
+      e.target.value = '';
+    }
   };
 
 
@@ -304,6 +354,88 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
             <Typography variant="h6" sx={{ mb: 3, fontWeight: 600 }}>
               Dados de Identificação
             </Typography>
+            
+            {/* Upload de Foto */}
+            <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
+              <Stack alignItems="center" spacing={2}>
+                <Box sx={{ position: 'relative' }}>
+                  <Avatar
+                    src={form.foto || undefined}
+                    sx={{
+                      width: 120,
+                      height: 120,
+                      bgcolor: 'primary.main',
+                      fontSize: '3rem',
+                      border: '3px solid',
+                      borderColor: 'primary.light',
+                    }}
+                  >
+                    {!form.foto && getIniciais(form.nome || '')}
+                  </Avatar>
+                  {uploadingFoto && (
+                    <CircularProgress
+                      size={120}
+                      sx={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                      }}
+                    />
+                  )}
+                  <input
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    id="foto-paciente-upload"
+                    type="file"
+                    onChange={handleFotoChange}
+                    disabled={uploadingFoto}
+                  />
+                  <label htmlFor="foto-paciente-upload">
+                    <IconButton
+                      color="primary"
+                      component="span"
+                      disabled={uploadingFoto}
+                      sx={{
+                        position: 'absolute',
+                        bottom: 0,
+                        right: 0,
+                        bgcolor: 'background.paper',
+                        border: '2px solid',
+                        borderColor: 'primary.main',
+                        '&:hover': {
+                          bgcolor: 'primary.light',
+                          color: 'white',
+                        },
+                      }}
+                    >
+                      <PhotoCameraIcon />
+                    </IconButton>
+                  </label>
+                </Box>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  component="label"
+                  htmlFor="foto-paciente-upload"
+                  disabled={uploadingFoto}
+                  startIcon={<PhotoCameraIcon />}
+                >
+                  {uploadingFoto ? 'Enviando...' : form.foto ? 'Alterar Foto' : 'Adicionar Foto'}
+                </Button>
+                {form.foto && (
+                  <Button
+                    variant="text"
+                    size="small"
+                    color="error"
+                    onClick={() => setForm((prev) => ({ ...prev, foto: undefined }))}
+                    disabled={uploadingFoto}
+                  >
+                    Remover Foto
+                  </Button>
+                )}
+              </Stack>
+            </Box>
+
             <Grid container spacing={2}>
               <Grid item xs={12} sm={6}>
                 <TextField

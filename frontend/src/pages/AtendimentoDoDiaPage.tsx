@@ -114,6 +114,15 @@ const getStatusLabel = (status: string): string => {
   }
 };
 
+// Função para obter iniciais do nome do paciente
+const getIniciaisPaciente = (nome: string): string => {
+  if (!nome) return '';
+  const partes = nome.trim().split(' ').filter(p => p.length > 0);
+  if (partes.length === 0) return '';
+  if (partes.length === 1) return partes[0].substring(0, 2).toUpperCase();
+  return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
+};
+
 export const AtendimentoDoDiaPage: React.FC = () => {
   const theme = useTheme();
   const { user } = useAuth();
@@ -674,8 +683,19 @@ export const AtendimentoDoDiaPage: React.FC = () => {
                       )}
                       <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 3 }}>
                         <Stack direction="row" spacing={2} alignItems="flex-start" mb={2}>
-                          <Avatar sx={{ bgcolor: theme.palette.primary.main }}>
-                            <PersonIcon />
+                          <Avatar 
+                            src={agendamento.paciente.foto || undefined}
+                            sx={{ 
+                              bgcolor: theme.palette.primary.main,
+                              width: 56,
+                              height: 56,
+                              fontSize: '1.25rem',
+                              fontWeight: 600,
+                              border: '2px solid',
+                              borderColor: theme.palette.primary.light,
+                            }}
+                          >
+                            {!agendamento.paciente.foto && getIniciaisPaciente(agendamento.paciente.nome)}
                           </Avatar>
                           <Box flex={1}>
                             <Typography variant="h6" fontWeight="bold" gutterBottom>
@@ -841,8 +861,19 @@ export const AtendimentoDoDiaPage: React.FC = () => {
                     >
                       <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                         <Stack direction="row" spacing={2} alignItems="flex-start" mb={2}>
-                          <Avatar sx={{ bgcolor: theme.palette.grey[500] }}>
-                            <PersonIcon />
+                          <Avatar 
+                            src={agendamento.paciente.foto || undefined}
+                            sx={{ 
+                              bgcolor: theme.palette.grey[500],
+                              width: 56,
+                              height: 56,
+                              fontSize: '1.25rem',
+                              fontWeight: 600,
+                              border: '2px solid',
+                              borderColor: theme.palette.grey[400],
+                            }}
+                          >
+                            {!agendamento.paciente.foto && getIniciaisPaciente(agendamento.paciente.nome)}
                           </Avatar>
                           <Box flex={1}>
                             <Typography variant="h6" fontWeight="bold" gutterBottom>

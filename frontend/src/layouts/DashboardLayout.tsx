@@ -176,6 +176,7 @@ export const DashboardLayout: React.FC = () => {
         { text: 'Pacientes', icon: <PeopleIcon />, path: '/pacientes', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN', 'SECRETARIA'] },
         { text: 'Medicamentos', icon: <MedicationIcon />, path: '/medicamentos', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'] },
         { text: 'Prescrições', icon: <DescriptionIcon />, path: '/prescricoes', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'] },
+        { text: 'Atestados', icon: <DescriptionIcon />, path: '/atestados', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'] },
       ],
     },
     { text: 'Serviços', icon: <MedicalServicesIcon />, path: '/servicos', role: ['CLINICA_ADMIN', 'SUPER_ADMIN'] },

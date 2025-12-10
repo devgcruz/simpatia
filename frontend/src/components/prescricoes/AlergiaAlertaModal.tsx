@@ -80,7 +80,7 @@ export const AlergiaAlertaModal: React.FC<Props> = ({
           )}
           <Box>
             <Typography variant="h6" fontWeight="bold" color={severidade === 'error' ? 'error.main' : 'warning.main'}>
-              ⚠️ ALERTA DE ALERGIA
+              ALERTA DE ALERGIA
             </Typography>
             <Typography variant="caption" color="text.secondary">
               {mensagemMotivo}

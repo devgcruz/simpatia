@@ -51,6 +51,7 @@ import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import BusinessIcon from '@mui/icons-material/Business';
 import CategoryIcon from '@mui/icons-material/Category';
 import ScienceIcon from '@mui/icons-material/Science';
+import EditIcon from '@mui/icons-material/Edit';
 import ReactMarkdown from 'react-markdown';
 import type { Components as ReactMarkdownComponents } from 'react-markdown';
 import { IAgendamento, IHistoricoPaciente, IPaciente, IDoutor, IProntuarioChatMessage, IPrescricao } from '../../types/models';
@@ -58,6 +59,8 @@ import { getPacienteHistoricos, updatePaciente, updateHistoricoPaciente } from '
 import { getDoutores } from '../../services/doutor.service';
 import { getProntuarioChatMessages, sendProntuarioChatMessage } from '../../services/prontuarioChat.service';
 import { getPrescricoesPaciente, createPrescricao, getPrescricaoByProtocolo } from '../../services/prescricao.service';
+import { getAtestadosPaciente, getAtestadoByProtocolo } from '../../services/atestado.service';
+import { IAtestado } from '../../types/atestado';
 import { getMedicamentos } from '../../services/medicamento.service';
 import { IMedicamento } from '../../types/models';
 import { AlergiaFormModal } from '../prescricoes/AlergiaFormModal';
@@ -71,6 +74,9 @@ import { toast } from 'sonner';
 import { pdf } from '@react-pdf/renderer';
 import PrescricaoPdfView from '../PrescricaoPdfView';
 import { IModeloPrescricaoPDF, modeloPrescricaoPadrao } from '../../types/prescricao';
+import { PacienteFormModal } from './PacienteFormModal';
+import { AtestadoFormModal } from '../atestados/AtestadoFormModal';
+import AtestadoPdfView from '../AtestadoPdfView';
 
 moment.locale('pt-br');
 
@@ -149,6 +155,12 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
   const [loadingPrescricoes, setLoadingPrescricoes] = useState(false);
   const [prescricoesError, setPrescricoesError] = useState<string | null>(null);
   
+  // Estados para atestado
+  const [openAtestadoModal, setOpenAtestadoModal] = useState(false);
+  const [atestados, setAtestados] = useState<IAtestado[]>([]);
+  const [loadingAtestados, setLoadingAtestados] = useState(false);
+  const [atestadosError, setAtestadosError] = useState<string | null>(null);
+  
   // Estados para modal de alergias
   const [openAlergiaModal, setOpenAlergiaModal] = useState(false);
   const [openPerguntaAlergiaModal, setOpenPerguntaAlergiaModal] = useState(false);
@@ -186,6 +198,9 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
   const [quantidadeComprimidos, setQuantidadeComprimidos] = useState<number | ''>('');
   const [empresas, setEmpresas] = useState<string[]>([]);
   const [categorias, setCategorias] = useState<string[]>([]);
+
+  // Estado do modal de edição de paciente
+  const [openPacienteForm, setOpenPacienteForm] = useState(false);
 
   const duracaoEsperadaMin = agendamento?.servico.duracaoMin || 0;
   const duracaoEsperadaSeg = duracaoEsperadaMin * 60;
@@ -672,7 +687,7 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
 
   // Carregar prescrições quando a aba de prescrições for selecionada
   useEffect(() => {
-    if (open && activeTab === 3 && agendamento?.paciente.id) {
+    if (open && activeTab === 2 && agendamento?.paciente.id) {
       const carregarPrescricoes = async () => {
         try {
           setLoadingPrescricoes(true);
@@ -686,6 +701,25 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
         }
       };
       carregarPrescricoes();
+    }
+  }, [open, activeTab, agendamento?.paciente.id]);
+
+  // Carregar atestados quando a aba de atestados for aberta
+  useEffect(() => {
+    if (open && activeTab === 3 && agendamento?.paciente.id) {
+      const carregarAtestados = async () => {
+        try {
+          setLoadingAtestados(true);
+          setAtestadosError(null);
+          const data = await getAtestadosPaciente(agendamento.paciente.id);
+          setAtestados(data);
+        } catch (err: any) {
+          setAtestadosError(err?.response?.data?.message ?? 'Não foi possível carregar os atestados.');
+        } finally {
+          setLoadingAtestados(false);
+        }
+      };
+      carregarAtestados();
     }
   }, [open, activeTab, agendamento?.paciente.id]);
 
@@ -716,52 +750,6 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
       return () => clearTimeout(timer);
     }
   }, [openPrescricaoModal, agendamento?.paciente, mostrouPerguntaAlergia]);
-
-  // Carregar dados do paciente quando a aba de dados for selecionada
-  useEffect(() => {
-    if (open && activeTab === 2 && agendamento?.paciente) {
-      const paciente = agendamento.paciente;
-      const alergiasParsed = parseAlergias(paciente.alergias || '');
-      setAlergiasList(alergiasParsed);
-      setNovaAlergia('');
-      setPacienteData({
-        nome: paciente.nome || '',
-        telefone: paciente.telefone || '',
-        cpf: paciente.cpf || '',
-        dataNascimento: paciente.dataNascimento
-          ? moment(paciente.dataNascimento).format('YYYY-MM-DD')
-          : '',
-        genero: paciente.genero || '',
-        email: paciente.email || '',
-        cep: paciente.cep || '',
-        logradouro: paciente.logradouro || '',
-        numero: paciente.numero || '',
-        bairro: paciente.bairro || '',
-        cidade: paciente.cidade || '',
-        estado: paciente.estado || '',
-        convenio: paciente.convenio || '',
-        numeroCarteirinha: paciente.numeroCarteirinha || '',
-        alergias: formatAlergias(alergiasParsed),
-        observacoes: paciente.observacoes || '',
-        doutorId: paciente.doutorId || undefined,
-        pesoKg: paciente.pesoKg ?? undefined,
-        alturaCm: paciente.alturaCm ?? undefined,
-      });
-
-      // Carregar doutores se não for DOUTOR
-      if (!isDoutor) {
-        const carregarDoutores = async () => {
-          try {
-            const data = await getDoutores();
-            setDoutores(data);
-          } catch (error: any) {
-            console.error('Erro ao carregar doutores:', error);
-          }
-        };
-        carregarDoutores();
-      }
-    }
-  }, [open, activeTab, agendamento?.paciente, isDoutor]);
 
   const handleIniciarAtendimento = () => {
     // Verificar se está iniciando fora do horário agendado com janela muito grande
@@ -1039,6 +1027,21 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
       if (agendamento) {
         Object.assign(agendamento.paciente, dataToSave);
       }
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Erro ao salvar dados do paciente');
+    } finally {
+      setSalvandoPaciente(false);
+    }
+  };
+
+  const handleSubmitPacienteModal = async (data: Omit<IPaciente, 'id' | 'clinicaId'>) => {
+    if (!agendamento?.paciente.id) return;
+    try {
+      setSalvandoPaciente(true);
+      await updatePaciente(agendamento.paciente.id, data);
+      Object.assign(agendamento.paciente, data);
+      setOpenPacienteForm(false);
+      toast.success('Dados do paciente atualizados com sucesso!');
     } catch (error: any) {
       toast.error(error?.response?.data?.message || 'Erro ao salvar dados do paciente');
     } finally {
@@ -1498,15 +1501,15 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
         <Tabs value={activeTab} onChange={(_, newValue) => setActiveTab(newValue)} sx={{ mt: 2 }}>
           <Tab label="Prontuário" />
           <Tab label="Histórico de Atendimentos" />
-          <Tab label="Dados do Paciente" />
           <Tab label="Prescrições" />
+          <Tab label="Atestados" />
         </Tabs>
       </DialogTitle>
       <DialogContent 
         dividers
         sx={{
           flex: 1,
-          overflow: activeTab === 0 || activeTab === 1 || activeTab === 3 ? 'hidden' : 'auto',
+          overflow: activeTab === 0 || activeTab === 1 || activeTab === 2 || activeTab === 3 ? 'hidden' : 'auto',
           minHeight: 0,
           display: 'flex',
           flexDirection: 'column',
@@ -1536,13 +1539,40 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                     justifyContent="space-between"
                   >
                     <Stack direction="row" spacing={1.5} alignItems="center">
-                      <Avatar sx={{ bgcolor: 'primary.main', width: 48, height: 48 }}>
-                        <PersonIcon sx={{ fontSize: 24 }} />
+                      <Avatar 
+                        src={agendamento.paciente.foto || undefined}
+                        sx={{ 
+                          bgcolor: 'primary.main', 
+                          width: 64, 
+                          height: 64,
+                          fontSize: '1.5rem',
+                          border: '2px solid',
+                          borderColor: 'primary.light',
+                        }}
+                      >
+                        {!agendamento.paciente.foto && (
+                          agendamento.paciente.nome 
+                            ? agendamento.paciente.nome
+                                .split(' ')
+                                .map(n => n[0])
+                                .filter((_, i, arr) => i === 0 || i === arr.length - 1)
+                                .join('')
+                                .toUpperCase()
+                                .substring(0, 2)
+                            : <PersonIcon sx={{ fontSize: 32 }} />
+                        )}
                       </Avatar>
                       <Box>
-                        <Typography variant="h6" fontWeight="bold">
-                          {agendamento.paciente.nome}
-                        </Typography>
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <Typography variant="h6" fontWeight="bold">
+                            {agendamento.paciente.nome}
+                          </Typography>
+                          <Tooltip title="Editar Dados do Paciente">
+                            <IconButton size="small" onClick={() => setOpenPacienteForm(true)}>
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
                         <Chip
                           label={agendamento.status === 'finalizado' ? 'Finalizado' : 'Em Atendimento'}
                           color={agendamento.status === 'finalizado' ? 'success' : 'primary'}
@@ -1687,7 +1717,17 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                 <Stack spacing={1.5} sx={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
                   <Stack direction="row" spacing={1} alignItems="center">
                     <PhoneIcon color="action" sx={{ fontSize: 18 }} />
-                    <Typography variant="body2">{agendamento.paciente.telefone}</Typography>
+                    <Typography variant="body2">
+                      {agendamento.paciente.telefone}
+                      {agendamento.paciente.cidade && (
+                        <>
+                          <Box component="span" sx={{ mx: 1, color: 'text.secondary' }}>•</Box>
+                          <Box component="span" sx={{ color: 'text.secondary' }}>
+                            {agendamento.paciente.cidade}
+                          </Box>
+                        </>
+                      )}
+                    </Typography>
                   </Stack>
 
                   {agendamento.paciente.email && (
@@ -2057,6 +2097,17 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                     // Limitar a 30 caracteres e adicionar ... se necessário
                     return primeiraLinha.length > 30 ? primeiraLinha.substring(0, 30) + '...' : primeiraLinha;
                   };
+
+                  // Função para formatar texto da prescrição para tooltip (mantém quebras entre medicamentos)
+                  const formatarTextoPrescricaoTooltip = (conteudo: string): string => {
+                    if (!conteudo) return 'Sem conteúdo';
+                    // Manter quebras de linha entre medicamentos, mas limpar espaços múltiplos dentro de cada linha
+                    return conteudo
+                      .split('\n')
+                      .map(line => line.trim().replace(/\s+/g, ' '))
+                      .filter(line => line.length > 0)
+                      .join('\n');
+                  };
                   
                   return (
                     <React.Fragment key={historico.id}>
@@ -2121,14 +2172,20 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                                     return (
                                       <Box key={prescricao.id} sx={{ display: 'inline-block', mr: 0.5, mb: 0.5 }}>
                                         <Tooltip
-                                          title={
-                                            <Box component="div" sx={{ whiteSpace: 'pre-wrap', maxWidth: 400 }}>
-                                              {prescricao.conteudo || 'Sem conteúdo'}
-                                            </Box>
-                                          }
+                                          title={formatarTextoPrescricaoTooltip(prescricao.conteudo || '')}
                                           arrow
-                                          enterDelay={1000}
+                                          enterDelay={500}
                                           placement="top"
+                                          slotProps={{
+                                            tooltip: {
+                                              sx: {
+                                                maxWidth: 900,
+                                                whiteSpace: 'pre-line',
+                                                fontSize: '0.875rem',
+                                                lineHeight: 1.5,
+                                              },
+                                            },
+                                          }}
                                         >
                                           <Chip
                                             label={labelTexto}
@@ -2207,7 +2264,7 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
         )}
 
         {/* Aba de Dados do Paciente */}
-        {activeTab === 2 && (
+        {false && (
           <Box>
             <Grid container spacing={3}>
               {/* Dados de Identificação */}
@@ -2599,7 +2656,7 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
         )}
 
         {/* Aba de Prescrições */}
-        {activeTab === 3 && (
+        {activeTab === 2 && (
           <Box sx={{ height: '100%', overflow: 'auto' }}>
             {loadingPrescricoes ? (
               <Box display="flex" justifyContent="center" alignItems="center" py={4}>
@@ -2726,6 +2783,189 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                             >
                               {prescricao.conteudo}
                             </Typography>
+                          </Box>
+                        }
+                      />
+                    </ListItem>
+                  </React.Fragment>
+                ))}
+              </List>
+            )}
+          </Box>
+        )}
+
+        {/* Aba de Atestados */}
+        {activeTab === 3 && (
+          <Box sx={{ height: '100%', overflow: 'auto' }}>
+            <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<AddCircleIcon />}
+                onClick={() => setOpenAtestadoModal(true)}
+              >
+                Novo Atestado
+              </Button>
+            </Box>
+            {loadingAtestados ? (
+              <Box display="flex" justifyContent="center" alignItems="center" py={4}>
+                <CircularProgress />
+              </Box>
+            ) : atestadosError ? (
+              <Alert severity="error">{atestadosError}</Alert>
+            ) : atestados.length === 0 ? (
+              <Box textAlign="center" py={4}>
+                <Typography variant="body1" color="text.secondary">
+                  Nenhum atestado encontrado
+                </Typography>
+              </Box>
+            ) : (
+              <List sx={{ width: '100%' }}>
+                {atestados.map((atestado) => (
+                  <React.Fragment key={atestado.id}>
+                    <ListItem
+                      alignItems="flex-start"
+                      sx={{
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 2,
+                        mb: 2,
+                        p: 2,
+                      }}
+                    >
+                      <ListItemText
+                        primary={
+                          <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                            <Box>
+                              <Typography variant="subtitle1" fontWeight="bold" component="span">
+                                Protocolo: {atestado.protocolo}
+                              </Typography>
+                              <Chip
+                                label={atestado.doutor?.nome || 'N/A'}
+                                size="small"
+                                color="primary"
+                                sx={{ ml: 2 }}
+                              />
+                            </Box>
+                            <Box display="flex" alignItems="center" gap={1}>
+                              <Typography variant="caption" color="text.secondary">
+                                {moment(atestado.createdAt).format('DD/MM/YYYY [às] HH:mm')}
+                              </Typography>
+                              <Tooltip title="Visualizar atestado">
+                                <IconButton
+                                  size="small"
+                                  color="primary"
+                                  onClick={async () => {
+                                    try {
+                                      const atestadoCompleto = await getAtestadoByProtocolo(atestado.protocolo);
+                                      // Gerar PDF e abrir
+                                      const { getDoutorById } = await import('../../services/doutor.service');
+                                      const doutor = await getDoutorById(atestadoCompleto.doutorId);
+                                      
+                                      const clinicaNome = doutor.clinica?.nome || 'Clínica';
+                                      const clinicaEndereco = doutor.clinica?.endereco || '';
+                                      const clinicaTelefone = doutor.clinica?.telefone || '';
+                                      const clinicaEmail = doutor.clinica?.email || doutor.email || '';
+                                      const clinicaSite = doutor.clinica?.site || '';
+                                      
+                                      const horaAtendimento = atestadoCompleto.agendamento?.dataHora
+                                        ? moment(atestadoCompleto.agendamento.dataHora).format('HH:mm')
+                                        : moment(atestadoCompleto.createdAt).format('HH:mm');
+                                      
+                                      const tipoAfastamento = atestadoCompleto.diasAfastamento < 1 ? 'horas' : 'dias';
+                                      
+                                      // Usar data do atestado ou data de criação
+                                      const dataAtestadoFormatada = atestadoCompleto.dataAtestado
+                                        ? moment(atestadoCompleto.dataAtestado).format('YYYY-MM-DD')
+                                        : moment(atestadoCompleto.createdAt).format('YYYY-MM-DD');
+                                      
+                                      const pdfDoc = (
+                                        <AtestadoPdfView
+                                          pacienteNome={atestadoCompleto.paciente?.nome || ''}
+                                          pacienteCPF={atestadoCompleto.paciente?.cpf || undefined}
+                                          dataAtendimento={dataAtestadoFormatada}
+                                          horaAtendimento={horaAtendimento}
+                                          diasAfastamento={atestadoCompleto.diasAfastamento}
+                                          tipoAfastamento={tipoAfastamento}
+                                          cid={atestadoCompleto.cid || undefined}
+                                          exibirCid={atestadoCompleto.exibirCid}
+                                          conteudo={atestadoCompleto.conteudo || ''}
+                                          localAtendimento={atestadoCompleto.localAtendimento || 'Consultório'}
+                                          doutorNome={doutor.nome || ''}
+                                          doutorEspecialidade={doutor.especialidade || ''}
+                                          doutorCRM={doutor.crm}
+                                          doutorCRMUF={doutor.crmUf}
+                                          doutorRQE={doutor.rqe}
+                                          clinicaNome={clinicaNome}
+                                          clinicaEndereco={clinicaEndereco}
+                                          clinicaTelefone={clinicaTelefone}
+                                          clinicaEmail={clinicaEmail}
+                                          clinicaSite={clinicaSite}
+                                        />
+                                      );
+                                      
+                                      const blob = await pdf(pdfDoc).toBlob();
+                                      const url = URL.createObjectURL(blob);
+                                      const printWindow = window.open(url, '_blank');
+                                      if (printWindow) {
+                                        printWindow.onload = () => {
+                                          setTimeout(() => {
+                                            printWindow.print();
+                                            setTimeout(() => URL.revokeObjectURL(url), 1000);
+                                          }, 250);
+                                        };
+                                      }
+                                    } catch (error: any) {
+                                      console.error('Erro ao visualizar atestado:', error);
+                                      toast.error('Erro ao visualizar atestado');
+                                    }
+                                  }}
+                                  sx={{ ml: 1 }}
+                                >
+                                  <VisibilityIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            </Box>
+                          </Box>
+                        }
+                        secondary={
+                          <Box>
+                            {atestado.agendamento && (
+                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                <strong>Agendamento:</strong> {moment(atestado.agendamento.dataHora).format('DD/MM/YYYY [às] HH:mm')} - {atestado.agendamento.servico?.nome}
+                              </Typography>
+                            )}
+                            <Box sx={{ mb: 1 }}>
+                              <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                                <strong>Afastamento:</strong> {atestado.diasAfastamento < 1 
+                                  ? `${Math.floor(atestado.diasAfastamento * 24)} horas`
+                                  : `${Math.floor(atestado.diasAfastamento)} dias`}
+                              </Typography>
+                              {atestado.cid && (
+                                <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                                  <strong>CID:</strong> {atestado.exibirCid ? atestado.cid : 'Sob sigilo médico'}
+                                </Typography>
+                              )}
+                              <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                                <strong>Local:</strong> {atestado.localAtendimento || 'Consultório'}
+                              </Typography>
+                            </Box>
+                            <Divider sx={{ my: 1 }} />
+                            {atestado.conteudo && (
+                              <Typography
+                                variant="body2"
+                                component="div"
+                                sx={{
+                                  whiteSpace: 'pre-wrap',
+                                  backgroundColor: 'grey.50',
+                                  p: 2,
+                                  borderRadius: 1,
+                                  mt: 1,
+                                }}
+                              >
+                                <strong>Observações:</strong> {atestado.conteudo}
+                              </Typography>
+                            )}
                           </Box>
                         }
                       />
@@ -3580,6 +3820,39 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
           </Button>
         </DialogActions>
       </Dialog>
+
+      <PacienteFormModal
+        open={openPacienteForm}
+        onClose={() => setOpenPacienteForm(false)}
+        initialData={agendamento?.paciente || null}
+        onSubmit={handleSubmitPacienteModal}
+        doutorIdForcado={agendamento?.doutor?.id}
+      />
+
+      {/* Modal de Atestado */}
+      {agendamento?.paciente && (
+        <AtestadoFormModal
+          open={openAtestadoModal}
+          onClose={() => setOpenAtestadoModal(false)}
+          onSubmit={async (data) => {
+            // Este onSubmit não será usado pois o modal já salva ao gerar PDF
+            // Mas mantemos para compatibilidade
+          }}
+          atestado={null}
+          pacientes={[agendamento.paciente]}
+          onAtestadoCriado={async () => {
+            // Recarregar lista de atestados
+            if (agendamento?.paciente.id) {
+              try {
+                const data = await getAtestadosPaciente(agendamento.paciente.id);
+                setAtestados(data);
+              } catch (err: any) {
+                console.error('Erro ao recarregar atestados:', err);
+              }
+            }
+          }}
+        />
+      )}
 
       {/* Modal de Alergia */}
       <AlergiaFormModal

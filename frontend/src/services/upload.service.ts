@@ -19,4 +19,17 @@ export const uploadLogo = async (file: File): Promise<UploadLogoResponse> => {
   return response.data;
 };
 
+export const uploadFotoPaciente = async (file: File): Promise<UploadLogoResponse> => {
+  const formData = new FormData();
+  formData.append('foto', file);
+
+  const response = await api.post<UploadLogoResponse>('/upload/foto-paciente', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+
+  return response.data;
+};
+
 

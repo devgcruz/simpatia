@@ -12,6 +12,7 @@ import { ChatPage } from './pages/ChatPage';
 import { AtendimentoDoDiaPage } from './pages/AtendimentoDoDiaPage';
 import { MedicamentosPage } from './pages/MedicamentosPage';
 import { PrescricoesPage } from './pages/PrescricoesPage';
+import { AtestadosPage } from './pages/AtestadosPage';
 import { SecretariasPage } from './pages/SecretariasPage';
 import { ChatInternoPage } from './components/chat-interno/ChatInternoPage';
 import { ConfiguracoesPage } from './pages/ConfiguracoesPage';
@@ -47,6 +48,7 @@ function App() {
               <Route path="/clinicas" element={<ClinicasPage />} />
               <Route path="/medicamentos" element={<MedicamentosPage />} />
               <Route path="/prescricoes" element={<PrescricoesPage />} />
+              <Route path="/atestados" element={<AtestadosPage />} />
               <Route path="/chat-interno" element={<ChatInternoPage />} />
               <Route path="/configuracoes" element={<ConfiguracoesPage />} />
               <Route path="/perfil" element={<PerfilPage />} />

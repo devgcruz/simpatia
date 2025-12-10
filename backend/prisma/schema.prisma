@@ -97,6 +97,7 @@ model Doutor {
   servicos           Servico[]
   pacientes          Paciente[]
   prescricoes        Prescricao[]
+  atestados          Atestado[] @relation("AtestadosDoutor")
   secretarias        SecretariaDoutor[] @relation("SecretariaVinculos")
   doutoresVinculados SecretariaDoutor[] @relation("DoutorVinculos")
   conversasCriadas   ConversaInterna[]  @relation("ConversasCriadas")
@@ -147,10 +148,12 @@ model Paciente {
   observacoes       String? @db.Text // Histórico/Observações (campo de texto livre)
   pesoKg            Float?
   alturaCm          Float?
+  foto              String? // URL da foto de perfil do paciente
 
   agendamentos Agendamento[]
   historicos   HistoricoPaciente[]
   prescricoes  Prescricao[]
+  atestados    Atestado[] @relation("AtestadosPaciente")
   chatStatus   ChatStatus          @default(BOT)
   chatMessages ChatMessage[]
   alergiasMedicamentos AlergiaMedicamento[]
@@ -200,6 +203,7 @@ model Agendamento {
   canceladoEm        DateTime? // Data e hora do cancelamento
   historicos         HistoricoPaciente[]
   prescricoes        Prescricao[]
+  atestados          Atestado[] @relation("AtestadosAgendamento")
   prontuarioChats    ProntuarioChatMessage[]
 }
 
@@ -232,6 +236,28 @@ model Prescricao {
   paciente    Paciente     @relation(fields: [pacienteId], references: [id], onDelete: Cascade)
   doutor      Doutor       @relation(fields: [doutorId], references: [id], onDelete: Cascade)
   agendamento Agendamento? @relation(fields: [agendamentoId], references: [id], onDelete: SetNull)
+
+  @@index([pacienteId, createdAt])
+  @@index([protocolo])
+}
+
+model Atestado {
+  id              Int      @id @default(autoincrement())
+  protocolo       String   @unique @default(uuid()) // Protocolo único do atestado
+  diasAfastamento Int      // Dias de afastamento
+  cid             String? // CID (opcional)
+  exibirCid       Boolean  @default(false) // Se deve exibir o CID no atestado
+  conteudo        String   @db.Text // Observações/Recomendações
+  localAtendimento String? @default("Consultório") // Local do atendimento
+  dataAtestado    DateTime? // Data do atestado (opcional, se não informada usa a data atual)
+  pacienteId      Int
+  doutorId        Int
+  agendamentoId   Int?
+  createdAt       DateTime @default(now())
+
+  paciente    Paciente     @relation("AtestadosPaciente", fields: [pacienteId], references: [id], onDelete: Cascade)
+  doutor      Doutor       @relation("AtestadosDoutor", fields: [doutorId], references: [id], onDelete: Cascade)
+  agendamento Agendamento? @relation("AtestadosAgendamento", fields: [agendamentoId], references: [id], onDelete: SetNull)
 
   @@index([pacienteId, createdAt])
   @@index([protocolo])

@@ -125,3 +125,5 @@ export const ConfirmarExclusaoAlergiaModal: React.FC<Props> = ({
   );
 };
 
+
+

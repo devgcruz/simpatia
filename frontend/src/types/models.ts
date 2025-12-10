@@ -32,6 +32,7 @@ export interface IPaciente {
   observacoes?: string | null;
   pesoKg?: number | null;
   alturaCm?: number | null;
+  foto?: string | null;
   clinicaId: number;
   doutorId?: number | null;
   doutor?: {

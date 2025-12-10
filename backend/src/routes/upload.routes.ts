@@ -11,7 +11,12 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// Configuração do multer
+const fotosPacientesDir = path.join(__dirname, '../../uploads/fotos-pacientes');
+if (!fs.existsSync(fotosPacientesDir)) {
+  fs.mkdirSync(fotosPacientesDir, { recursive: true });
+}
+
+// Configuração do multer para logos
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadsDir);
@@ -21,6 +26,19 @@ const storage = multer.diskStorage({
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     const ext = path.extname(file.originalname);
     cb(null, `logo-${uniqueSuffix}${ext}`);
+  },
+});
+
+// Configuração do multer para fotos de pacientes
+const storageFotosPacientes = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, fotosPacientesDir);
+  },
+  filename: (req, file, cb) => {
+    // Nome único: timestamp + nome original
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, `foto-paciente-${uniqueSuffix}${ext}`);
   },
 });
 
@@ -45,6 +63,14 @@ const upload = multer({
   fileFilter: fileFilter,
 });
 
+const uploadFotoPaciente = multer({
+  storage: storageFotosPacientes,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB
+  },
+  fileFilter: fileFilter,
+});
+
 // Rota para upload de logo (authMiddleware será aplicado no index.ts)
 router.post('/logo', upload.single('logo'), (req: Request, res: Response) => {
   try {
@@ -62,6 +88,26 @@ router.post('/logo', upload.single('logo'), (req: Request, res: Response) => {
     });
   } catch (error: any) {
     res.status(500).json({ message: error.message || 'Erro ao fazer upload do logo' });
+  }
+});
+
+// Rota para upload de foto de paciente (authMiddleware será aplicado no index.ts)
+router.post('/foto-paciente', uploadFotoPaciente.single('foto'), (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'Nenhum arquivo enviado' });
+    }
+
+    // Retornar URL do arquivo
+    const fileUrl = `/api/uploads/fotos-pacientes/${req.file.filename}`;
+    
+    res.json({
+      message: 'Foto enviada com sucesso',
+      url: fileUrl,
+      filename: req.file.filename,
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message || 'Erro ao fazer upload da foto' });
   }
 });
 
