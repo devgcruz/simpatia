@@ -72,3 +72,8 @@ export const getAtestadoByProtocolo = async (protocolo: string): Promise<IAtesta
   return response.data;
 };
 
+export const invalidateAtestado = async (id: number, motivoInvalidacao: string): Promise<IAtestado> => {
+  const response = await api.post(`/atestados/${id}/invalidate`, { motivoInvalidacao });
+  return response.data;
+};
+

@@ -16,7 +16,6 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  CircularProgress,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import PersonIcon from '@mui/icons-material/Person';
@@ -76,8 +75,8 @@ export const AtestadoFormModal: React.FC<Props> = ({
   const [loadingDoutor, setLoadingDoutor] = useState(false);
 
   // Ref para controlar se já inicializou os valores
-  const inicializadoRef = React.useRef(false);
-  const openAnteriorRef = React.useRef(false);
+  const inicializadoRef = useRef(false);
+  const openAnteriorRef = useRef(false);
 
   useEffect(() => {
     // Se o modal acabou de abrir (open mudou de false para true)
@@ -292,8 +291,10 @@ export const AtestadoFormModal: React.FC<Props> = ({
           horaAtendimento={horaAtendimento}
           diasAfastamento={diasCalculados}
           tipoAfastamento={tipoAfastamento}
-          horaInicial={atestadoCompleto.horaInicial || (tipoAfastamento === 'horas' ? horaInicial : undefined)}
-          horaFinal={atestadoCompleto.horaFinal || (tipoAfastamento === 'horas' ? horaFinal : undefined)}
+          // INTEGRIDADE: Priorizar horas salvas no banco, caso contrário usar do estado local
+          // Isso garante que o PDF seja idêntico ao documento médico original
+          horaInicial={atestadoCompleto.horaInicial || (tipoAfastamento === 'horas' && horaInicial ? horaInicial : undefined)}
+          horaFinal={atestadoCompleto.horaFinal || (tipoAfastamento === 'horas' && horaFinal ? horaFinal : undefined)}
           cid={atestadoCompleto.cid || undefined}
           exibirCid={atestadoCompleto.exibirCid}
           conteudo={atestadoCompleto.conteudo || ''}

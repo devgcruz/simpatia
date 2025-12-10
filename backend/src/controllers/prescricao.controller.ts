@@ -113,6 +113,23 @@ class PrescricaoController {
       return res.status(500).json({ error: error.message || 'Erro ao deletar prescrição' });
     }
   }
+
+  async invalidate(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const { motivoInvalidacao } = req.body;
+
+      if (!motivoInvalidacao || motivoInvalidacao.trim() === '') {
+        return res.status(400).json({ error: 'Motivo da invalidação é obrigatório' });
+      }
+
+      const prescricao = await prescricaoService.invalidate(Number(id), motivoInvalidacao.trim());
+      return res.json(prescricao);
+    } catch (error: any) {
+      console.error('Erro ao invalidar prescrição:', error);
+      return res.status(500).json({ error: error.message || 'Erro ao invalidar prescrição' });
+    }
+  }
 }
 
 export default new PrescricaoController();

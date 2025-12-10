@@ -12,6 +12,7 @@ router.get('/paciente/:pacienteId', prescricaoController.findByPaciente);
 router.get('/protocolo/:protocolo', prescricaoController.findByProtocolo);
 router.get('/:id', prescricaoController.getById);
 router.put('/:id', prescricaoController.update);
+router.post('/:id/invalidate', prescricaoController.invalidate);
 router.delete('/:id', prescricaoController.delete);
 
 export default router;

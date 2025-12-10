@@ -148,6 +148,8 @@ class PacienteService {
                                 id: true,
                                 protocolo: true,
                                 conteudo: true,
+                                invalidado: true,
+                                motivoInvalidacao: true,
                                 createdAt: true,
                                 agendamentoId: true,
                             },
@@ -167,6 +169,8 @@ class PacienteService {
                                 conteudo: true,
                                 localAtendimento: true,
                                 dataAtestado: true,
+                                invalidado: true,
+                                motivoInvalidacao: true,
                                 createdAt: true,
                                 agendamentoId: true,
                             },
@@ -194,6 +198,8 @@ class PacienteService {
                 id: true,
                 protocolo: true,
                 conteudo: true,
+                invalidado: true,
+                motivoInvalidacao: true,
                 createdAt: true,
                 doutor: {
                     select: {
@@ -274,6 +280,8 @@ class PacienteService {
                     id: prescricao.id,
                     protocolo: prescricao.protocolo,
                     conteudo: prescricao.conteudo,
+                    invalidado: prescricao.invalidado,
+                    motivoInvalidacao: prescricao.motivoInvalidacao,
                     createdAt: prescricao.createdAt,
                     agendamentoId: null, // Marca como prescrição avulsa
                 }],

@@ -11,6 +11,8 @@ export interface IAtestado {
   conteudo: string;
   localAtendimento?: string | null;
   dataAtestado?: string | null;
+  invalidado: boolean;
+  motivoInvalidacao?: string | null;
   pacienteId: number;
   doutorId: number;
   agendamentoId?: number | null;

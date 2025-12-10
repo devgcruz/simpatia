@@ -103,6 +103,8 @@ export interface IHistoricoPaciente {
       id: number;
       protocolo: string;
       conteudo: string;
+      invalidado: boolean;
+      motivoInvalidacao?: string | null;
       createdAt: string;
       agendamentoId?: number | null;
     }>;
@@ -117,6 +119,8 @@ export interface IHistoricoPaciente {
       conteudo: string;
       localAtendimento?: string | null;
       dataAtestado?: string | null;
+      invalidado: boolean;
+      motivoInvalidacao?: string | null;
       createdAt: string;
       agendamentoId?: number | null;
     }>;
@@ -127,6 +131,8 @@ export interface IHistoricoPaciente {
     id: number;
     protocolo: string;
     conteudo: string;
+    invalidado: boolean;
+    motivoInvalidacao?: string | null;
     createdAt: string;
     agendamentoId?: number | null;
   }>;
@@ -139,6 +145,8 @@ export interface IHistoricoPaciente {
     conteudo: string;
     localAtendimento?: string | null;
     dataAtestado?: string | null;
+    invalidado: boolean;
+    motivoInvalidacao?: string | null;
     createdAt: string;
     agendamentoId?: number | null;
   }>;
@@ -148,6 +156,8 @@ export interface IPrescricao {
   id: number;
   protocolo: string; // Protocolo único da prescrição
   conteudo: string;
+  invalidado: boolean;
+  motivoInvalidacao?: string | null;
   pacienteId: number;
   doutorId: number;
   agendamentoId?: number | null;

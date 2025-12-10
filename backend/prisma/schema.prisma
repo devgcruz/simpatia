@@ -228,6 +228,8 @@ model Prescricao {
   id            Int      @id @default(autoincrement())
   protocolo     String   @unique @default(uuid()) // Protocolo único da prescrição
   conteudo      String   @db.Text // Texto da prescrição
+  invalidado    Boolean  @default(false) // Se a prescrição foi invalidada
+  motivoInvalidacao String? @db.Text // Motivo da invalidação
   pacienteId    Int
   doutorId      Int
   agendamentoId Int?
@@ -252,6 +254,8 @@ model Atestado {
   conteudo        String   @db.Text // Observações/Recomendações
   localAtendimento String? @default("Consultório") // Local do atendimento
   dataAtestado    DateTime? // Data do atestado (opcional, se não informada usa a data atual)
+  invalidado      Boolean  @default(false) // Se o atestado foi invalidado
+  motivoInvalidacao String? @db.Text // Motivo da invalidação
   pacienteId      Int
   doutorId        Int
   agendamentoId   Int?

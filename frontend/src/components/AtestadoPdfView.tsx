@@ -24,6 +24,8 @@ interface AtestadoPdfViewProps {
   clinicaTelefone?: string;
   clinicaEmail?: string;
   clinicaSite?: string;
+  invalidado?: boolean;
+  motivoInvalidacao?: string;
 }
 
 const styles = StyleSheet.create({
@@ -125,6 +127,35 @@ const styles = StyleSheet.create({
     marginTop: 10,
     color: '#666666',
   },
+  watermark: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%) rotate(-45deg)',
+    fontSize: 72,
+    fontWeight: 'bold',
+    color: '#FF0000',
+    opacity: 0.3,
+    zIndex: 1000,
+  },
+  invalidadoInfo: {
+    marginTop: 20,
+    padding: 10,
+    backgroundColor: '#FFEBEE',
+    borderLeftWidth: 4,
+    borderLeftColor: '#F44336',
+  },
+  invalidadoText: {
+    fontSize: 10,
+    color: '#C62828',
+    fontWeight: 'bold',
+    marginBottom: 5,
+  },
+  invalidadoMotivo: {
+    fontSize: 9,
+    color: '#D32F2F',
+    fontStyle: 'italic',
+  },
 });
 
 const AtestadoPdfView: React.FC<AtestadoPdfViewProps> = ({
@@ -150,6 +181,8 @@ const AtestadoPdfView: React.FC<AtestadoPdfViewProps> = ({
   clinicaTelefone,
   clinicaEmail,
   clinicaSite,
+  invalidado = false,
+  motivoInvalidacao,
 }) => {
   const formatarData = (dataStr: string) => {
     try {
@@ -173,11 +206,15 @@ const AtestadoPdfView: React.FC<AtestadoPdfViewProps> = ({
   const dataFormatada = formatarData(dataAtendimento);
 
   // Formatar tempo de afastamento
+  // INTEGRIDADE MÉDICA: Esta função preserva fielmente o período exato definido pelo médico.
+  // Se horaInicial e horaFinal existirem, SEMPRE usar o formato "das XhXX às XhXX",
+  // jamais simplificar para duração calculada, pois isso compromete a integridade do documento.
   const formatarTempoAfastamento = () => {
-    // PRIORIDADE: Se houver período de horas definido (horaInicial e horaFinal), sempre usar ele
+    // PRIORIDADE ABSOLUTA: Se houver período de horas definido (horaInicial e horaFinal), sempre usar ele
+    // Isso garante que o PDF histórico seja idêntico ao PDF recém-criado
     if (horaInicial && horaFinal) {
       const formatarHora = (hora: string) => {
-        // Converter de HH:mm para HHhmm
+        // Converter de HH:mm para HHhmm (ex: "08:00" -> "08h00")
         const [h, m] = hora.split(':');
         return `${h}h${m}`;
       };
@@ -229,6 +266,13 @@ const AtestadoPdfView: React.FC<AtestadoPdfViewProps> = ({
   return (
     <Document>
       <Page size="A4" style={styles.page}>
+        {/* Marca d'água INVALIDADO */}
+        {invalidado && (
+          <View style={styles.watermark}>
+            <Text>INVALIDADO</Text>
+          </View>
+        )}
+
         {/* Cabeçalho */}
         <View style={styles.header}>
           <Text style={styles.title}>ATESTADO MÉDICO</Text>
@@ -256,18 +300,32 @@ const AtestadoPdfView: React.FC<AtestadoPdfViewProps> = ({
             Atesto para os devidos fins que o(a) Sr(a). <Text style={{ fontWeight: 'bold' }}>{pacienteNome}</Text> foi atendido(a) nesta data às <Text style={{ fontWeight: 'bold' }}>{horaAtendimento}</Text> no(a) <Text style={{ fontWeight: 'bold' }}>{localAtendimento}</Text>. Deverá permanecer afastado(a) de suas atividades laborais por <Text style={{ fontWeight: 'bold' }}>{formatarTempoAfastamento()}</Text> a partir desta data.
           </Text>
 
-          {/* Seção CID */}
-          <View style={styles.cidSection}>
-            <Text style={styles.cidText}>
-              CID: {exibirCid && cid ? cid : 'Sob sigilo médico'}
-            </Text>
-          </View>
+          {/* Seção CID - Apenas exibir se autorizado E houver código CID */}
+          {exibirCid && cid && cid.trim() && (
+            <View style={styles.cidSection}>
+              <Text style={styles.cidText}>
+                CID: {cid}
+              </Text>
+            </View>
+          )}
 
           {/* Observações */}
           {conteudo && conteudo.trim() && (
             <View style={styles.observacoesSection}>
               <Text style={styles.observacoesLabel}>Observações:</Text>
               <Text style={styles.observacoesText}>{conteudo}</Text>
+            </View>
+          )}
+
+          {/* Informação de Invalidação */}
+          {invalidado && (
+            <View style={styles.invalidadoInfo}>
+              <Text style={styles.invalidadoText}>DOCUMENTO INVALIDADO</Text>
+              {motivoInvalidacao && motivoInvalidacao.trim() && (
+                <Text style={styles.invalidadoMotivo}>
+                  Motivo: {motivoInvalidacao}
+                </Text>
+              )}
             </View>
           )}
         </View>

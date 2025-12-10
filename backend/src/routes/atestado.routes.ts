@@ -12,6 +12,7 @@ router.get('/paciente/:pacienteId', atestadoController.findByPaciente);
 router.get('/protocolo/:protocolo', atestadoController.findByProtocolo);
 router.get('/:id', atestadoController.getById);
 router.put('/:id', atestadoController.update);
+router.post('/:id/invalidate', atestadoController.invalidate);
 router.delete('/:id', atestadoController.delete);
 
 export default router;

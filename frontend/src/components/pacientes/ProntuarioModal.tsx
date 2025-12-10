@@ -58,8 +58,8 @@ import { IAgendamento, IHistoricoPaciente, IPaciente, IDoutor, IProntuarioChatMe
 import { getPacienteHistoricos, updatePaciente, updateHistoricoPaciente } from '../../services/paciente.service';
 import { getDoutores } from '../../services/doutor.service';
 import { getProntuarioChatMessages, sendProntuarioChatMessage } from '../../services/prontuarioChat.service';
-import { getPrescricoesPaciente, createPrescricao, getPrescricaoByProtocolo } from '../../services/prescricao.service';
-import { getAtestadosPaciente, getAtestadoByProtocolo } from '../../services/atestado.service';
+import { getPrescricoesPaciente, createPrescricao, getPrescricaoByProtocolo, invalidatePrescricao } from '../../services/prescricao.service';
+import { getAtestadosPaciente, getAtestadoByProtocolo, invalidateAtestado } from '../../services/atestado.service';
 import { IAtestado } from '../../types/atestado';
 import { getMedicamentos } from '../../services/medicamento.service';
 import { IMedicamento } from '../../types/models';
@@ -77,6 +77,7 @@ import { IModeloPrescricaoPDF, modeloPrescricaoPadrao } from '../../types/prescr
 import { PacienteFormModal } from './PacienteFormModal';
 import { AtestadoFormModal } from '../atestados/AtestadoFormModal';
 import AtestadoPdfView from '../AtestadoPdfView';
+import { InvalidarDocumentoModal } from '../InvalidarDocumentoModal';
 
 moment.locale('pt-br');
 
@@ -186,6 +187,8 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
   
   // Estados para busca de medicamentos
   const [openMedicamentoModal, setOpenMedicamentoModal] = useState(false);
+  const [openInvalidarModal, setOpenInvalidarModal] = useState(false);
+  const [documentoParaInvalidar, setDocumentoParaInvalidar] = useState<{ tipo: 'prescricao' | 'atestado'; id: number } | null>(null);
   const [buscaMedicamento, setBuscaMedicamento] = useState('');
   const [buscaPrincipioAtivo, setBuscaPrincipioAtivo] = useState('');
   const [buscaEmpresa, setBuscaEmpresa] = useState('');
@@ -1328,6 +1331,8 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
           clinicaLogoUrl={logoURL}
           modelo={modeloPrescricao}
           isControleEspecial={false}
+          invalidado={prescricao.invalidado}
+          motivoInvalidacao={prescricao.motivoInvalidacao || undefined}
         />
       );
 
@@ -1582,60 +1587,84 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                       </Box>
                     </Stack>
 
-                    <Button
-                      variant="contained"
-                      size="medium"
-                      startIcon={<DescriptionIcon />}
-                      onClick={async () => {
-                          console.log('Botão Prescrições clicado');
-                          console.log('Agendamento:', agendamento);
-                          console.log('Doutores carregados:', doutores.length);
-                          
-                          // Se não tiver doutores carregados, buscar
-                          if (doutores.length === 0) {
-                            try {
-                              console.log('Carregando doutores...');
-                              const data = await getDoutores();
-                              console.log('Doutores carregados:', data);
-                              setDoutores(data);
-                              const doutor = data.find(d => d.id === agendamento.doutor.id);
+                    <Stack direction="column" spacing={0} alignItems="flex-end">
+                      <Button
+                        variant="contained"
+                        size="small"
+                        startIcon={<DescriptionIcon />}
+                        onClick={async () => {
+                            console.log('Botão Prescrições clicado');
+                            console.log('Agendamento:', agendamento);
+                            console.log('Doutores carregados:', doutores.length);
+                            
+                            // Se não tiver doutores carregados, buscar
+                            if (doutores.length === 0) {
+                              try {
+                                console.log('Carregando doutores...');
+                                const data = await getDoutores();
+                                console.log('Doutores carregados:', data);
+                                setDoutores(data);
+                                const doutor = data.find(d => d.id === agendamento.doutor.id);
+                                if (doutor) {
+                                  console.log('Doutor encontrado:', doutor);
+                                  setDoutorAtual(doutor);
+                                } else {
+                                  console.log('Doutor não encontrado na lista, usando do agendamento');
+                                  setDoutorAtual(agendamento.doutor as IDoutor);
+                                }
+                              } catch (error) {
+                                console.error('Erro ao carregar doutores:', error);
+                                setDoutorAtual(agendamento.doutor as IDoutor);
+                              }
+                            } else {
+                              // Buscar dados do doutor atual na lista
+                              const doutor = doutores.find(d => d.id === agendamento.doutor.id);
                               if (doutor) {
-                                console.log('Doutor encontrado:', doutor);
+                                console.log('Doutor encontrado na lista:', doutor);
                                 setDoutorAtual(doutor);
                               } else {
+                                // Se não encontrou na lista, usar o doutor do agendamento
                                 console.log('Doutor não encontrado na lista, usando do agendamento');
                                 setDoutorAtual(agendamento.doutor as IDoutor);
                               }
-                            } catch (error) {
-                              console.error('Erro ao carregar doutores:', error);
-                              setDoutorAtual(agendamento.doutor as IDoutor);
                             }
-                          } else {
-                            // Buscar dados do doutor atual na lista
-                            const doutor = doutores.find(d => d.id === agendamento.doutor.id);
-                            if (doutor) {
-                              console.log('Doutor encontrado na lista:', doutor);
-                              setDoutorAtual(doutor);
-                            } else {
-                              // Se não encontrou na lista, usar o doutor do agendamento
-                              console.log('Doutor não encontrado na lista, usando do agendamento');
-                              setDoutorAtual(agendamento.doutor as IDoutor);
+                            console.log('Abrindo modal de prescrição');
+                            setOpenPrescricaoModal(true);
+                          }}
+                          disabled={(!atendimentoIniciado && !inicioAtendimento) || agendamento.status === 'finalizado'}
+                          sx={{ 
+                            width: 120,
+                            height: 36,
+                            boxShadow: 2,
+                            '&:hover': {
+                              boxShadow: 4,
                             }
-                          }
-                          console.log('Abrindo modal de prescrição');
-                          setOpenPrescricaoModal(true);
-                        }}
-                        disabled={(!atendimentoIniciado && !inicioAtendimento) || agendamento.status === 'finalizado'}
-                        sx={{ 
-                          minWidth: 140,
-                          boxShadow: 2,
-                          '&:hover': {
-                            boxShadow: 4,
-                          }
-                        }}
-                      >
-                        Prescrição
-                      </Button>
+                          }}
+                        >
+                          Prescrição
+                        </Button>
+                        
+                        {/* Botão Atestado - Fluxo contínuo após Prescrição */}
+                        <Button
+                          variant="contained"
+                          color="info"
+                          size="small"
+                          startIcon={<DescriptionIcon />}
+                          onClick={() => setOpenAtestadoModal(true)}
+                          disabled={(!atendimentoIniciado && !inicioAtendimento) || agendamento.status === 'finalizado'}
+                          sx={{ 
+                            width: 120,
+                            height: 36,
+                            mt: '2px',
+                            boxShadow: 2,
+                            '&:hover': {
+                              boxShadow: 4,
+                            }
+                          }}
+                        >
+                          Atestado
+                        </Button>
+                    </Stack>
                   </Stack>
                 </Stack>
 
@@ -2857,6 +2886,29 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                                   <VisibilityIcon fontSize="small" />
                                 </IconButton>
                               </Tooltip>
+                              {!prescricao.invalidado && (
+                                <Tooltip title="Invalidar prescrição">
+                                  <IconButton
+                                    size="small"
+                                    color="warning"
+                                    onClick={() => {
+                                      setDocumentoParaInvalidar({ tipo: 'prescricao', id: prescricao.id });
+                                      setOpenInvalidarModal(true);
+                                    }}
+                                    sx={{ ml: 1 }}
+                                  >
+                                    <WarningIcon fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              )}
+                              {prescricao.invalidado && (
+                                <Chip
+                                  label="INVALIDADO"
+                                  size="small"
+                                  color="error"
+                                  sx={{ ml: 1 }}
+                                />
+                              )}
                             </Box>
                           </Box>
                         }
@@ -2939,19 +2991,9 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
           </Box>
         )}
 
-        {/* Aba de Atestados */}
+        {/* Aba de Atestados - Apenas consulta/histórico */}
         {activeTab === 3 && (
           <Box sx={{ height: '100%', overflow: 'auto' }}>
-            <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<AddCircleIcon />}
-                onClick={() => setOpenAtestadoModal(true)}
-              >
-                Novo Atestado
-              </Button>
-            </Box>
             {loadingAtestados ? (
               <Box display="flex" justifyContent="center" alignItems="center" py={4}>
                 <CircularProgress />
@@ -3017,7 +3059,8 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                                         ? moment(atestadoCompleto.agendamento.dataHora).format('HH:mm')
                                         : moment(atestadoCompleto.createdAt).format('HH:mm');
                                       
-                                      const tipoAfastamento = atestadoCompleto.diasAfastamento < 1 ? 'horas' : 'dias';
+                                      // Determinar tipo de afastamento: se tem horaInicial e horaFinal, é horas
+                                      const tipoAfastamento = (atestadoCompleto.horaInicial && atestadoCompleto.horaFinal) ? 'horas' : (atestadoCompleto.diasAfastamento < 1 ? 'horas' : 'dias');
                                       
                                       // Usar data do atestado ou data de criação
                                       const dataAtestadoFormatada = atestadoCompleto.dataAtestado
@@ -3032,6 +3075,8 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                                           horaAtendimento={horaAtendimento}
                                           diasAfastamento={atestadoCompleto.diasAfastamento}
                                           tipoAfastamento={tipoAfastamento}
+                                          horaInicial={atestadoCompleto.horaInicial || undefined}
+                                          horaFinal={atestadoCompleto.horaFinal || undefined}
                                           cid={atestadoCompleto.cid || undefined}
                                           exibirCid={atestadoCompleto.exibirCid}
                                           conteudo={atestadoCompleto.conteudo || ''}
@@ -3046,6 +3091,8 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                                           clinicaTelefone={clinicaTelefone}
                                           clinicaEmail={clinicaEmail}
                                           clinicaSite={clinicaSite}
+                                          invalidado={atestadoCompleto.invalidado}
+                                          motivoInvalidacao={atestadoCompleto.motivoInvalidacao || undefined}
                                         />
                                       );
                                       
@@ -3070,6 +3117,29 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                                   <VisibilityIcon fontSize="small" />
                                 </IconButton>
                               </Tooltip>
+                              {!atestado.invalidado && (
+                                <Tooltip title="Invalidar atestado">
+                                  <IconButton
+                                    size="small"
+                                    color="warning"
+                                    onClick={() => {
+                                      setDocumentoParaInvalidar({ tipo: 'atestado', id: atestado.id });
+                                      setOpenInvalidarModal(true);
+                                    }}
+                                    sx={{ ml: 1 }}
+                                  >
+                                    <WarningIcon fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              )}
+                              {atestado.invalidado && (
+                                <Chip
+                                  label="INVALIDADO"
+                                  size="small"
+                                  color="error"
+                                  sx={{ ml: 1 }}
+                                />
+                              )}
                             </Box>
                           </Box>
                         }
@@ -3998,6 +4068,43 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
               }
             }
           }}
+        />
+      )}
+
+      {/* Modal de Invalidação */}
+      {documentoParaInvalidar && (
+        <InvalidarDocumentoModal
+          open={openInvalidarModal}
+          onClose={() => {
+            setOpenInvalidarModal(false);
+            setDocumentoParaInvalidar(null);
+          }}
+          onConfirm={async (motivo) => {
+            try {
+              if (documentoParaInvalidar.tipo === 'prescricao') {
+                await invalidatePrescricao(documentoParaInvalidar.id, motivo);
+                toast.success('Prescrição invalidada com sucesso');
+                // Recarregar prescrições
+                if (agendamento?.paciente.id) {
+                  const data = await getPrescricoesPaciente(agendamento.paciente.id);
+                  setPrescricoes(data);
+                }
+              } else {
+                await invalidateAtestado(documentoParaInvalidar.id, motivo);
+                toast.success('Atestado invalidado com sucesso');
+                // Recarregar atestados
+                if (agendamento?.paciente.id) {
+                  const data = await getAtestadosPaciente(agendamento.paciente.id);
+                  setAtestados(data);
+                }
+              }
+              setOpenInvalidarModal(false);
+              setDocumentoParaInvalidar(null);
+            } catch (error: any) {
+              toast.error(error.response?.data?.error || 'Erro ao invalidar documento');
+            }
+          }}
+          tipoDocumento={documentoParaInvalidar.tipo}
         />
       )}
 

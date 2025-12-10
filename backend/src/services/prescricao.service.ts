@@ -325,6 +325,66 @@ class PrescricaoService {
 
     return { message: 'Prescrição deletada com sucesso' };
   }
+
+  async invalidate(id: number, motivoInvalidacao: string) {
+    const prescricao = await prisma.prescricao.findUnique({
+      where: { id },
+    });
+
+    if (!prescricao) {
+      throw new Error('Prescrição não encontrada');
+    }
+
+    return await prisma.prescricao.update({
+      where: { id },
+      data: {
+        invalidado: true,
+        motivoInvalidacao,
+      },
+      include: {
+        paciente: {
+          select: {
+            id: true,
+            nome: true,
+            cpf: true,
+          },
+        },
+        doutor: {
+          select: {
+            id: true,
+            nome: true,
+            especialidade: true,
+            crm: true,
+            crmUf: true,
+            rqe: true,
+            modeloPrescricao: true,
+            clinica: {
+              select: {
+                id: true,
+                nome: true,
+                cnpj: true,
+                endereco: true,
+                telefone: true,
+                email: true,
+                site: true,
+              },
+            },
+          },
+        },
+        agendamento: {
+          select: {
+            id: true,
+            dataHora: true,
+            servico: {
+              select: {
+                nome: true,
+              },
+            },
+          },
+        },
+      },
+    });
+  }
 }
 
 export default new PrescricaoService();

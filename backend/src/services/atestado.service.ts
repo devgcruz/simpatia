@@ -117,6 +117,9 @@ class AtestadoService {
   }
 
   async findByProtocolo(protocolo: string) {
+    // IMPORTANTE: Usando 'include' apenas em relacionamentos garante que TODOS os campos
+    // do modelo Atestado são retornados, incluindo horaInicial e horaFinal.
+    // Esses campos são essenciais para preservar a integridade do período de afastamento.
     const atestado = await prisma.atestado.findUnique({
       where: { protocolo },
       include: {
@@ -160,6 +163,8 @@ class AtestadoService {
       return null;
     }
 
+    // Garantir que horaInicial e horaFinal estão presentes (mesmo que null)
+    // Esses campos são críticos para a integridade do documento médico
     return atestado;
   }
 
@@ -342,6 +347,65 @@ class AtestadoService {
     });
 
     return { message: 'Atestado deletado com sucesso' };
+  }
+
+  async invalidate(id: number, motivoInvalidacao: string) {
+    const atestado = await prisma.atestado.findUnique({
+      where: { id },
+    });
+
+    if (!atestado) {
+      throw new Error('Atestado não encontrado');
+    }
+
+    return await prisma.atestado.update({
+      where: { id },
+      data: {
+        invalidado: true,
+        motivoInvalidacao,
+      },
+      include: {
+        paciente: {
+          select: {
+            id: true,
+            nome: true,
+            cpf: true,
+          },
+        },
+        doutor: {
+          select: {
+            id: true,
+            nome: true,
+            especialidade: true,
+            crm: true,
+            crmUf: true,
+            rqe: true,
+            clinica: {
+              select: {
+                id: true,
+                nome: true,
+                cnpj: true,
+                endereco: true,
+                telefone: true,
+                email: true,
+                site: true,
+              },
+            },
+          },
+        },
+        agendamento: {
+          select: {
+            id: true,
+            dataHora: true,
+            servico: {
+              select: {
+                nome: true,
+              },
+            },
+          },
+        },
+      },
+    });
   }
 }
 

@@ -25,6 +25,8 @@ interface PrescricaoPdfViewProps {
   clinicaLogoUrl?: string; // URL da imagem do logo da clínica para a marca d'água
   modelo?: IModeloPrescricaoPDF; // Modelo personalizado do doutor
   isControleEspecial?: boolean; // Se for receita de controle especial (branca em duas vias)
+  invalidado?: boolean;
+  motivoInvalidacao?: string;
 }
 
 // Função para criar estilos dinâmicos baseados no modelo
@@ -191,6 +193,35 @@ const criarEstilos = (modelo: IModeloPrescricaoPDF, escalaFonte: number = 1) => 
     height: modelo.logoWatermark.size.height,
     opacity: modelo.logoWatermark.opacity,
   },
+  invalidadoWatermark: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%) rotate(-45deg)',
+    fontSize: 48,
+    fontWeight: 'bold',
+    color: '#FF0000',
+    opacity: 0.3,
+    zIndex: 1000,
+  },
+  invalidadoInfo: {
+    marginTop: 10,
+    padding: 8,
+    backgroundColor: '#FFEBEE',
+    borderLeftWidth: 3,
+    borderLeftColor: '#F44336',
+  },
+  invalidadoText: {
+    fontSize: 8,
+    color: '#C62828',
+    fontWeight: 'bold',
+    marginBottom: 3,
+  },
+  invalidadoMotivo: {
+    fontSize: 7,
+    color: '#D32F2F',
+    fontStyle: 'italic',
+  },
 });
 
 const PrescricaoPdfView: React.FC<PrescricaoPdfViewProps> = ({
@@ -216,6 +247,8 @@ const PrescricaoPdfView: React.FC<PrescricaoPdfViewProps> = ({
   clinicaLogoUrl,
   modelo = modeloPrescricaoPadrao,
   isControleEspecial = false,
+  invalidado = false,
+  motivoInvalidacao,
 }) => {
   // Usar logoUrl do modelo se disponível, senão usar clinicaLogoUrl
   const logoUrl = modelo.logoUrl || clinicaLogoUrl;
@@ -308,8 +341,15 @@ const PrescricaoPdfView: React.FC<PrescricaoPdfViewProps> = ({
         height: '100%',
         position: 'relative',
       }}>
+        {/* Marca d'água INVALIDADO */}
+        {invalidado && (
+          <View style={styles.invalidadoWatermark}>
+            <Text>INVALIDADO</Text>
+          </View>
+        )}
+        
         {/* Marca d'água - Logo centralizada */}
-        {modeloCentralizado.logoWatermark.enabled && logoUrl && (
+        {modeloCentralizado.logoWatermark.enabled && logoUrl && !invalidado && (
           <Image 
             style={styles.watermark} 
             src={logoUrl}
@@ -472,6 +512,18 @@ const PrescricaoPdfView: React.FC<PrescricaoPdfViewProps> = ({
               {item}
             </Text>
           ))}
+          
+          {/* Informação de Invalidação */}
+          {invalidado && (
+            <View style={styles.invalidadoInfo}>
+              <Text style={styles.invalidadoText}>DOCUMENTO INVALIDADO</Text>
+              {motivoInvalidacao && motivoInvalidacao.trim() && (
+                <Text style={styles.invalidadoMotivo}>
+                  Motivo: {motivoInvalidacao}
+                </Text>
+              )}
+            </View>
+          )}
         </View>
         
         {/* Seção de Assinatura */}

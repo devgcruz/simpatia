@@ -58,3 +58,8 @@ export const getPrescricaoByProtocolo = async (protocolo: string): Promise<IPres
   return response.data;
 };
 
+export const invalidatePrescricao = async (id: number, motivoInvalidacao: string): Promise<IPrescricao> => {
+  const response = await api.post(`/prescricoes/${id}/invalidate`, { motivoInvalidacao });
+  return response.data;
+};
+
