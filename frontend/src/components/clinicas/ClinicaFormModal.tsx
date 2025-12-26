@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, Button, Box, Typography, Divider, Tabs, Tab, IconButton, InputAdornment, Tooltip
+  TextField, Button, Box, Typography, Divider, Tabs, Tab, IconButton, InputAdornment, Tooltip, Switch, FormControlLabel
 } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -56,6 +56,8 @@ export const ClinicaFormModal: React.FC<Props> = ({ open, onClose, onSubmit, ini
         horarioFim: initialData.horarioFim || '',
         pausaInicio: initialData.pausaInicio || '',
         pausaFim: initialData.pausaFim || '',
+        possuiAgenda: initialData.possuiAgenda !== undefined ? initialData.possuiAgenda : true,
+        possuiGerenciar: initialData.possuiGerenciar !== undefined ? initialData.possuiGerenciar : true,
       });
     } else {
       setForm(initialStateCriacao);
@@ -67,6 +69,11 @@ export const ClinicaFormModal: React.FC<Props> = ({ open, onClose, onSubmit, ini
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setForm((prev: any) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSwitchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, checked } = e.target;
+    setForm((prev: any) => ({ ...prev, [name]: checked }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -174,8 +181,40 @@ export const ClinicaFormModal: React.FC<Props> = ({ open, onClose, onSubmit, ini
                       helperText="Ex: 13:00"
                     />
                   </Box>
-                </>
-              )}
+                  {isSuperAdmin && (
+                    <>
+                      <Divider sx={{ my: 2 }} />
+                      <Typography variant="h6">Configurações de Módulos</Typography>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            name="possuiAgenda"
+                            checked={form.possuiAgenda !== undefined ? form.possuiAgenda : true}
+                            onChange={handleSwitchChange}
+                          />
+                        }
+                        label="Habilitar Módulo de Agenda"
+                      />
+                    <Typography variant="body2" color="textSecondary" sx={{ mt: 1, mb: 2 }}>
+                      Quando desabilitado, a clínica funcionará apenas como prontuário/cadastro, sem acesso às funcionalidades de calendário e agendamento.
+                    </Typography>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          name="possuiGerenciar"
+                          checked={form.possuiGerenciar !== undefined ? form.possuiGerenciar : true}
+                          onChange={handleSwitchChange}
+                        />
+                      }
+                      label="Habilitar Menu Gerenciar"
+                    />
+                    <Typography variant="body2" color="textSecondary" sx={{ mt: 1, mb: 2 }}>
+                      Quando desabilitado, o menu "Gerenciar" (Pacientes, Medicamentos, Prescrições, Atestados) não será exibido.
+                    </Typography>
+                  </>
+                )}
+              </>
+            )}
               {tabValue === 1 && (
                 <>
                   <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
@@ -361,6 +400,38 @@ export const ClinicaFormModal: React.FC<Props> = ({ open, onClose, onSubmit, ini
                     helperText="Ex: 13:00"
                   />
                 </Box>
+                {isSuperAdmin && (
+                  <>
+                    <Divider sx={{ my: 2 }} />
+                    <Typography variant="h6">Configurações de Módulos</Typography>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          name="possuiAgenda"
+                          checked={form.possuiAgenda !== undefined ? form.possuiAgenda : true}
+                          onChange={handleSwitchChange}
+                        />
+                      }
+                      label="Habilitar Módulo de Agenda"
+                    />
+                    <Typography variant="body2" color="textSecondary" sx={{ mt: 1, mb: 2 }}>
+                      Quando desabilitado, a clínica funcionará apenas como prontuário/cadastro, sem acesso às funcionalidades de calendário e agendamento.
+                    </Typography>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          name="possuiGerenciar"
+                          checked={form.possuiGerenciar !== undefined ? form.possuiGerenciar : true}
+                          onChange={handleSwitchChange}
+                        />
+                      }
+                      label="Habilitar Menu Gerenciar"
+                    />
+                    <Typography variant="body2" color="textSecondary" sx={{ mt: 1, mb: 2 }}>
+                      Quando desabilitado, o menu "Gerenciar" (Pacientes, Medicamentos, Prescrições, Atestados) não será exibido.
+                    </Typography>
+                  </>
+                )}
                 <Divider sx={{ my: 2 }} />
                 <Typography variant="h6">Dados do Admin da Clínica</Typography>
                 <TextField name="adminNome" label="Nome do Admin" value={form.adminNome} onChange={handleChange} fullWidth required margin="normal" />

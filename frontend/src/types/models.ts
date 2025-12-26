@@ -218,6 +218,8 @@ export interface IClinica {
   horarioFim?: string;
   pausaInicio?: string;
   pausaFim?: string;
+  possuiAgenda?: boolean;
+  possuiGerenciar?: boolean;
 }
 
 export interface IMedicamento {

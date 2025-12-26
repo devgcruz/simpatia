@@ -72,7 +72,25 @@ class PacienteService {
                     return []; // Doutor não vinculado
                 }
             } else {
-                where.doutorId = { in: doutorIds };
+                // Incluir pacientes que têm doutorId nos vínculos OU pacientes que têm agendamentos com esses doutores
+                const pacientesComAgendamentos = await prisma.agendamento.findMany({
+                    where: {
+                        doutorId: { in: doutorIds },
+                        ativo: true,
+                    },
+                    select: {
+                        pacienteId: true,
+                    },
+                    distinct: ['pacienteId'],
+                });
+                
+                const pacienteIdsComAgendamentos = pacientesComAgendamentos.map((a) => a.pacienteId);
+                
+                // Filtrar por doutorId OU por pacienteId que tem agendamentos com os doutores vinculados
+                where.OR = [
+                    { doutorId: { in: doutorIds } },
+                    ...(pacienteIdsComAgendamentos.length > 0 ? [{ id: { in: pacienteIdsComAgendamentos } }] : []),
+                ];
             }
         } else if (doutorId) {
             // Para outros roles, se doutorId foi fornecido, filtrar por ele
@@ -94,9 +112,16 @@ class PacienteService {
         return paciente;
     }
 
-    async getById(id: number, clinicaId: number) {
+    async getById(id: number, clinicaId: number, userId?: number, userRole?: string) {
+        const where: any = { id, clinicaId, ativo: true };
+        
+        // Row-Level Security: Se for DOUTOR, forçar filtro por doutorId
+        if (userRole === 'DOUTOR' && userId) {
+            where.doutorId = userId;
+        }
+        
         const paciente = await prisma.paciente.findFirst({
-            where: { id, clinicaId, ativo: true },
+            where,
             include: {
                 doutor: {
                     select: {
@@ -116,9 +141,16 @@ class PacienteService {
 
     }
 
-    async getHistoricos(id: number, clinicaId: number) {
+    async getHistoricos(id: number, clinicaId: number, userId?: number, userRole?: string) {
+        const wherePaciente: any = { id, clinicaId, ativo: true };
+        
+        // Row-Level Security: Se for DOUTOR, forçar filtro por doutorId
+        if (userRole === 'DOUTOR' && userId) {
+            wherePaciente.doutorId = userId;
+        }
+        
         const paciente = await prisma.paciente.findFirst({
-            where: { id, clinicaId, ativo: true },
+            where: wherePaciente,
         });
 
         if (!paciente) {
@@ -289,9 +321,16 @@ class PacienteService {
         );
     }
 
-    async getByTelefone(telefone: string, clinicaId: number) {
+    async getByTelefone(telefone: string, clinicaId: number, userId?: number, userRole?: string) {
+        const where: any = { telefone, clinicaId, ativo: true };
+        
+        // Row-Level Security: Se for DOUTOR, forçar filtro por doutorId
+        if (userRole === 'DOUTOR' && userId) {
+            where.doutorId = userId;
+        }
+        
         const paciente = await prisma.paciente.findFirst({
-            where: { telefone, clinicaId, ativo: true },
+            where,
             include: {
                 doutor: {
                     select: {
@@ -306,8 +345,8 @@ class PacienteService {
         return paciente; // Retorna null se não encontrar, em vez de lançar erro
     }
 
-    async getOrCreateByTelefone(telefone: string, clinicaId: number) {
-        const pacienteExistente = await this.getByTelefone(telefone, clinicaId);
+    async getOrCreateByTelefone(telefone: string, clinicaId: number, userId?: number, userRole?: string) {
+        const pacienteExistente = await this.getByTelefone(telefone, clinicaId, userId, userRole);
         if (pacienteExistente) {
             return pacienteExistente;
         }
@@ -458,9 +497,16 @@ class PacienteService {
 
     }
 
-    async update(id: number, data: IUpdatePaciente, clinicaId: number){
+    async update(id: number, data: IUpdatePaciente, clinicaId: number, userId?: number, userRole?: string){
+        const where: any = { id, clinicaId, ativo: true };
+        
+        // Row-Level Security: Se for DOUTOR, forçar filtro por doutorId
+        if (userRole === 'DOUTOR' && userId) {
+            where.doutorId = userId;
+        }
+        
         const pacienteExistente = await prisma.paciente.findFirst({
-            where: { id, clinicaId, ativo: true },
+            where,
         });
 
         if (!pacienteExistente){
@@ -521,10 +567,16 @@ class PacienteService {
 
     }
 
-    async delete(id: number, clinicaId: number) {
+    async delete(id: number, clinicaId: number, userId?: number, userRole?: string) {
+        const where: any = { id, clinicaId, ativo: true };
+        
+        // Row-Level Security: Se for DOUTOR, forçar filtro por doutorId
+        if (userRole === 'DOUTOR' && userId) {
+            where.doutorId = userId;
+        }
 
         const pacienteExistente = await prisma.paciente.findFirst({
-            where: { id, clinicaId, ativo: true },
+            where,
         });
 
         if (!pacienteExistente) {
