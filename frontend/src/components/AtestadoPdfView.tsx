@@ -205,13 +205,6 @@ const AtestadoPdfView: React.FC<AtestadoPdfViewProps> = ({
 
   const dataFormatada = formatarData(dataAtendimento);
 
-  // Formatar hora de HH:mm para HHhmm (ex: "08:00" -> "08h00")
-  const formatarHoraJuridica = (hora: string | undefined): string => {
-    if (!hora) return '';
-    const [h, m] = hora.split(':');
-    return `${h}h${m}`;
-  };
-
   // Formatar tempo de afastamento
   // INTEGRIDADE MÉDICA: Esta função preserva fielmente o período exato definido pelo médico.
   // Se horaInicial e horaFinal existirem, SEMPRE usar o formato "das XhXX às XhXX",
@@ -267,23 +260,8 @@ const AtestadoPdfView: React.FC<AtestadoPdfViewProps> = ({
     }
   };
 
-  // Gerar texto do corpo do atestado seguindo padrão jurídico exato
-  const gerarTextoCorpoAtestado = (): string => {
-    const cpfFormatado = pacienteCPF ? formatarCPF(pacienteCPF) : '';
-    const cpfTexto = cpfFormatado ? ` portadora da carteira de identidade ${cpfFormatado}` : '';
-    const localAtend = localAtendimento || 'Consultório';
-    
-    // Se houver horaInicial e horaFinal, usar formato "por das X às Y"
-    if (horaInicial && horaFinal) {
-      const horaInicialFormatada = formatarHoraJuridica(horaInicial);
-      const horaFinalFormatada = formatarHoraJuridica(horaFinal);
-      return `Atesto para os devidos fins que o(a) Sr(a). ${pacienteNome}${cpfTexto} foi atendido(a) nesta data às ${horaAtendimento} no(a) ${localAtend}. Deverá permanecer afastado(a) de suas atividades laborais por das ${horaInicialFormatada} às ${horaFinalFormatada} a partir desta data`;
-    }
-    
-    // Caso contrário, usar formato padrão com formatarTempoAfastamento
-    const tempoAfastamento = formatarTempoAfastamento();
-    return `Atesto para os devidos fins que o(a) Sr(a). ${pacienteNome}${cpfTexto} foi atendido(a) nesta data às ${horaAtendimento} no(a) ${localAtend}. Deverá permanecer afastado(a) de suas atividades laborais por ${tempoAfastamento} a partir desta data`;
-  };
+  // Determinar o texto do tempo (dias ou horas)
+  const textoTempo = tipoAfastamento === 'horas' || diasAfastamento < 1 ? 'horas' : 'dias';
 
   return (
     <Document>
@@ -319,7 +297,7 @@ const AtestadoPdfView: React.FC<AtestadoPdfViewProps> = ({
           </View>
 
           <Text style={styles.paragraph}>
-            {gerarTextoCorpoAtestado()}
+            Atesto para os devidos fins que o(a) Sr(a). <Text style={{ fontWeight: 'bold' }}>{pacienteNome}</Text> foi atendido(a) nesta data às <Text style={{ fontWeight: 'bold' }}>{horaAtendimento}</Text> no(a) <Text style={{ fontWeight: 'bold' }}>{localAtendimento}</Text>. Deverá permanecer afastado(a) de suas atividades laborais por <Text style={{ fontWeight: 'bold' }}>{formatarTempoAfastamento()}</Text> a partir desta data.
           </Text>
 
           {/* Seção CID - Apenas exibir se autorizado E houver código CID */}

@@ -19,9 +19,9 @@ class PacienteController {
         try {
             const id = Number(req.params.id);
 
-            const { clinicaId, id: userId, role } = req.user!;
+            const { clinicaId } = req.user!;
 
-            const paciente = await pacienteService.getById(id, clinicaId, userId, role);
+            const paciente = await pacienteService.getById(id, clinicaId);
             return res.status(200).json(paciente);
         } catch (error: any) {
 
@@ -38,14 +38,14 @@ class PacienteController {
         try {
             const id = Number(req.params.id);
 
-            const { clinicaId, id: userId, role } = req.user!;
+            const { clinicaId, role } = req.user!;
 
             // SECRETARIA não pode acessar histórico
             if (role === 'SECRETARIA') {
                 return res.status(403).json({ message: 'Você não tem permissão para visualizar o histórico do paciente.' });
             }
 
-            const historicos = await pacienteService.getHistoricos(id, clinicaId, userId, role);
+            const historicos = await pacienteService.getHistoricos(id, clinicaId);
             return res.status(200).json(historicos);
         } catch (error: any) {
             if (error.message === "Paciente não encontrado ou não pertence à esta clínica.") {
@@ -135,11 +135,11 @@ class PacienteController {
                     ...dataSemDoutorId,
                     doutorId: userId,
                 };
-                const pacienteAtualizado = await pacienteService.update(id, dataFinal, clinicaId, userId, role);
+                const pacienteAtualizado = await pacienteService.update(id, dataFinal, clinicaId);
                 return res.status(200).json(pacienteAtualizado);
             }
 
-            const pacienteAtualizado = await pacienteService.update(id, data, clinicaId, userId, role);
+            const pacienteAtualizado = await pacienteService.update(id, data, clinicaId);
             return res.status(200).json(pacienteAtualizado);
 
         } catch (error: any) {
@@ -158,14 +158,14 @@ class PacienteController {
         try {
             const id = Number(req.params.id);
 
-            const { clinicaId, id: userId, role } = req.user!;
+            const { clinicaId, role } = req.user!;
 
             // SECRETARIA não pode deletar pacientes
             if (role === 'SECRETARIA') {
                 return res.status(403).json({ message: 'Você não tem permissão para deletar pacientes.' });
             }
 
-            await pacienteService.delete(id, clinicaId, userId, role);
+            await pacienteService.delete(id, clinicaId);
             return res.status(204).send();
 
         } catch (error: any) {

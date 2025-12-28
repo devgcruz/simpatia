@@ -17,7 +17,7 @@ class ChatService {
       throw new Error('Usuário não está associado a uma clínica.');
     }
 
-    if (user.role !== 'CLINICA_ADMIN' && user.role !== 'SUPER_ADMIN' && user.role !== 'SECRETARIA') {
+    if (user.role !== 'CLINICA_ADMIN' && user.role !== 'SUPER_ADMIN' && user.role !== 'SECRETARIA' && user.role !== 'DOUTOR') {
       throw new Error('Acesso negado.');
     }
 
@@ -25,6 +25,11 @@ class ChatService {
       clinicaId: user.clinicaId,
       chatStatus: 'HANDOFF',
     };
+
+    // Se for DOUTOR, filtrar apenas pacientes vinculados a ele
+    if (user.role === 'DOUTOR') {
+      where.doutorId = user.id;
+    }
 
     // Se for SECRETARIA, filtrar apenas pacientes dos doutores vinculados
     if (user.role === 'SECRETARIA') {
@@ -64,6 +69,11 @@ class ChatService {
     }
 
     const where: any = { id: pacienteId, clinicaId: user.clinicaId };
+
+    // Se for DOUTOR, verificar se o paciente está vinculado a ele
+    if (user.role === 'DOUTOR') {
+      where.doutorId = user.id;
+    }
 
     // Se for SECRETARIA, verificar se o paciente está vinculado a um doutor vinculado à secretária
     if (user.role === 'SECRETARIA') {
@@ -106,6 +116,11 @@ class ChatService {
     }
 
     const where: any = { id: pacienteId, clinicaId: user.clinicaId };
+
+    // Se for DOUTOR, verificar se o paciente está vinculado a ele
+    if (user.role === 'DOUTOR') {
+      where.doutorId = user.id;
+    }
 
     // Se for SECRETARIA, verificar se o paciente está vinculado a um doutor vinculado à secretária
     if (user.role === 'SECRETARIA') {
@@ -166,6 +181,11 @@ class ChatService {
     }
 
     const where: any = { id: pacienteId, clinicaId: user.clinicaId };
+
+    // Se for DOUTOR, verificar se o paciente está vinculado a ele
+    if (user.role === 'DOUTOR') {
+      where.doutorId = user.id;
+    }
 
     // Se for SECRETARIA, verificar se o paciente está vinculado a um doutor vinculado à secretária
     if (user.role === 'SECRETARIA') {

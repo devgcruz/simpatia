@@ -145,6 +145,27 @@ export const DashboardLayout: React.FC = () => {
   const [isSelectDoutorModalOpen, setIsSelectDoutorModalOpen] = useState(false);
   const [clinica, setClinica] = useState<IClinica | null>(null);
 
+  // Buscar dados da clínica quando o usuário não for SUPER_ADMIN
+  React.useEffect(() => {
+    const carregarClinica = async () => {
+      if (user && user.role !== 'SUPER_ADMIN' && user.clinicaId) {
+        try {
+          const clinicaData = await getMinhaClinica();
+          setClinica(clinicaData);
+        } catch (error) {
+          console.error('Erro ao carregar dados da clínica:', error);
+          setClinica(null);
+        }
+      } else if (user?.role === 'SUPER_ADMIN') {
+        // Para SUPER_ADMIN, assumir que todos os módulos estão habilitados
+        setClinica({ id: 0, nome: 'Super Admin Clinic', webhookUrlId: '', possuiPrescricao: true, possuiAtestado: true } as IClinica);
+      } else {
+        setClinica(null);
+      }
+    };
+    carregarClinica();
+  }, [user]);
+
   // Ajustar estado do drawer quando mudar de mobile para desktop
   React.useEffect(() => {
     if (!isMobile) {
@@ -156,23 +177,27 @@ export const DashboardLayout: React.FC = () => {
     }
   }, [isMobile]);
 
-  // Buscar dados da clínica quando o usuário não for SUPER_ADMIN
-  React.useEffect(() => {
-    const carregarClinica = async () => {
-      if (user && user.role !== 'SUPER_ADMIN' && user.clinicaId) {
-        try {
-          const clinicaData = await getMinhaClinica();
-          setClinica(clinicaData);
-        } catch (error) {
-          console.error('Erro ao carregar dados da clínica:', error);
-        }
-      }
-    };
-    carregarClinica();
-  }, [user]);
+  // Verificar se a clínica possui módulos habilitados
+  const possuiPrescricao = user?.role === 'SUPER_ADMIN' || clinica?.possuiPrescricao !== false;
+  const possuiAtestado = user?.role === 'SUPER_ADMIN' || clinica?.possuiAtestado !== false;
 
-  // Itens de menu relacionados a agenda (devem ser filtrados por possuiAgenda)
-  const agendaMenuItems = [
+  // Construir subitens do menu Gerenciar com base nas permissões da clínica
+  const gerenciarSubItems: MenuItem[] = [
+    { text: 'Pacientes', icon: <PeopleIcon />, path: '/pacientes', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN', 'SECRETARIA'] },
+    { text: 'Medicamentos', icon: <MedicationIcon />, path: '/medicamentos', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'] },
+  ];
+
+  // Adicionar Prescrições apenas se o módulo estiver habilitado
+  if (possuiPrescricao) {
+    gerenciarSubItems.push({ text: 'Prescrições', icon: <DescriptionIcon />, path: '/prescricoes', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'] });
+  }
+
+  // Adicionar Atestados apenas se o módulo estiver habilitado
+  if (possuiAtestado) {
+    gerenciarSubItems.push({ text: 'Atestados', icon: <DescriptionIcon />, path: '/atestados', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'] });
+  }
+
+  const menuItems: MenuItem[] = [
     { text: 'Agenda', icon: <EventIcon />, path: '/dashboard', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN', 'SECRETARIA'] },
     {
       text: 'Atendimento do Dia',
@@ -180,41 +205,20 @@ export const DashboardLayout: React.FC = () => {
       path: '/atendimento-do-dia',
       role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'],
     },
-  ];
-
-  // Verificar se a clínica possui módulo de agenda habilitado
-  // Para DOUTOR, sempre permitir agenda (não depende da clínica ser carregada)
-  const possuiAgenda = user?.role === 'SUPER_ADMIN' || user?.role === 'DOUTOR' || clinica?.possuiAgenda !== false;
-  
-  // Verificar se a clínica possui menu Gerenciar habilitado
-  // Para DOUTOR, sempre permitir menu Gerenciar (não depende da clínica ser carregada)
-  const possuiGerenciar = user?.role === 'SUPER_ADMIN' || user?.role === 'DOUTOR' || clinica?.possuiGerenciar !== false;
-
-  const menuItems: MenuItem[] = [
-    // Incluir itens de agenda apenas se possuiAgenda for true
-    ...(possuiAgenda ? agendaMenuItems : []),
-    // Atendimento também depende do módulo de agenda
-    ...(possuiAgenda ? [{
+    {
       text: 'Atendimento',
       icon: <ChatIcon />,
       path: '/atendimento',
       role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN', 'SECRETARIA'],
-    }] : []),
-    // Menu Gerenciar (deve ser filtrado por possuiGerenciar)
-    ...(possuiGerenciar ? [{
+    },
+    {
       text: 'Gerenciar',
       icon: <SettingsIcon />,
       path: '#',
       role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN', 'SECRETARIA'],
-      subItems: [
-        { text: 'Pacientes', icon: <PeopleIcon />, path: '/pacientes', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN', 'SECRETARIA'] },
-        { text: 'Medicamentos', icon: <MedicationIcon />, path: '/medicamentos', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'] },
-        { text: 'Prescrições', icon: <DescriptionIcon />, path: '/prescricoes', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'] },
-        { text: 'Atestados', icon: <DescriptionIcon />, path: '/atestados', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'] },
-      ],
-    }] : []),
-    // Serviços também dependem do módulo de agenda
-    ...(possuiAgenda ? [{ text: 'Serviços', icon: <MedicalServicesIcon />, path: '/servicos', role: ['CLINICA_ADMIN', 'SUPER_ADMIN'] }] : []),
+      subItems: gerenciarSubItems,
+    },
+    { text: 'Serviços', icon: <MedicalServicesIcon />, path: '/servicos', role: ['CLINICA_ADMIN', 'SUPER_ADMIN'] },
     { text: 'Doutores', icon: <AccountCircleIcon />, path: '/doutores', role: ['CLINICA_ADMIN', 'SUPER_ADMIN'] },
     { text: 'Secretárias', icon: <AccountCircleIcon />, path: '/secretarias', role: ['CLINICA_ADMIN', 'SUPER_ADMIN'] },
     { text: 'Gerir Clínicas', icon: <StoreIcon />, path: '/clinicas', role: ['SUPER_ADMIN'] },
@@ -496,7 +500,7 @@ export const DashboardLayout: React.FC = () => {
             );
           })}
           </List>
-          {user?.role === 'SECRETARIA' && possuiAgenda && (
+          {user?.role === 'SECRETARIA' && (
             <>
               <Divider />
               <Box
@@ -616,7 +620,7 @@ export const DashboardLayout: React.FC = () => {
           </Box>
         </Box>
       </Drawer>
-      {user?.role === 'SECRETARIA' && possuiAgenda && (
+      {user?.role === 'SECRETARIA' && (
         <SelectDoutorModal
           open={isSelectDoutorModalOpen}
           onClose={() => setIsSelectDoutorModalOpen(false)}

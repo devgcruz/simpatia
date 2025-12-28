@@ -54,8 +54,8 @@ model Clinica {
   pausaFim      String? // "13:00" - Fim do intervalo de almoço (opcional)
 
   // --- Configurações de Módulos ---
-  possuiAgenda  Boolean @default(true) // Controla se a clínica tem acesso ao módulo de agendamento
-  possuiGerenciar Boolean @default(true) // Controla se a clínica tem acesso ao menu Gerenciar
+  possuiPrescricao Boolean @default(true) // Controla se a clínica tem acesso ao módulo de prescrições
+  possuiAtestado   Boolean @default(true) // Controla se a clínica tem acesso ao módulo de atestados
 
   // --- Relacionamentos (Quais dados pertencem a esta clínica) ---
   doutores         Doutor[]

@@ -14,8 +14,8 @@ interface ICreateClinicaEAdmin {
   horarioFim?: string;
   pausaInicio?: string;
   pausaFim?: string;
-  possuiAgenda?: boolean;
-  possuiGerenciar?: boolean;
+  possuiPrescricao?: boolean;
+  possuiAtestado?: boolean;
 }
 
 interface IUpdateClinica {
@@ -31,8 +31,8 @@ interface IUpdateClinica {
   horarioFim?: string;
   pausaInicio?: string;
   pausaFim?: string;
-  possuiAgenda?: boolean;
-  possuiGerenciar?: boolean;
+  possuiPrescricao?: boolean;
+  possuiAtestado?: boolean;
 }
 
 class ClinicaService {
@@ -49,7 +49,7 @@ class ClinicaService {
   }
 
   async createClinicaEAdmin(data: ICreateClinicaEAdmin) {
-    const { nome, cnpj, endereco, telefone, adminNome, adminEmail, adminSenha, horarioInicio, horarioFim, pausaInicio, pausaFim, possuiAgenda, possuiGerenciar } = data;
+    const { nome, cnpj, endereco, telefone, adminNome, adminEmail, adminSenha, horarioInicio, horarioFim, pausaInicio, pausaFim, possuiPrescricao, possuiAtestado } = data;
     const hashSenha = await bcrypt.hash(adminSenha, 10);
 
     try {
@@ -63,8 +63,8 @@ class ClinicaService {
           horarioFim,
           pausaInicio,
           pausaFim,
-          possuiAgenda: possuiAgenda !== undefined ? possuiAgenda : true,
-          possuiGerenciar: possuiGerenciar !== undefined ? possuiGerenciar : true,
+          possuiPrescricao: possuiPrescricao !== undefined ? possuiPrescricao : true,
+          possuiAtestado: possuiAtestado !== undefined ? possuiAtestado : true,
           doutores: {
             create: {
               nome: adminNome,

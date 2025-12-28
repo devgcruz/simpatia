@@ -155,14 +155,12 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
   const [prescricoes, setPrescricoes] = useState<IPrescricao[]>([]);
   const [loadingPrescricoes, setLoadingPrescricoes] = useState(false);
   const [prescricoesError, setPrescricoesError] = useState<string | null>(null);
-  const [buscaPrescricoes, setBuscaPrescricoes] = useState('');
   
   // Estados para atestado
   const [openAtestadoModal, setOpenAtestadoModal] = useState(false);
   const [atestados, setAtestados] = useState<IAtestado[]>([]);
   const [loadingAtestados, setLoadingAtestados] = useState(false);
   const [atestadosError, setAtestadosError] = useState<string | null>(null);
-  const [buscaAtestados, setBuscaAtestados] = useState('');
   
   // Estados para modal de alergias
   const [openAlergiaModal, setOpenAlergiaModal] = useState(false);
@@ -1385,36 +1383,6 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
     pesoPaciente && alturaPaciente && alturaPaciente > 0
       ? pesoPaciente / Math.pow(alturaPaciente / 100, 2)
       : null;
-
-  // Filtragem local de prescrições
-  const prescricoesFiltradas = useMemo(() => {
-    if (!buscaPrescricoes.trim()) {
-      return prescricoes;
-    }
-    const termoBusca = buscaPrescricoes.toLowerCase().trim();
-    return prescricoes.filter((prescricao) => {
-      // Buscar por ID (convertendo para string)
-      const idMatch = prescricao.id.toString().includes(termoBusca);
-      
-      // Buscar no conteúdo (que contém farmácia, princípio ativo e outros dados)
-      const conteudoMatch = prescricao.conteudo?.toLowerCase().includes(termoBusca);
-      
-      // Retornar true se ID ou conteúdo corresponderem ao termo de busca
-      return idMatch || conteudoMatch;
-    });
-  }, [prescricoes, buscaPrescricoes]);
-
-  // Filtragem local de atestados
-  const atestadosFiltrados = useMemo(() => {
-    if (!buscaAtestados.trim()) {
-      return atestados;
-    }
-    const termoBusca = buscaAtestados.toLowerCase().trim();
-    return atestados.filter((atestado) =>
-      atestado.conteudo?.toLowerCase().includes(termoBusca) ||
-      atestado.cid?.toLowerCase().includes(termoBusca)
-    );
-  }, [atestados, buscaAtestados]);
 
   return (
     <>
@@ -2877,31 +2845,8 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                 </Typography>
               </Box>
             ) : (
-              <>
-                <TextField
-                  fullWidth
-                  size="small"
-                  placeholder="Pesquisar..."
-                  value={buscaPrescricoes}
-                  onChange={(e) => setBuscaPrescricoes(e.target.value)}
-                  sx={{ mb: 2 }}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <SearchRoundedIcon fontSize="small" />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-                {prescricoesFiltradas.length === 0 ? (
-                  <Box textAlign="center" py={4}>
-                    <Typography variant="body1" color="text.secondary">
-                      Nenhuma prescrição encontrada com o termo pesquisado
-                    </Typography>
-                  </Box>
-                ) : (
-                  <List sx={{ width: '100%' }}>
-                    {prescricoesFiltradas.map((prescricao) => (
+              <List sx={{ width: '100%' }}>
+                {prescricoes.map((prescricao) => (
                   <React.Fragment key={prescricao.id}>
                     <ListItem
                       alignItems="flex-start"
@@ -3040,10 +2985,8 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                       />
                     </ListItem>
                   </React.Fragment>
-                    ))}
-                  </List>
-                )}
-              </>
+                ))}
+              </List>
             )}
           </Box>
         )}
@@ -3064,31 +3007,8 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                 </Typography>
               </Box>
             ) : (
-              <>
-                <TextField
-                  fullWidth
-                  size="small"
-                  placeholder="Pesquisar..."
-                  value={buscaAtestados}
-                  onChange={(e) => setBuscaAtestados(e.target.value)}
-                  sx={{ mb: 2 }}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <SearchRoundedIcon fontSize="small" />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-                {atestadosFiltrados.length === 0 ? (
-                  <Box textAlign="center" py={4}>
-                    <Typography variant="body1" color="text.secondary">
-                      Nenhum atestado encontrado com o termo pesquisado
-                    </Typography>
-                  </Box>
-                ) : (
-                  <List sx={{ width: '100%' }}>
-                    {atestadosFiltrados.map((atestado) => (
+              <List sx={{ width: '100%' }}>
+                {atestados.map((atestado) => (
                   <React.Fragment key={atestado.id}>
                     <ListItem
                       alignItems="flex-start"
@@ -3266,10 +3186,8 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                       />
                     </ListItem>
                   </React.Fragment>
-                    ))}
-                  </List>
-                )}
-              </>
+                ))}
+              </List>
             )}
           </Box>
         )}

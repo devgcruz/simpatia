@@ -308,29 +308,10 @@ export const AtestadosPage: React.FC = () => {
       valueFormatter: (value) => {
         if (!value) return '';
         const dias = Number(value);
-        
-        // Se for dia cheio, manter lógica atual
-        if (dias >= 1) {
-          return `${Math.floor(dias)} dias`;
+        if (dias < 1) {
+          return `${Math.floor(dias * 24)} horas`;
         }
-        
-        // Converter dias para minutos totais
-        const minutosTotais = Math.round(dias * 24 * 60);
-        
-        // Se der menos de 60 min: retorna "XX minutos"
-        if (minutosTotais < 60) {
-          return `${minutosTotais} minutos`;
-        }
-        
-        // Se passar de 60 min: quebra em "Xh Ymin"
-        const horas = Math.floor(minutosTotais / 60);
-        const minutos = minutosTotais % 60;
-        
-        if (minutos === 0) {
-          return `${horas}h`;
-        }
-        
-        return `${horas}h ${minutos}min`;
+        return `${Math.floor(dias)} dias`;
       },
     },
     {

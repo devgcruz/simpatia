@@ -494,18 +494,6 @@ export const DashboardPage: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Erro ao buscar dados da clínica:', err);
-      // Para DOUTOR, se a clínica não carregar, assumir valores padrão para não bloquear a interface
-      if (user?.role === 'DOUTOR') {
-        setClinica({
-          id: user.clinicaId,
-          nome: 'Clínica',
-          possuiAgenda: true,
-          possuiGerenciar: true,
-        } as IClinica);
-      } else {
-        // Para outros roles, manter null para que a lógica de verificação funcione
-        setClinica(null);
-      }
     }
   };
 
@@ -522,7 +510,6 @@ export const DashboardPage: React.FC = () => {
       setDoutores(data);
       
       // Se o usuário for DOUTOR, selecionar automaticamente a agenda dele
-      // DOUTOR não depende da clínica ser carregada
       if (user?.role === 'DOUTOR' && user.id) {
         // O backend já retorna apenas o doutor logado quando role é DOUTOR
         // Mas vamos garantir que seja o doutor correto
@@ -531,16 +518,6 @@ export const DashboardPage: React.FC = () => {
           setDoutorAgendaSelecionado(doutorLogado);
         }
       } else {
-        // Para outros roles (CLINICA_ADMIN, etc), verificar se a clínica possui módulo de agenda habilitado
-        // Se a clínica ainda não foi carregada, assumir que possui agenda (comportamento padrão)
-        const possuiAgenda = user?.role === 'SUPER_ADMIN' || clinica?.possuiAgenda !== false;
-        
-        if (!possuiAgenda && clinica !== null) {
-          // Se a agenda estiver desabilitada E a clínica foi carregada, não mostrar modal
-          setLoadingDoutores(false);
-          return;
-        }
-        
         // Se houver apenas 1 doutor, selecionar automaticamente
         if (data.length === 1) {
           setDoutorAgendaSelecionado(data[0]);
@@ -551,43 +528,18 @@ export const DashboardPage: React.FC = () => {
       }
       // Se não houver doutores, doutorAgendaSelecionado permanece null
     } catch (err: any) {
-      console.error('Erro ao buscar doutores:', err);
       toast.error(err.response?.data?.message || 'Erro ao buscar doutores');
     } finally {
       setLoadingDoutores(false);
     }
-  }, [user?.role, user?.id, clinica?.possuiAgenda, clinica]);
+  }, [user?.role, user?.id]);
 
   useEffect(() => {
     if (user?.clinicaId) {
-      // Carregar clínica primeiro
+      fetchDoutores();
       fetchClinica();
     }
-  }, [user?.clinicaId]);
-
-  // Carregar doutores após a clínica ser carregada (ou se for SUPER_ADMIN/DOUTOR)
-  useEffect(() => {
-    if (user?.clinicaId) {
-      // Se for SUPER_ADMIN ou DOUTOR, sempre carregar doutores imediatamente (não depende da clínica)
-      if (user?.role === 'SUPER_ADMIN' || user?.role === 'DOUTOR') {
-        fetchDoutores();
-        return;
-      }
-      
-      // Para outros roles (CLINICA_ADMIN, SECRETARIA), verificar se a clínica foi carregada e se possui agenda
-      if (clinica !== null) {
-        const possuiAgenda = clinica?.possuiAgenda !== false;
-        if (possuiAgenda) {
-          fetchDoutores();
-        } else {
-          // Se não possui agenda, garantir que loading seja false
-          setLoadingDoutores(false);
-        }
-      }
-      // Se a clínica ainda não foi carregada, aguardar que seja carregada
-      // O useEffect será executado novamente quando clinica mudar
-    }
-  }, [user?.clinicaId, clinica, user?.role, fetchDoutores]);
+  }, [user?.clinicaId, fetchDoutores]);
 
   // Recarregar agendamentos quando o doutor selecionado mudar
   useEffect(() => {
@@ -1284,10 +1236,6 @@ export const DashboardPage: React.FC = () => {
     return <CircularProgress />;
   }
 
-  // Verificar se a clínica possui módulo de agenda habilitado
-  // Para DOUTOR, sempre permitir agenda (não depende da clínica ser carregada)
-  const possuiAgenda = user?.role === 'SUPER_ADMIN' || user?.role === 'DOUTOR' || clinica?.possuiAgenda !== false;
-
   // Se não houver doutor selecionado, mostrar apenas o modal de seleção (ou nada se não houver doutores)
   // Para SECRETARIA, não mostrar modal aqui (já está no menu lateral)
   if (!doutorAtual) {
@@ -1300,18 +1248,6 @@ export const DashboardPage: React.FC = () => {
         </Box>
       );
     }
-    
-    // Se a agenda estiver desabilitada, não mostrar modal
-    if (!possuiAgenda) {
-      return (
-        <Box sx={{ p: 3, textAlign: 'center' }}>
-          <Typography variant="h6" color="text.secondary">
-            O módulo de agenda está desabilitado para esta clínica.
-          </Typography>
-        </Box>
-      );
-    }
-    
     return (
       <>
         <SelectDoutorModal
@@ -1493,7 +1429,7 @@ export const DashboardPage: React.FC = () => {
       />
 
       {/* Para SECRETARIA, não mostrar modal de seleção aqui (já está no menu lateral) */}
-      {user?.role !== 'SECRETARIA' && possuiAgenda && (
+      {user?.role !== 'SECRETARIA' && (
         <SelectDoutorModal
           open={isSelectDoutorModalOpen}
           onClose={() => setIsSelectDoutorModalOpen(false)}
