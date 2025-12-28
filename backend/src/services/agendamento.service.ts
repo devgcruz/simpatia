@@ -583,9 +583,32 @@ class AgendamentoService {
             include: agendamentoInclude,
         });
 
-        // Retornar agendamento completo com todos os relacionamentos para WebSocket
-        // Não remover campos do doutor pois são necessários para validação de segurança
-        return novoAgendamento;
+        // Garantir que temos o objeto completo com todas as relações
+        // Se o Prisma não retornou as relações, fazer um findUnique para garantir
+        let agendamentoCompleto = novoAgendamento;
+        if (!novoAgendamento.paciente || !novoAgendamento.doutor || !novoAgendamento.servico) {
+            agendamentoCompleto = await prisma.agendamento.findUnique({
+                where: { id: novoAgendamento.id },
+                include: agendamentoInclude,
+            }) || novoAgendamento;
+        }
+
+        // Emitir evento WebSocket com objeto completo (Rich Payload)
+        const agendamentoDoutorId = agendamentoCompleto.doutorId || agendamentoCompleto.doutor?.id;
+        const agendamentoClinicaId = user.clinicaId || agendamentoCompleto.doutor?.clinicaId;
+        
+        if (agendamentoDoutorId && agendamentoClinicaId) {
+            emitAgendamentoEvent({
+                id: agendamentoCompleto.id,
+                doutorId: agendamentoDoutorId,
+                clinicaId: agendamentoClinicaId,
+                action: 'created',
+                agendamento: agendamentoCompleto, // Objeto completo com todas as relações
+            });
+        }
+
+        // Retornar agendamento completo com todos os relacionamentos
+        return agendamentoCompleto;
     }
 
     // NOVO MÉTODO PARA A IA
@@ -695,8 +718,31 @@ class AgendamentoService {
 
         console.log(`[AgendamentoService.createParaIA] ✅ Agendamento criado com sucesso - ID: ${novoAgendamento.id}`);
 
-        // Formata a resposta
-        const { doutor: doutorAgendamento, ...rest } = novoAgendamento;
+        // Garantir que temos o objeto completo com todas as relações
+        // Se o Prisma não retornou as relações, fazer um findUnique para garantir
+        let agendamentoCompleto = novoAgendamento;
+        if (!novoAgendamento.paciente || !novoAgendamento.doutor || !novoAgendamento.servico) {
+            agendamentoCompleto = await prisma.agendamento.findUnique({
+                where: { id: novoAgendamento.id },
+                include: agendamentoInclude,
+            }) || novoAgendamento;
+        }
+
+        // Emitir evento WebSocket com objeto completo (Rich Payload)
+        const agendamentoDoutorId = agendamentoCompleto.doutorId || agendamentoCompleto.doutor?.id;
+        
+        if (agendamentoDoutorId && clinicaId) {
+            emitAgendamentoEvent({
+                id: agendamentoCompleto.id,
+                doutorId: agendamentoDoutorId,
+                clinicaId: clinicaId,
+                action: 'created',
+                agendamento: agendamentoCompleto, // Objeto completo com todas as relações
+            });
+        }
+
+        // Formata a resposta para retorno da API
+        const { doutor: doutorAgendamento, ...rest } = agendamentoCompleto;
         const agendamentoFormatado = {
             ...rest,
             doutor: {
@@ -705,15 +751,6 @@ class AgendamentoService {
                 email: doutorAgendamento.email,
             },
         };
-
-        // Emitir evento WebSocket para atualização em tempo real
-        emitAgendamentoEvent({
-            id: agendamentoFormatado.id,
-            doutorId: agendamentoFormatado.doutorId,
-            clinicaId: clinicaId,
-            action: 'created',
-            agendamento: agendamentoFormatado,
-        });
 
         return agendamentoFormatado;
     }
@@ -847,7 +884,31 @@ class AgendamentoService {
             include: agendamentoInclude,
         });
 
-        const { doutor, ...rest } = agendamentoCancelado;
+        // Garantir que temos o objeto completo com todas as relações
+        // Se o Prisma não retornou as relações, fazer um findUnique para garantir
+        let agendamentoCompleto = agendamentoCancelado;
+        if (!agendamentoCancelado.paciente || !agendamentoCancelado.doutor || !agendamentoCancelado.servico) {
+            agendamentoCompleto = await prisma.agendamento.findUnique({
+                where: { id: agendamentoId },
+                include: agendamentoInclude,
+            }) || agendamentoCancelado;
+        }
+
+        // Emitir evento WebSocket com objeto completo (Rich Payload)
+        const agendamentoDoutorId = agendamentoCompleto.doutorId || agendamentoCompleto.doutor?.id;
+        const agendamentoClinicaId = clinicaId || agendamentoCompleto.doutor?.clinicaId;
+        
+        if (agendamentoDoutorId && agendamentoClinicaId) {
+            emitAgendamentoEvent({
+                id: agendamentoCompleto.id,
+                doutorId: agendamentoDoutorId,
+                clinicaId: agendamentoClinicaId,
+                action: 'canceled',
+                agendamento: agendamentoCompleto, // Objeto completo com todas as relações
+            });
+        }
+
+        const { doutor, ...rest } = agendamentoCompleto;
         const agendamentoFormatado = {
             ...rest,
             doutor: {
@@ -856,15 +917,6 @@ class AgendamentoService {
                 email: doutor.email,
             },
         };
-
-        // Emitir evento WebSocket para atualização em tempo real
-        emitAgendamentoEvent({
-            id: agendamentoFormatado.id,
-            doutorId: agendamentoFormatado.doutorId,
-            clinicaId: clinicaId,
-            action: 'updated',
-            agendamento: agendamentoFormatado,
-        });
 
         return agendamentoFormatado;
     }
@@ -1143,7 +1195,31 @@ class AgendamentoService {
             include: agendamentoInclude,
         });
 
-        const { doutor, ...rest } = agendamentoAtualizado;
+        // Garantir que temos o objeto completo com todas as relações
+        // Se o Prisma não retornou as relações, fazer um findUnique para garantir
+        let agendamentoCompleto = agendamentoAtualizado;
+        if (!agendamentoAtualizado.paciente || !agendamentoAtualizado.doutor || !agendamentoAtualizado.servico) {
+            agendamentoCompleto = await prisma.agendamento.findUnique({
+                where: { id },
+                include: agendamentoInclude,
+            }) || agendamentoAtualizado;
+        }
+
+        // Emitir evento WebSocket com objeto completo (Rich Payload)
+        const agendamentoDoutorId = agendamentoCompleto.doutorId || agendamentoCompleto.doutor?.id;
+        const agendamentoClinicaId = user.clinicaId || agendamentoCompleto.doutor?.clinicaId;
+        
+        if (agendamentoDoutorId && agendamentoClinicaId) {
+            emitAgendamentoEvent({
+                id: agendamentoCompleto.id,
+                doutorId: agendamentoDoutorId,
+                clinicaId: agendamentoClinicaId,
+                action: 'updated',
+                agendamento: agendamentoCompleto, // Objeto completo com todas as relações
+            });
+        }
+
+        const { doutor, ...rest } = agendamentoCompleto;
         return {
             ...rest,
             doutor: {
@@ -1197,7 +1273,31 @@ class AgendamentoService {
             return atualizado;
         });
 
-        const { doutor, ...rest } = agendamentoFinalizado;
+        // Garantir que temos o objeto completo com todas as relações
+        // Se o Prisma não retornou as relações, fazer um findUnique para garantir
+        let agendamentoCompleto = agendamentoFinalizado;
+        if (!agendamentoFinalizado.paciente || !agendamentoFinalizado.doutor || !agendamentoFinalizado.servico) {
+            agendamentoCompleto = await prisma.agendamento.findUnique({
+                where: { id },
+                include: agendamentoInclude,
+            }) || agendamentoFinalizado;
+        }
+
+        // Emitir evento WebSocket com objeto completo (Rich Payload)
+        const agendamentoDoutorId = agendamentoCompleto.doutorId || agendamentoCompleto.doutor?.id;
+        const agendamentoClinicaId = user.clinicaId || agendamentoCompleto.doutor?.clinicaId;
+        
+        if (agendamentoDoutorId && agendamentoClinicaId) {
+            emitAgendamentoEvent({
+                id: agendamentoCompleto.id,
+                doutorId: agendamentoDoutorId,
+                clinicaId: agendamentoClinicaId,
+                action: 'finalized',
+                agendamento: agendamentoCompleto, // Objeto completo com todas as relações
+            });
+        }
+
+        const { doutor, ...rest } = agendamentoCompleto;
         return {
             ...rest,
             doutor: {
@@ -1244,7 +1344,31 @@ class AgendamentoService {
             include: agendamentoInclude,
         });
 
-        const { doutor, ...rest } = agendamentoAtualizado;
+        // Garantir que temos o objeto completo com todas as relações
+        // Se o Prisma não retornou as relações, fazer um findUnique para garantir
+        let agendamentoCompleto = agendamentoAtualizado;
+        if (!agendamentoAtualizado.paciente || !agendamentoAtualizado.doutor || !agendamentoAtualizado.servico) {
+            agendamentoCompleto = await prisma.agendamento.findUnique({
+                where: { id },
+                include: agendamentoInclude,
+            }) || agendamentoAtualizado;
+        }
+
+        // Emitir evento WebSocket com objeto completo (Rich Payload)
+        const agendamentoDoutorId = agendamentoCompleto.doutorId || agendamentoCompleto.doutor?.id;
+        const agendamentoClinicaId = agendamentoCompleto.doutor?.clinicaId;
+        
+        if (agendamentoDoutorId && agendamentoClinicaId) {
+            emitAgendamentoEvent({
+                id: agendamentoCompleto.id,
+                doutorId: agendamentoDoutorId,
+                clinicaId: agendamentoClinicaId,
+                action: 'encaixe_confirmed',
+                agendamento: agendamentoCompleto, // Objeto completo com todas as relações
+            });
+        }
+
+        const { doutor, ...rest } = agendamentoCompleto;
         return {
             ...rest,
             doutor: {

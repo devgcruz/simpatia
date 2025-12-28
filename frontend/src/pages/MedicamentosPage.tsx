@@ -24,6 +24,7 @@ import {
 import { MedicamentoFormModal } from '../components/medicamentos/MedicamentoFormModal';
 import { ConfirmationModal } from '../components/common/ConfirmationModal';
 import { toast } from 'sonner';
+import { useDebounce } from '../hooks/useDebounce';
 
 export const MedicamentosPage: React.FC = () => {
   const [medicamentos, setMedicamentos] = useState<IMedicamento[]>([]);
@@ -41,7 +42,13 @@ export const MedicamentosPage: React.FC = () => {
   const [editingMedicamento, setEditingMedicamento] = useState<IMedicamento | null>(null);
   const [itemToDeleteId, setItemToDeleteId] = useState<number | null>(null);
 
-  const fetchMedicamentos = async (page: number = 0, pageSize: number = 10) => {
+  // Debounce dos valores de busca - delay de 600ms
+  const debouncedNomeProduto = useDebounce(searchNomeProduto, 600);
+  const debouncedEmpresa = useDebounce(searchEmpresa, 600);
+  const debouncedCategoria = useDebounce(searchCategoria, 600);
+  const debouncedPrincipioAtivo = useDebounce(searchPrincipioAtivo, 600);
+
+  const fetchMedicamentos = React.useCallback(async (page: number = 0, pageSize: number = 10) => {
     try {
       setLoading(true);
       const filters: any = {
@@ -49,18 +56,18 @@ export const MedicamentosPage: React.FC = () => {
         take: pageSize,
       };
 
-      // Aplicar filtros em conjunto (AND)
-      if (searchNomeProduto.trim()) {
-        filters.nomeProduto = searchNomeProduto.trim();
+      // Aplicar filtros em conjunto (AND) usando valores debounced
+      if (debouncedNomeProduto.trim()) {
+        filters.nomeProduto = debouncedNomeProduto.trim();
       }
-      if (searchEmpresa.trim()) {
-        filters.empresaDetentoraRegistro = searchEmpresa.trim();
+      if (debouncedEmpresa.trim()) {
+        filters.empresaDetentoraRegistro = debouncedEmpresa.trim();
       }
-      if (searchCategoria.trim()) {
-        filters.categoriaRegulatoria = searchCategoria.trim();
+      if (debouncedCategoria.trim()) {
+        filters.categoriaRegulatoria = debouncedCategoria.trim();
       }
-      if (searchPrincipioAtivo.trim()) {
-        filters.principioAtivo = searchPrincipioAtivo.trim();
+      if (debouncedPrincipioAtivo.trim()) {
+        filters.principioAtivo = debouncedPrincipioAtivo.trim();
       }
 
       const data = await getMedicamentos(filters);
@@ -71,7 +78,7 @@ export const MedicamentosPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [debouncedNomeProduto, debouncedEmpresa, debouncedCategoria, debouncedPrincipioAtivo]);
 
   // Carregar lista de empresas e categorias uma vez ao montar o componente
   useEffect(() => {
@@ -101,19 +108,17 @@ export const MedicamentosPage: React.FC = () => {
     loadOptions();
   }, []);
 
+  // Buscar quando qualquer filtro debounced mudar (após 600ms sem digitação)
+  // Isso também reseta a paginação para a primeira página
+  useEffect(() => {
+    // Resetar para primeira página quando filtros mudarem
+    setPaginationModel((prev) => ({ ...prev, page: 0 }));
+  }, [debouncedNomeProduto, debouncedEmpresa, debouncedCategoria, debouncedPrincipioAtivo]);
+
+  // Buscar quando a paginação mudar (incluindo quando for resetada pelos filtros)
   useEffect(() => {
     fetchMedicamentos(paginationModel.page, paginationModel.pageSize);
-  }, [paginationModel.page, paginationModel.pageSize]);
-
-  // Debounce para busca - quando qualquer filtro mudar
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchMedicamentos(0, paginationModel.pageSize);
-      setPaginationModel({ page: 0, pageSize: paginationModel.pageSize });
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [searchNomeProduto, searchEmpresa, searchCategoria, searchPrincipioAtivo]);
+  }, [paginationModel.page, paginationModel.pageSize, fetchMedicamentos]);
 
   const handleOpenModal = (medicamento: IMedicamento | null = null) => {
     setEditingMedicamento(medicamento);

@@ -59,20 +59,8 @@ class AgendamentoController {
                 isEncaixe,
             }, user);
 
-            // Emitir evento WebSocket para atualização em tempo real
-            // Garantir que temos o doutorId (pode estar em novoAgendamento.doutorId ou novoAgendamento.doutor.id)
-            const agendamentoDoutorId = novoAgendamento.doutorId || novoAgendamento.doutor?.id;
-            const agendamentoClinicaId = user.clinicaId || novoAgendamento.doutor?.clinicaId || novoAgendamento.paciente?.clinicaId;
-            
-            console.log(`[Agendamento Controller] Emitindo evento WebSocket: agendamentoId=${novoAgendamento.id}, doutorId=${agendamentoDoutorId}, clinicaId=${agendamentoClinicaId}`);
-            
-            emitAgendamentoEvent({
-                id: novoAgendamento.id,
-                doutorId: agendamentoDoutorId,
-                clinicaId: agendamentoClinicaId,
-                action: 'created',
-                agendamento: novoAgendamento,
-            });
+            // Evento WebSocket já é emitido pelo service com Rich Payload (objeto completo)
+            // Não é necessário emitir novamente aqui
 
             return res.status(201).json(novoAgendamento);
 
@@ -98,16 +86,8 @@ class AgendamentoController {
 
             const agendamentoAtualizado = await agendamentoService.update(id, data, user);
             
-            // Emitir evento WebSocket para atualização em tempo real
-            // Sempre usar 'updated' - o frontend detectará cancelamentos pelo status
-            console.log(`[Agendamento Controller] Emitindo evento WebSocket para update: agendamentoId=${agendamentoAtualizado.id}, status=${agendamentoAtualizado.status}, doutorId=${agendamentoAtualizado.doutorId}`);
-            emitAgendamentoEvent({
-                id: agendamentoAtualizado.id,
-                doutorId: agendamentoAtualizado.doutorId,
-                clinicaId: user.clinicaId || agendamentoAtualizado.doutor?.clinicaId || agendamentoAtualizado.paciente?.clinicaId,
-                action: 'updated',
-                agendamento: agendamentoAtualizado,
-            });
+            // Evento WebSocket já é emitido pelo service com Rich Payload (objeto completo)
+            // Não é necessário emitir novamente aqui
 
             return res.status(200).json(agendamentoAtualizado);
 
@@ -141,14 +121,8 @@ class AgendamentoController {
 
             const agendamentoFinalizado = await agendamentoService.finalize(id, descricao, duracaoMinutosNumber, user);
             
-            // Emitir evento WebSocket para atualização em tempo real
-            emitAgendamentoEvent({
-                id: agendamentoFinalizado.id,
-                doutorId: agendamentoFinalizado.doutorId,
-                clinicaId: user.clinicaId,
-                action: 'finalized',
-                agendamento: agendamentoFinalizado,
-            });
+            // Evento WebSocket já é emitido pelo service com Rich Payload (objeto completo)
+            // Não é necessário emitir novamente aqui
 
             return res.status(200).json(agendamentoFinalizado);
         } catch (error: any) {
@@ -172,14 +146,8 @@ class AgendamentoController {
 
             const agendamentoConfirmado = await agendamentoService.confirmarEncaixe(id, user);
             
-            // Emitir evento WebSocket para atualização em tempo real
-            emitAgendamentoEvent({
-                id: agendamentoConfirmado.id,
-                doutorId: agendamentoConfirmado.doutorId,
-                clinicaId: user.clinicaId,
-                action: 'encaixe_confirmed',
-                agendamento: agendamentoConfirmado,
-            });
+            // Evento WebSocket já é emitido pelo service com Rich Payload (objeto completo)
+            // Não é necessário emitir novamente aqui
 
             return res.status(200).json(agendamentoConfirmado);
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Box, Button, Paper, CircularProgress, TextField, InputAdornment, Chip, Typography } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -8,8 +8,9 @@ import PersonIcon from '@mui/icons-material/Person';
 import { DataGrid, GridColDef, GridActionsCellItem, GridToolbar } from '@mui/x-data-grid';
 import { ptBR } from '@mui/x-data-grid/locales';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import { IPaciente, IDoutor } from '../types/models';
-import { getPacientes, createPaciente, updatePaciente, deletePaciente } from '../services/paciente.service';
+import { createPaciente, updatePaciente, deletePaciente } from '../services/paciente.service';
 import { getAgendamentos } from '../services/agendamento.service';
 import { PacienteFormModal } from '../components/pacientes/PacienteFormModal';
 import { HistoricoPacienteModal } from '../components/pacientes/HistoricoPacienteModal';
@@ -19,16 +20,25 @@ import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import { IAgendamento } from '../types/models';
 import { useAuth } from '../hooks/useAuth';
 import { useDoutorSelecionado } from '../context/DoutorSelecionadoContext';
+import { usePacientes } from '../hooks/queries/usePacientes';
 
 export const PacientesPage: React.FC = () => {
   const { user } = useAuth();
   const { doutorSelecionado, isLoading: isLoadingDoutor } = useDoutorSelecionado();
-  const [pacientes, setPacientes] = useState<IPaciente[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   
   // Verificar se o usuário é SECRETARIA
   const isSecretaria = user?.role === 'SECRETARIA';
+
+  // Para SECRETARIA, usar doutor selecionado; para DOUTOR, não passar doutorId (backend filtra automaticamente)
+  const doutorId = isSecretaria && doutorSelecionado ? doutorSelecionado.id : undefined;
+  
+  // Usar React Query hook
+  const { data: pacientes = [], isLoading: loading, isError, error } = usePacientes({
+    doutorId,
+    enabled: !isSecretaria || !!doutorSelecionado, // Só busca se não for SECRETARIA ou se tiver doutor selecionado
+  });
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPaciente, setEditingPaciente] = useState<IPaciente | null>(null);
@@ -37,24 +47,6 @@ export const PacientesPage: React.FC = () => {
   const [pacienteHistorico, setPacienteHistorico] = useState<IPaciente | null>(null);
   const [isProntuarioModalOpen, setIsProntuarioModalOpen] = useState(false);
   const [agendamentoProntuario, setAgendamentoProntuario] = useState<IAgendamento | null>(null);
-
-  const fetchPacientes = useCallback(async () => {
-    try {
-      setLoading(true);
-      // Para SECRETARIA, usar doutor selecionado; para DOUTOR, não passar doutorId (backend filtra automaticamente)
-      const doutorId = isSecretaria && doutorSelecionado ? doutorSelecionado.id : undefined;
-      const data = await getPacientes(doutorId);
-      setPacientes(data);
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Erro ao buscar pacientes');
-    } finally {
-      setLoading(false);
-    }
-  }, [isSecretaria, doutorSelecionado]);
-
-  useEffect(() => {
-    fetchPacientes();
-  }, [fetchPacientes]);
 
   const handleOpenModal = (paciente: IPaciente | null = null) => {
     setEditingPaciente(paciente);
@@ -76,7 +68,8 @@ export const PacientesPage: React.FC = () => {
         await createPaciente(data);
         toast.success('Paciente criado com sucesso!');
       }
-      await fetchPacientes();
+      // Invalidar cache para forçar refetch
+      queryClient.invalidateQueries({ queryKey: ['pacientes', doutorId] });
       handleCloseModal();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Erro ao salvar paciente');
@@ -169,7 +162,8 @@ export const PacientesPage: React.FC = () => {
 
     try {
       await deletePaciente(itemToDeleteId);
-      await fetchPacientes();
+      // Invalidar cache para forçar refetch
+      queryClient.invalidateQueries({ queryKey: ['pacientes', doutorId] });
       setItemToDeleteId(null);
       toast.success('Paciente excluído com sucesso!');
     } catch (err: any) {
@@ -279,8 +273,15 @@ export const PacientesPage: React.FC = () => {
     );
   }
 
-  if (loading) {
-    return <CircularProgress />;
+  // Tratar erro
+  if (isError) {
+    return (
+      <Box sx={{ p: 3, textAlign: 'center' }}>
+        <Typography variant="h6" color="error">
+          Erro ao carregar pacientes: {error instanceof Error ? error.message : 'Erro desconhecido'}
+        </Typography>
+      </Box>
+    );
   }
 
   return (

@@ -911,7 +911,7 @@ export interface AgendamentoEventData {
   id: number;
   doutorId: number;
   clinicaId: number;
-  action: 'created' | 'updated' | 'deleted' | 'finalized' | 'encaixe_confirmed';
+  action: 'created' | 'updated' | 'deleted' | 'finalized' | 'encaixe_confirmed' | 'canceled';
   agendamento?: any;
 }
 
@@ -1961,8 +1961,9 @@ export function emitAgendamentoEvent(data: AgendamentoEventData) {
 
   const { doutorId, clinicaId, action, agendamento } = data;
   
-  // Log de debug para rastrear eventos
-  console.log(`[WebSocket] emitAgendamentoEvent chamado: action=${action}, doutorId=${doutorId}, clinicaId=${clinicaId}, agendamentoId=${agendamento?.id || 'null'}`);
+  // Log de debug para rastrear eventos e tamanho do payload
+  const payloadSize = agendamento ? JSON.stringify(agendamento).length : 0;
+  console.debug(`[WebSocket] emitAgendamentoEvent: event='agendamento:updated', action=${action}, doutorId=${doutorId}, clinicaId=${clinicaId}, agendamentoId=${agendamento?.id || 'null'}, payloadSize=${payloadSize} bytes`);
 
   // VALIDAÇÃO DE SEGURANÇA: Verificar se o agendamento pertence ao doutor e clínica informados
   if (agendamento) {

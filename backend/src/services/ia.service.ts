@@ -1,6 +1,7 @@
 import { ChatMessage, Clinica, Paciente, SenderType } from '@prisma/client';
 import { AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage } from '@langchain/core/messages';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+import NodeCache from 'node-cache';
 import { prisma } from '../lib/prisma';
 import whatsappService from './whatsapp.service';
 import pacienteService from './pacientes.service';
@@ -17,6 +18,10 @@ import {
   createVerificarDisponibilidadeTool,
 } from './ia.tools';
 import { buildIaGraph, GraphState } from './ia.graph';
+
+// Cache em memória para contexto da clínica (doutores e serviços)
+// TTL de 10 minutos (600 segundos)
+const clinicaContextCache = new NodeCache({ stdTTL: 600 });
 
 function unwrapAiContent(content: string | any[]): string {
   if (typeof content === 'string') {
@@ -168,17 +173,34 @@ class IaService {
 
     const history = mapDbMessagesToLangChain(dbHistory);
 
-    const [doutores, servicos] = await Promise.all([
-      doutorService.getAllParaIA(clinicaId),
-      servicosService.getAll(clinicaId),
-    ]);
+    // Cache: Verificar se já temos o contexto da clínica em memória
+    const cacheKey = `clinica_context_${clinicaId}`;
+    let cachedContext = clinicaContextCache.get<{ listaDoutores: string; listaServicos: string }>(cacheKey);
 
-    const listaDoutores = doutores
-      .map((d) => `- ${d.nome} (ID: ${d.id}${d.especialidade ? `, Especialidade: ${d.especialidade}` : ''})`)
-      .join('\n');
-    const listaServicos = servicos
-      .map((s) => `- ${s.nome} (ID: ${s.id}, Duração: ${s.duracaoMin} min)`)
-      .join('\n');
+    let listaDoutores: string;
+    let listaServicos: string;
+
+    if (cachedContext) {
+      // Cache HIT: Usar dados da memória
+      listaDoutores = cachedContext.listaDoutores;
+      listaServicos = cachedContext.listaServicos;
+    } else {
+      // Cache MISS: Buscar do banco e armazenar no cache
+      const [doutores, servicos] = await Promise.all([
+        doutorService.getAllParaIA(clinicaId),
+        servicosService.getAll(clinicaId),
+      ]);
+
+      listaDoutores = doutores
+        .map((d) => `- ${d.nome} (ID: ${d.id}${d.especialidade ? `, Especialidade: ${d.especialidade}` : ''})`)
+        .join('\n');
+      listaServicos = servicos
+        .map((s) => `- ${s.nome} (ID: ${s.id}, Duração: ${s.duracaoMin} min)`)
+        .join('\n');
+
+      // Armazenar no cache
+      clinicaContextCache.set(cacheKey, { listaDoutores, listaServicos });
+    }
 
     const hoje = new Date();
     const dataHojeBR = hoje.toLocaleDateString('pt-BR');
