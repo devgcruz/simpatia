@@ -151,9 +151,11 @@ class ChatService {
     }
 
     const transacao = await prisma.$transaction(async (tx) => {
+      // IMPORTANTE: Não alterar o conteúdo! O frontend já envia criptografado (E2E)
+      // Apenas remover espaços em branco nas extremidades, mas preservar o hash
       const dbMessage = await tx.chatMessage.create({
         data: {
-          content: content.trim(),
+          content: content.trim(), // trim() é seguro, não altera o hash criptografado
           senderType: SenderType.DOUTOR,
           pacienteId: paciente.id,
         },

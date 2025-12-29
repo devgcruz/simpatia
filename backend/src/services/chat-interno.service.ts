@@ -1,5 +1,4 @@
 import { prisma } from '../lib/prisma';
-import { encryptMessage, decryptMessage } from '../utils/crypto.util';
 import { ChatInternoTipo, MensagemInternaTipo, MensagemInternaStatus } from '@prisma/client';
 
 interface CreateConversaIndividualDTO {
@@ -20,8 +19,7 @@ interface SendMensagemDTO {
   conversaId: number;
   remetenteId: number;
   tipo: MensagemInternaTipo;
-  conteudo: string;
-  criptografar?: boolean; // Se true, criptografa o conteúdo
+  conteudo: string; // Já vem criptografado do frontend (E2E)
 }
 
 interface UpdateMensagemDTO {
@@ -283,21 +281,12 @@ class ChatInternoService {
       }),
     ]);
 
-    // Descriptografar mensagens criptografadas
+    // IMPORTANTE: Não descriptografar no servidor! O frontend faz isso (E2E)
+    // Retornar o conteúdo "raw" (que já vem criptografado do frontend)
     const mensagensDescriptografadas = mensagens.map((msg) => {
-      let conteudo = msg.conteudo;
-      if (msg.conteudoCriptografado) {
-        try {
-          conteudo = decryptMessage(msg.conteudoCriptografado);
-        } catch (error) {
-          console.error('Erro ao descriptografar mensagem:', error);
-          conteudo = '[Erro ao descriptografar mensagem]';
-        }
-      }
-
       return {
         ...msg,
-        conteudo,
+        conteudo: msg.conteudo, // Retornar conteúdo raw (frontend descriptografa)
         lida: msg.leituras.length > 0,
       };
     });
@@ -317,7 +306,7 @@ class ChatInternoService {
    * Envia uma mensagem
    */
   async sendMensagem(data: SendMensagemDTO) {
-    const { conversaId, remetenteId, tipo, conteudo, criptografar } = data;
+    const { conversaId, remetenteId, tipo, conteudo } = data;
 
     // Verificar se o usuário é participante da conversa
     const participante = await prisma.participanteConversa.findUnique({
@@ -333,22 +322,14 @@ class ChatInternoService {
       throw new Error('Usuário não é participante desta conversa');
     }
 
-    // Criptografar se solicitado
-    let conteudoCriptografado: string | null = null;
-    let conteudoFinal = conteudo;
-
-    if (criptografar) {
-      conteudoCriptografado = encryptMessage(conteudo);
-      conteudoFinal = '[Mensagem criptografada]';
-    }
-
+    // IMPORTANTE: Não alterar o conteúdo! O frontend já envia criptografado (E2E)
+    // O servidor deve salvar o hash "raw" sem criptografar novamente
     const mensagem = await prisma.mensagemInterna.create({
       data: {
         conversaId,
         remetenteId,
         tipo,
-        conteudo: conteudoFinal,
-        conteudoCriptografado,
+        conteudo: conteudo.trim(), // trim() é seguro, não altera o hash criptografado
         status: MensagemInternaStatus.ENVIADA,
       },
       include: {

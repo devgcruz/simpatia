@@ -31,5 +31,8 @@ router.get('/me', authMiddleware, authController.handleMe);
 // Rota para atualizar perfil (senha e foto)
 router.put('/profile', authMiddleware, authController.handleUpdateProfile);
 
+// Rota para salvar chave pública E2E (Operation Whisper)
+router.post('/public-key', authMiddleware, authController.handleSavePublicKey);
+
 export default router;
 

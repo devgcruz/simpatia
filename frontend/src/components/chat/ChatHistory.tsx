@@ -1,9 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { Box, Typography, CircularProgress, Paper, alpha } from '@mui/material';
 import { toast } from 'sonner';
 import moment from 'moment';
 import 'moment/locale/pt-br';
 import { getChatHistory, IChatMessage } from '../../services/chat.service';
+import { useChatEncryption } from '../../hooks/useChatEncryption';
+import { useAuth } from '../../hooks/useAuth';
 
 interface ChatHistoryProps {
   pacienteId: number | null;
@@ -15,7 +17,10 @@ moment.locale('pt-br');
 export const ChatHistory: React.FC<ChatHistoryProps> = ({ pacienteId, newMessages }) => {
   const [history, setHistory] = useState<IChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
+  const [decryptedMessages, setDecryptedMessages] = useState<Map<number, string>>(new Map());
   const chatBoxRef = useRef<HTMLDivElement | null>(null);
+  const { decryptMessage, isInitialized } = useChatEncryption();
+  const { user } = useAuth();
 
   const fetchHistory = async (id: number) => {
     try {
@@ -40,17 +45,56 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({ pacienteId, newMessage
 
   const combinedHistory = [...history, ...newMessages];
 
+  // Descriptografar mensagens quando necessário
+  useEffect(() => {
+    if (!isInitialized || !pacienteId || !user?.id) {
+      return;
+    }
+
+    const decryptAll = async () => {
+      const decrypted = new Map<number, string>();
+      
+      for (const msg of combinedHistory) {
+        // Verificar se é mensagem criptografada (formato: iv:ciphertext)
+        const isEncrypted = msg.content.includes(':') && msg.content.split(':').length === 2;
+        
+        if (isEncrypted) {
+          try {
+            // Determinar o senderId baseado no senderType
+            // Se for mensagem do paciente, o senderId é o pacienteId
+            // Se for mensagem do doutor, o senderId é o user.id
+            const senderId = msg.senderType === 'PACIENTE' ? pacienteId : Number(user.id);
+            
+            const decryptedContent = await decryptMessage(msg.content, senderId);
+            decrypted.set(msg.id || 0, decryptedContent);
+          } catch (error) {
+            console.error(`[E2E] Erro ao descriptografar mensagem ${msg.id}:`, error);
+            decrypted.set(msg.id || 0, msg.content); // Fallback para original
+          }
+        } else {
+          // Mensagem não criptografada (antiga ou da IA)
+          decrypted.set(msg.id || 0, msg.content);
+        }
+      }
+      
+      setDecryptedMessages(decrypted);
+    };
+
+    decryptAll();
+  }, [combinedHistory, isInitialized, pacienteId, user?.id, decryptMessage]);
+
   useEffect(() => {
     if (chatBoxRef.current) {
       chatBoxRef.current.scrollTop = chatBoxRef.current.scrollHeight;
     }
-  }, [combinedHistory]);
+  }, [combinedHistory, decryptedMessages]);
 
   const renderMessage = (msg: IChatMessage) => {
     const isPaciente = msg.senderType === 'PACIENTE';
     const isIA = msg.senderType === 'IA';
 
-    let content = msg.content;
+    // Usar mensagem descriptografada se disponível, senão usar original
+    let content = decryptedMessages.get(msg.id || 0) || msg.content;
 
     if (isIA) {
       try {

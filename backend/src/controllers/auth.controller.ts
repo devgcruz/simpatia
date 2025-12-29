@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import authService from '../services/auth.service';
 import { invalidateToken, disconnectUserSockets } from '../services/websocket.service';
+import { prisma } from '../lib/prisma';
 
 class AuthController {
     async handleLogin(req: Request, res: Response) {
@@ -145,6 +146,48 @@ class AuthController {
                 return res.status(404).json({ message: error.message });
             }
             return res.status(500).json({ message: error.message || 'Erro ao atualizar perfil' });
+        }
+    }
+
+    /**
+     * POST /api/auth/public-key
+     * Salva a chave pública E2E do usuário logado (Operation Whisper)
+     */
+    async handleSavePublicKey(req: Request, res: Response) {
+        try {
+            const { publicKey } = req.body;
+            const userId = typeof req.user!.id === 'string' ? parseInt(req.user!.id, 10) : req.user!.id;
+            const userRole = req.user!.role;
+
+            if (!publicKey || typeof publicKey !== 'string') {
+                return res.status(400).json({ message: 'Chave pública é obrigatória e deve ser uma string.' });
+            }
+
+            // Validar formato básico (base64)
+            if (!/^[A-Za-z0-9+/=]+$/.test(publicKey)) {
+                return res.status(400).json({ message: 'Formato de chave pública inválido.' });
+            }
+
+            // Atualizar chave pública no banco baseado no role
+            // SECRETARIA também usa o modelo Doutor (com role='SECRETARIA')
+            if (userRole === 'DOUTOR' || userRole === 'CLINICA_ADMIN' || userRole === 'SUPER_ADMIN' || userRole === 'SECRETARIA') {
+                await prisma.doutor.update({
+                    where: { id: userId },
+                    data: { publicKey },
+                });
+                console.log(`[E2E] Chave pública salva para ${userRole} ${userId}`);
+            } else {
+                // Para outros roles, não há suporte E2E ainda
+                return res.status(403).json({ message: 'Seu perfil não suporta criptografia E2E.' });
+            }
+
+            return res.status(200).json({ message: 'Chave pública salva com sucesso.' });
+        } catch (error: any) {
+            console.error('[Auth Controller] Erro ao salvar chave pública:', error);
+            if (error.code === 'P2025') {
+                return res.status(404).json({ message: 'Usuário não encontrado.' });
+            }
+            return res.status(500).json({ message: error.message || 'Erro ao salvar chave pública.' });
         }
     }
 }

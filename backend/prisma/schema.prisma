@@ -91,6 +91,9 @@ model Doutor {
   // --- Modelo de Prescrição ---
   modeloPrescricao String? @db.Text // HTML/template do modelo de prescrição personalizado
 
+  // --- Criptografia E2E (Chat) ---
+  publicKey String? @db.Text // Chave pública ECDH P-256 para criptografia E2E do chat
+
   clinicaId Int?
   clinica   Clinica? @relation(fields: [clinicaId], references: [id], onDelete: Cascade)
 
@@ -153,6 +156,9 @@ model Paciente {
   pesoKg            Float?
   alturaCm          Float?
   foto              String? // URL da foto de perfil do paciente
+
+  // --- Criptografia E2E (Chat) ---
+  publicKey String? @db.Text // Chave pública ECDH P-256 para criptografia E2E do chat
 
   agendamentos Agendamento[]
   historicos   HistoricoPaciente[]

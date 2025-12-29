@@ -1,18 +1,88 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { Box, Paper, Typography, Avatar } from '@mui/material';
 import { MensagemInterna } from '../../services/chat-interno.service';
+import { useChatEncryption } from '../../hooks/useChatEncryption';
+import { useAuth } from '../../hooks/useAuth';
 
 interface ChatMessagesProps {
   mensagens: MensagemInterna[];
   userId: number | undefined;
+  conversaId: number | undefined;
 }
 
-export const ChatMessages: React.FC<ChatMessagesProps> = ({ mensagens, userId }) => {
+export const ChatMessages: React.FC<ChatMessagesProps> = ({ mensagens, userId, conversaId }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [decryptedMessages, setDecryptedMessages] = useState<Map<number, string>>(new Map());
+  // Map para armazenar o texto original das mensagens próprias (antes de criptografar)
+  const [originalMessages, setOriginalMessages] = useState<Map<number, string>>(new Map());
+  const { decryptMessage, isInitialized } = useChatEncryption();
+  const { user } = useAuth();
+
+  // Descriptografar mensagens quando necessário (em tempo real)
+  useEffect(() => {
+    const decryptAll = async () => {
+      // Se não está inicializado, usar conteúdo original
+      if (!isInitialized || !conversaId || !user?.id) {
+        const original = new Map<number, string>();
+        mensagens.forEach((msg) => original.set(msg.id, msg.conteudo));
+        setDecryptedMessages(original);
+        return;
+      }
+
+      // Preservar mensagens já descriptografadas
+      const decrypted = new Map<number, string>(decryptedMessages);
+      
+      // Identificar mensagens que precisam ser descriptografadas
+      const messagesToDecrypt = mensagens.filter((msg) => {
+        // Se já está descriptografada, pular
+        if (decrypted.has(msg.id)) {
+          return false;
+        }
+        // NÃO descriptografar mensagens próprias - o remetente já sabe o conteúdo original
+        if (msg.remetenteId === user.id) {
+          return false;
+        }
+        // Verificar se é mensagem criptografada (formato: iv:ciphertext)
+        const firstColonIndex = msg.conteudo.indexOf(':');
+        return firstColonIndex > 0 && firstColonIndex < msg.conteudo.length - 1;
+      });
+      
+      console.log(`[E2E] Descriptografando ${messagesToDecrypt.length} mensagens de ${mensagens.length} total`);
+      
+      // Descriptografar apenas mensagens novas
+      const decryptPromises = messagesToDecrypt.map(async (msg) => {
+        try {
+          // O senderId é o remetenteId da mensagem
+          const senderId = msg.remetenteId;
+          
+          console.log(`[E2E] Descriptografando mensagem ${msg.id} de remetente ${senderId}, payload: ${msg.conteudo.substring(0, 50)}...`);
+          const decryptedContent = await decryptMessage(msg.conteudo, senderId);
+          decrypted.set(msg.id, decryptedContent);
+          console.log(`[E2E] ✓ Mensagem ${msg.id} descriptografada: "${decryptedContent}"`);
+        } catch (error) {
+          console.error(`[E2E] ✗ Erro ao descriptografar mensagem ${msg.id}:`, error);
+          // Se falhar, tentar usar conteúdo original
+          decrypted.set(msg.id, msg.conteudo);
+        }
+      });
+      
+      // Adicionar mensagens não criptografadas também
+      mensagens.forEach((msg) => {
+        if (!decrypted.has(msg.id)) {
+          decrypted.set(msg.id, msg.conteudo);
+        }
+      });
+      
+      await Promise.all(decryptPromises);
+      setDecryptedMessages(decrypted);
+    };
+
+    decryptAll();
+  }, [mensagens, isInitialized, conversaId, user?.id, decryptMessage]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [mensagens]);
+  }, [mensagens, decryptedMessages]);
 
   const formatarHora = (data: string) => {
     const date = new Date(data);
@@ -98,7 +168,33 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({ mensagens, userId })
                 </Typography>
               )}
               <Typography variant="body2" sx={{ fontSize: '0.9375rem', wordBreak: 'break-word' }}>
-                {mensagem.conteudo}
+                {(() => {
+                  const isMine = mensagem.remetenteId === userId;
+                  
+                  // Se é mensagem própria, não descriptografar
+                  // A mensagem otimista já foi adicionada com o texto original
+                  // Quando a mensagem real retornar via WebSocket, o texto original será preservado
+                  if (isMine) {
+                    // O texto original já deve estar preservado pela mensagem otimista
+                    // Se ainda estiver criptografado, significa que a mensagem otimista não foi criada
+                    // ou foi substituída incorretamente
+                    if (mensagem.conteudo.includes(':') && mensagem.conteudo.split(':').length === 2) {
+                      // Está criptografada - isso não deveria acontecer se a mensagem otimista funcionou
+                      console.warn('[E2E] Mensagem própria está criptografada - mensagem otimista pode não ter funcionado');
+                      return '[Mensagem criptografada - texto original não disponível]';
+                    }
+                    // Retornar conteúdo (deve ser o texto original preservado)
+                    return mensagem.conteudo;
+                  }
+                  
+                  // Se é mensagem de outro usuário, descriptografar
+                  const decrypted = decryptedMessages.get(mensagem.id);
+                  // Se ainda não foi descriptografada, mostrar "Descriptografando..." temporariamente
+                  if (isInitialized && mensagem.conteudo.includes(':') && !decrypted) {
+                    return 'Descriptografando...';
+                  }
+                  return decrypted || mensagem.conteudo;
+                })()}
               </Typography>
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
                 <Typography
@@ -140,7 +236,7 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({ mensagens, userId })
           </Box>
         );
       })}
-      <div ref={messagesEndRef} />
+      <div ref={messagesEndRef} style={{ height: 0 }} />
     </Box>
   );
 };

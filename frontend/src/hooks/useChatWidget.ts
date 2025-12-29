@@ -27,6 +27,8 @@ export const useChatWidget = () => {
     const conversasRef = useRef<ConversaInterna[]>([]);
     const conversaSelecionadaRef = useRef<ConversaInterna | null>(null);
     const notificacoesAtivasRef = useRef<Map<number, Notification>>(new Map());
+    // Map para armazenar textos originais de mensagens otimistas (ID temporário -> texto original)
+    const textosOriginaisRef = useRef<Map<number, string>>(new Map());
 
     // Derived state - cálculo direto para garantir atualização imediata
     const totalMensagensNaoLidas = conversas.reduce((acc, conv) => {
@@ -249,9 +251,47 @@ export const useChatWidget = () => {
                     console.log('[useChatWidget] Updating open conversation');
                     // Verificar se a mensagem já existe para evitar duplicatas
                     setMensagens((prev) => {
+                        // Se é mensagem própria, procurar por mensagem otimista (ID temporário negativo)
+                        if (msgRemetenteId === userId) {
+                            // Procurar mensagem otimista recente (últimos 10 segundos)
+                            const agora = Date.now();
+                            const mensagemOtimista = prev.find((m) => 
+                                m.remetenteId === userId && 
+                                m.conversaId === msgConversaId &&
+                                m.id < 0 && // ID temporário negativo
+                                Math.abs(agora + m.id) < 10000 // Criada nos últimos 10 segundos
+                            );
+                            
+                            if (mensagemOtimista) {
+                                // Obter texto original do ref
+                                const textoOriginal = textosOriginaisRef.current.get(mensagemOtimista.id) || mensagemOtimista.conteudo;
+                                
+                                // Substituir mensagem otimista pela mensagem real, mas preservar texto original
+                                console.log('[useChatWidget] Substituindo mensagem otimista pela real, preservando texto original');
+                                
+                                // Remover texto original do ref
+                                textosOriginaisRef.current.delete(mensagemOtimista.id);
+                                
+                                return prev.map((m) => 
+                                    m.id === mensagemOtimista.id
+                                        ? { ...mensagem, conteudo: textoOriginal } // Preservar texto original
+                                        : m
+                                );
+                            }
+                        }
+                        
+                        // Verificar se já existe mensagem com mesmo ID
                         const existe = prev.some((m) => m.id === mensagem.id);
                         if (existe) {
                             console.log('[useChatWidget] Mensagem já existe, ignorando duplicata');
+                            // Se é mensagem própria e já existe, preservar o texto original
+                            if (msgRemetenteId === userId) {
+                                return prev.map((m) => 
+                                    m.id === mensagem.id 
+                                        ? { ...m, ...mensagem, conteudo: m.conteudo } // Preservar conteúdo original
+                                        : m
+                                );
+                            }
                             return prev;
                         }
                         console.log('[useChatWidget] Adicionando nova mensagem ao array');
@@ -470,19 +510,48 @@ export const useChatWidget = () => {
         if (!aberto) setAberto(true);
     }, [aberto, atualizarConversas, carregarMensagens, marcarMensagensComoLidas, limparNotificacoesConversa]);
 
-    const enviarMensagem = useCallback(async (conteudo: string) => {
-        if (!conversaSelecionada) return;
+    const enviarMensagem = useCallback(async (conteudo: string, textoOriginal?: string) => {
+        if (!conversaSelecionada || !user) return;
         try {
+            // Se temos texto original, adicionar mensagem otimista com o texto original
+            // Isso garante que o remetente veja sua própria mensagem sem criptografia
+            if (textoOriginal && textoOriginal !== conteudo) {
+                const idTemporario = -Date.now(); // ID temporário negativo para identificar como otimista
+                const mensagemOtimista: MensagemInterna = {
+                    id: idTemporario,
+                    conversaId: conversaSelecionada.id,
+                    remetenteId: user.id,
+                    tipo: 'TEXTO',
+                    conteudo: textoOriginal, // Texto original, não criptografado
+                    status: 'ENVIADA',
+                    editada: false,
+                    createdAt: new Date().toISOString(),
+                    remetente: {
+                        id: user.id,
+                        nome: user.nome || '',
+                        email: user.email || '',
+                        role: user.role || 'DOUTOR',
+                    },
+                };
+                
+                // Armazenar texto original associado ao ID temporário
+                textosOriginaisRef.current.set(idTemporario, textoOriginal);
+                
+                // Adicionar mensagem otimista ao estado local
+                setMensagens((prev) => [...prev, mensagemOtimista]);
+                console.log('[useChatWidget] Mensagem otimista adicionada com texto original, ID temporário:', idTemporario);
+            }
+            
             enviarMensagemSocket({
                 conversaId: conversaSelecionada.id,
                 tipo: 'TEXTO',
-                conteudo,
+                conteudo: conteudo, // Conteúdo criptografado (se aplicável)
             });
             pararDigitando(conversaSelecionada.id);
         } catch (error) {
             toast.error('Erro ao enviar mensagem');
         }
-    }, [conversaSelecionada, enviarMensagemSocket, pararDigitando]);
+    }, [conversaSelecionada, enviarMensagemSocket, pararDigitando, user]);
 
     const iniciarConversa = useCallback(async (usuarioId: number) => {
         try {

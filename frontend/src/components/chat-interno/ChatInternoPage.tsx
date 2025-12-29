@@ -26,10 +26,13 @@ import chatInternoService, {
   MensagemInterna,
 } from '../../services/chat-interno.service';
 import { useChatInternoWebSocket } from '../../hooks/useChatInternoWebSocket';
+import { ChatMessages } from './ChatMessages';
+import { useChatEncryption } from '../../hooks/useChatEncryption';
 import { toast } from 'sonner';
 
 export const ChatInternoPage: React.FC = () => {
   const { user } = useAuth();
+  const { encryptMessage, isInitialized } = useChatEncryption();
   const [conversas, setConversas] = useState<ConversaInterna[]>([]);
   const [conversaSelecionada, setConversaSelecionada] = useState<ConversaInterna | null>(null);
   const [mensagens, setMensagens] = useState<MensagemInterna[]>([]);
@@ -278,10 +281,7 @@ export const ChatInternoPage: React.FC = () => {
     }
   }, [conversaSelecionada]);
 
-  useEffect(() => {
-    // Scroll para última mensagem
-    mensagensEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [mensagens]);
+  // Removido: scroll agora é gerenciado pelo componente ChatMessages
 
   const carregarConversas = async () => {
     try {
@@ -311,10 +311,30 @@ export const ChatInternoPage: React.FC = () => {
 
     setEnviando(true);
     try {
+      let conteudoParaEnviar = novaMensagem.trim();
+
+      // Criptografar mensagem se E2E estiver inicializado
+      if (isInitialized && conversaSelecionada.tipo === 'INDIVIDUAL') {
+        try {
+          // Encontrar o ID do outro participante
+          const outroParticipante = conversaSelecionada.participantes.find(
+            (p) => p.usuarioId !== user?.id
+          );
+          
+          if (outroParticipante) {
+            conteudoParaEnviar = await encryptMessage(novaMensagem.trim(), outroParticipante.usuarioId);
+            console.log('[E2E] Mensagem criptografada antes de enviar');
+          }
+        } catch (error) {
+          console.error('[E2E] Erro ao criptografar, enviando sem criptografia:', error);
+          // Continuar com mensagem original em caso de erro
+        }
+      }
+
       enviarMensagem({
         conversaId: conversaSelecionada.id,
         tipo: 'TEXTO',
-        conteudo: novaMensagem.trim(),
+        conteudo: conteudoParaEnviar,
       });
       setNovaMensagem('');
     } catch (error: any) {
@@ -466,42 +486,11 @@ export const ChatInternoPage: React.FC = () => {
           </Paper>
 
           {/* Mensagens */}
-          <Box sx={{ flex: 1, overflow: 'auto', p: 2, bgcolor: 'grey.50' }}>
-            {mensagens.map((mensagem) => {
-              const isMine = mensagem.remetenteId === user?.id;
-              return (
-                <Box
-                  key={mensagem.id}
-                  sx={{
-                    display: 'flex',
-                    justifyContent: isMine ? 'flex-end' : 'flex-start',
-                    mb: 1,
-                  }}
-                >
-                  <Paper
-                    sx={{
-                      p: 1.5,
-                      maxWidth: '70%',
-                      bgcolor: isMine ? 'primary.main' : 'white',
-                      color: isMine ? 'white' : 'text.primary',
-                    }}
-                  >
-                    {!isMine && (
-                      <Typography variant="caption" display="block" gutterBottom>
-                        {mensagem.remetente.nome}
-                      </Typography>
-                    )}
-                    <Typography variant="body1">{mensagem.conteudo}</Typography>
-                    <Typography variant="caption" display="block" sx={{ mt: 0.5, opacity: 0.7 }}>
-                      {new Date(mensagem.createdAt).toLocaleTimeString()}
-                      {mensagem.status === 'LIDA' && isMine && ' ✓✓'}
-                    </Typography>
-                  </Paper>
-                </Box>
-              );
-            })}
-            <div ref={mensagensEndRef} />
-          </Box>
+          <ChatMessages 
+            mensagens={mensagens} 
+            userId={user?.id} 
+            conversaId={conversaSelecionada.id}
+          />
 
           {/* Input de mensagem */}
           <Paper sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>

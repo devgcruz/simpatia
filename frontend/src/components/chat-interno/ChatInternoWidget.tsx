@@ -22,10 +22,12 @@ import { ChatList } from './ChatList';
 import { ChatWindowHeader } from './ChatWindowHeader';
 import { ChatMessages } from './ChatMessages';
 import { ChatInput } from './ChatInput';
+import { useChatEncryption } from '../../hooks/useChatEncryption';
 
 export const ChatInternoWidget: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const { encryptMessage, isInitialized } = useChatEncryption();
 
   // Use the new hook for all logic
   const {
@@ -76,11 +78,39 @@ export const ChatInternoWidget: React.FC = () => {
   };
 
   const handleEnviarMensagem = async () => {
-    if (!novaMensagem.trim()) return;
+    if (!novaMensagem.trim() || !conversaSelecionada) return;
+    
     setEnviando(true);
-    await enviarMensagem(novaMensagem.trim());
-    setNovaMensagem('');
-    setEnviando(false);
+    try {
+      const textoOriginal = novaMensagem.trim();
+      let conteudoParaEnviar = textoOriginal;
+
+      // Criptografar mensagem se E2E estiver inicializado
+      if (isInitialized && conversaSelecionada.tipo === 'INDIVIDUAL') {
+        try {
+          // Encontrar o ID do outro participante
+          const outroParticipante = conversaSelecionada.participantes.find(
+            (p) => p.usuarioId !== user?.id
+          );
+          
+          if (outroParticipante) {
+            conteudoParaEnviar = await encryptMessage(textoOriginal, outroParticipante.usuarioId);
+            console.log('[E2E] Mensagem criptografada antes de enviar');
+          }
+        } catch (error) {
+          console.error('[E2E] Erro ao criptografar, enviando sem criptografia:', error);
+          // Continuar com mensagem original em caso de erro
+        }
+      }
+
+      // Passar texto original para preservar na mensagem otimista
+      await enviarMensagem(conteudoParaEnviar, textoOriginal);
+      setNovaMensagem('');
+    } catch (error) {
+      console.error('Erro ao enviar mensagem:', error);
+    } finally {
+      setEnviando(false);
+    }
   };
 
   const handleVoltar = () => {
@@ -297,7 +327,11 @@ export const ChatInternoWidget: React.FC = () => {
                           onVoltar={isMobile ? handleVoltar : undefined}
                           onClose={() => setAberto(false)}
                         />
-                <ChatMessages mensagens={mensagens} userId={user?.id} />
+                <ChatMessages 
+                  mensagens={mensagens} 
+                  userId={user?.id} 
+                  conversaId={conversaSelecionada.id}
+                />
                 <ChatInput
                   value={novaMensagem}
                   onChange={setNovaMensagem}

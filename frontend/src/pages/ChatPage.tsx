@@ -184,6 +184,7 @@ export const ChatPage: React.FC = () => {
               onCloseChat={handleCloseChat}
               isSending={isSending}
               isClosing={isClosing}
+              pacienteId={selectedPaciente.id}
             />
           </>
         )}
