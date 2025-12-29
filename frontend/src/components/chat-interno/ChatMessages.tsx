@@ -69,16 +69,16 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({ mensagens, userId, c
           // Verificar se a descriptografia retornou erro específico
           if (decryptedContent === '⚠️ Falha na descriptografia') {
             console.error(`[E2E-DEBUG] ✗ Mensagem ${msg.id} falhou na descriptografia após retry`);
-            // Marcar como falha para tratamento visual
-            decrypted.set(msg.id, '⚠️ Falha na descriptografia');
+            // Marcar como falha para tratamento visual (indicando troca de segurança)
+            decrypted.set(msg.id, 'DECRYPTION_FAILED');
           } else {
             decrypted.set(msg.id, decryptedContent);
             console.log(`[E2E-DEBUG] ✓ Mensagem ${msg.id} descriptografada com sucesso`);
           }
         } catch (error) {
           console.error(`[E2E-DEBUG] ✗ Erro inesperado ao descriptografar mensagem ${msg.id}:`, error);
-          // Marcar como falha para tratamento visual
-          decrypted.set(msg.id, '⚠️ Falha na descriptografia');
+          // Marcar como falha para tratamento visual (indicando troca de segurança)
+          decrypted.set(msg.id, 'DECRYPTION_FAILED');
         }
       });
       
@@ -189,10 +189,10 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({ mensagens, userId, c
                   fontSize: '0.9375rem', 
                   wordBreak: 'break-word',
                   // Estilo especial para mensagens com falha na descriptografia
-                  ...(decryptedMessages.get(mensagem.id) === '⚠️ Falha na descriptografia' && {
-                    color: 'error.main',
+                  ...(decryptedMessages.get(mensagem.id) === 'DECRYPTION_FAILED' && {
+                    color: 'warning.main',
                     fontStyle: 'italic',
-                    opacity: 0.8,
+                    opacity: 0.9,
                   }),
                 }}
               >
@@ -219,8 +219,13 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({ mensagens, userId, c
                   const decrypted = decryptedMessages.get(mensagem.id);
                   
                   // Tratamento visual para mensagens que falharam na descriptografia
-                  if (decrypted === '⚠️ Falha na descriptografia') {
-                    return '⚠️ Falha na descriptografia';
+                  if (decrypted === 'DECRYPTION_FAILED') {
+                    return (
+                      <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <span>🔒</span>
+                        <span>Esta mensagem não pode ser descriptografada devido a uma troca de chaves de segurança. O remetente pode ter regenerado suas chaves.</span>
+                      </Box>
+                    );
                   }
                   
                   // Se ainda não foi descriptografada, mostrar "Descriptografando..." temporariamente

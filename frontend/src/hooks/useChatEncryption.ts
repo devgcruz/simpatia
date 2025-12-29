@@ -10,7 +10,7 @@ import { api } from '../services/api';
 export const useChatEncryption = () => {
   const { user } = useAuth();
   const [isInitialized, setIsInitialized] = useState(false);
-  const [publicKeyCache, setPublicKeyCache] = useState<Map<number, string>>(new Map());
+  const [publicKeyCache, setPublicKeyCache] = useState<Map<number, { key: string; timestamp: number }>>(new Map());
   const privateKeyRef = useRef<CryptoKey | null>(null);
 
   /**
@@ -158,16 +158,16 @@ export const useChatEncryption = () => {
             }
           } else if (localPublicKeyBase64 && localPublicKeyBase64 !== serverPublicKeyBase64) {
             // Chave pública local não corresponde à chave pública no servidor
-            // Isso significa que as chaves foram regeneradas - precisamos usar a chave do servidor
-            // Mas não podemos derivar a chave privada da pública, então precisamos gerar novo par
+            // Priorizar a chave local (temos a chave privada correspondente)
+            // Apenas reenviar a chave local ao servidor para manter consistência
             console.warn('[E2E] ⚠️ Chave pública local não corresponde à chave pública no servidor!');
-            console.warn('[E2E] Isso pode indicar que as chaves foram regeneradas. Gerando novo par...');
-            const keyPair = await generateKeyPair();
-            privateKey = keyPair.privateKey;
-            const publicKeyBase64 = await exportPublicKey(keyPair.publicKey);
-            await savePrivateKey(Number(user.id), privateKey, keyPair.publicKey);
-            await api.post('/auth/public-key', { publicKey: publicKeyBase64 });
-            console.log('[E2E] Novo par de chaves gerado e sincronizado');
+            console.warn('[E2E] Diferença detectada. Priorizando chave local para manter consistência.');
+            try {
+              await api.post('/auth/public-key', { publicKey: localPublicKeyBase64 });
+              console.log('[E2E] Chave pública local reenviada ao servidor para sincronização');
+            } catch (sendError) {
+              console.error('[E2E] Erro ao reenviar chave pública local:', sendError);
+            }
           } else {
             // Chaves estão sincronizadas
             if (!localPublicKeyBase64 && serverPublicKeyBase64) {
@@ -227,11 +227,14 @@ export const useChatEncryption = () => {
    * @param forceRefetch - Se true, ignora o cache e busca da API novamente
    */
   const getContactPublicKey = useCallback(async (contactId: number, forceRefetch: boolean = false): Promise<string | null> => {
-    // Verificar cache primeiro (a menos que forceRefetch seja true)
-    if (!forceRefetch && publicKeyCache.has(contactId)) {
-      const cachedKey = publicKeyCache.get(contactId);
+    const CACHE_TTL = 1000 * 60 * 60; // 1 hora
+    const cached = publicKeyCache.get(contactId);
+    const now = Date.now();
+
+    // Se tem cache e não expirou (e não é forçado)
+    if (!forceRefetch && cached && (now - cached.timestamp < CACHE_TTL)) {
       console.log(`[E2E-DEBUG] Chave pública do contato ${contactId} encontrada no cache`);
-      return cachedKey || null;
+      return cached.key;
     }
 
     try {
@@ -241,8 +244,8 @@ export const useChatEncryption = () => {
       const publicKeyBase64 = response.data.publicKey;
       
       if (publicKeyBase64) {
-        // Adicionar ao cache
-        setPublicKeyCache((prev) => new Map(prev).set(contactId, publicKeyBase64));
+        // Adicionar ao cache com timestamp
+        setPublicKeyCache((prev) => new Map(prev).set(contactId, { key: publicKeyBase64, timestamp: Date.now() }));
         console.log(`[E2E-DEBUG] ✓ Chave pública do contato ${contactId} obtida com sucesso (tamanho: ${publicKeyBase64.length} chars)`);
         return publicKeyBase64;
       } else {
@@ -489,6 +492,17 @@ export const useChatEncryption = () => {
           const retryErrorName = retryError?.name || 'UnknownError';
           const retryErrorMessage = retryError?.message || 'Erro desconhecido';
           console.error(`[E2E-DEBUG] ✗ Falha fatal na descriptografia após retry (${retryErrorName}):`, retryErrorMessage);
+          
+          // Se for OperationError, assumir que o cache está sujo e limpar para próximas mensagens
+          if (retryErrorName === 'OperationError') {
+            console.warn(`[E2E-DEBUG] OperationError detectado - assumindo cache sujo do remetente ${senderId}, limpando cache...`);
+            setPublicKeyCache((prev) => {
+              const newCache = new Map(prev);
+              newCache.delete(senderId);
+              return newCache;
+            });
+            console.log(`[E2E-DEBUG] Cache do remetente ${senderId} limpo. Próximas mensagens tentarão buscar chave pública novamente.`);
+          }
           
           // Retornar string de erro específica em vez do payload cru
           return '⚠️ Falha na descriptografia';
