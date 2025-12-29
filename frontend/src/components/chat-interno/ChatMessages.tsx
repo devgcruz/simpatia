@@ -39,7 +39,15 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({ mensagens, userId, c
           return false;
         }
         // NÃO descriptografar mensagens próprias - o remetente já sabe o conteúdo original
+        // Sanity check: se é mensagem própria e já está em texto plano, não tentar descriptografar
         if (msg.remetenteId === user.id) {
+          // Verificar se está criptografada (formato iv:ciphertext)
+          const isEncrypted = msg.conteudo.includes(':') && msg.conteudo.split(':').length === 2;
+          if (!isEncrypted) {
+            // Já está em texto plano, não precisa descriptografar
+            return false;
+          }
+          // Se estiver criptografada, também não descriptografar (mensagem otimista deve ter preservado o texto original)
           return false;
         }
         // Verificar se é mensagem criptografada (formato: iv:ciphertext)
@@ -55,14 +63,22 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({ mensagens, userId, c
           // O senderId é o remetenteId da mensagem
           const senderId = msg.remetenteId;
           
-          console.log(`[E2E] Descriptografando mensagem ${msg.id} de remetente ${senderId}, payload: ${msg.conteudo.substring(0, 50)}...`);
+          console.log(`[E2E-DEBUG] Descriptografando mensagem ${msg.id} de remetente ${senderId}, payload preview: ${msg.conteudo.substring(0, 50)}...`);
           const decryptedContent = await decryptMessage(msg.conteudo, senderId);
-          decrypted.set(msg.id, decryptedContent);
-          console.log(`[E2E] ✓ Mensagem ${msg.id} descriptografada: "${decryptedContent}"`);
+          
+          // Verificar se a descriptografia retornou erro específico
+          if (decryptedContent === '⚠️ Falha na descriptografia') {
+            console.error(`[E2E-DEBUG] ✗ Mensagem ${msg.id} falhou na descriptografia após retry`);
+            // Marcar como falha para tratamento visual
+            decrypted.set(msg.id, '⚠️ Falha na descriptografia');
+          } else {
+            decrypted.set(msg.id, decryptedContent);
+            console.log(`[E2E-DEBUG] ✓ Mensagem ${msg.id} descriptografada com sucesso`);
+          }
         } catch (error) {
-          console.error(`[E2E] ✗ Erro ao descriptografar mensagem ${msg.id}:`, error);
-          // Se falhar, tentar usar conteúdo original
-          decrypted.set(msg.id, msg.conteudo);
+          console.error(`[E2E-DEBUG] ✗ Erro inesperado ao descriptografar mensagem ${msg.id}:`, error);
+          // Marcar como falha para tratamento visual
+          decrypted.set(msg.id, '⚠️ Falha na descriptografia');
         }
       });
       
@@ -167,7 +183,19 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({ mensagens, userId, c
                   {mensagem.remetente.nome}
                 </Typography>
               )}
-              <Typography variant="body2" sx={{ fontSize: '0.9375rem', wordBreak: 'break-word' }}>
+              <Typography 
+                variant="body2" 
+                sx={{ 
+                  fontSize: '0.9375rem', 
+                  wordBreak: 'break-word',
+                  // Estilo especial para mensagens com falha na descriptografia
+                  ...(decryptedMessages.get(mensagem.id) === '⚠️ Falha na descriptografia' && {
+                    color: 'error.main',
+                    fontStyle: 'italic',
+                    opacity: 0.8,
+                  }),
+                }}
+              >
                 {(() => {
                   const isMine = mensagem.remetenteId === userId;
                   
@@ -175,24 +203,32 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({ mensagens, userId, c
                   // A mensagem otimista já foi adicionada com o texto original
                   // Quando a mensagem real retornar via WebSocket, o texto original será preservado
                   if (isMine) {
-                    // O texto original já deve estar preservado pela mensagem otimista
-                    // Se ainda estiver criptografado, significa que a mensagem otimista não foi criada
-                    // ou foi substituída incorretamente
-                    if (mensagem.conteudo.includes(':') && mensagem.conteudo.split(':').length === 2) {
-                      // Está criptografada - isso não deveria acontecer se a mensagem otimista funcionou
-                      console.warn('[E2E] Mensagem própria está criptografada - mensagem otimista pode não ter funcionado');
-                      return '[Mensagem criptografada - texto original não disponível]';
+                    // Sanity check: se é mensagem própria e já está em texto plano, retornar diretamente
+                    const isEncrypted = mensagem.conteudo.includes(':') && mensagem.conteudo.split(':').length === 2;
+                    if (!isEncrypted) {
+                      // Já está em texto plano, retornar diretamente
+                      return mensagem.conteudo;
                     }
-                    // Retornar conteúdo (deve ser o texto original preservado)
-                    return mensagem.conteudo;
+                    // Se estiver criptografada, significa que a mensagem otimista não funcionou
+                    // Isso não deveria acontecer, mas vamos tratar graciosamente
+                    console.warn('[E2E-DEBUG] Mensagem própria está criptografada - mensagem otimista pode não ter funcionado');
+                    return '[Mensagem criptografada - texto original não disponível]';
                   }
                   
                   // Se é mensagem de outro usuário, descriptografar
                   const decrypted = decryptedMessages.get(mensagem.id);
+                  
+                  // Tratamento visual para mensagens que falharam na descriptografia
+                  if (decrypted === '⚠️ Falha na descriptografia') {
+                    return '⚠️ Falha na descriptografia';
+                  }
+                  
                   // Se ainda não foi descriptografada, mostrar "Descriptografando..." temporariamente
                   if (isInitialized && mensagem.conteudo.includes(':') && !decrypted) {
                     return 'Descriptografando...';
                   }
+                  
+                  // Retornar conteúdo descriptografado ou original
                   return decrypted || mensagem.conteudo;
                 })()}
               </Typography>

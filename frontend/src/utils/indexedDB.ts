@@ -43,18 +43,25 @@ export const openDB = (): Promise<IDBDatabase> => {
 };
 
 /**
- * Salva chave privada no IndexedDB
+ * Salva chave privada e pública no IndexedDB
  */
-export const savePrivateKey = async (userId: number, privateKey: CryptoKey): Promise<void> => {
+export const savePrivateKey = async (userId: number, privateKey: CryptoKey, publicKey?: CryptoKey): Promise<void> => {
   const db = await openDB();
   const store = db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME);
   
-  // Exportar chave para formato armazenável
-  const exported = await crypto.subtle.exportKey('pkcs8', privateKey);
-  const keyData = Array.from(new Uint8Array(exported));
+  // Exportar chave privada para formato armazenável
+  const exportedPrivate = await crypto.subtle.exportKey('pkcs8', privateKey);
+  const keyData = Array.from(new Uint8Array(exportedPrivate));
+  
+  // Exportar chave pública se fornecida
+  let publicKeyBase64: string | undefined;
+  if (publicKey) {
+    const exportedPublic = await crypto.subtle.exportKey('spki', publicKey);
+    publicKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(exportedPublic)));
+  }
   
   return new Promise((resolve, reject) => {
-    const request = store.put({ userId, keyData });
+    const request = store.put({ userId, keyData, publicKeyBase64 });
     request.onsuccess = () => resolve();
     request.onerror = () => reject(new Error('Falha ao salvar chave privada'));
   });
@@ -99,6 +106,34 @@ export const getPrivateKey = async (userId: number): Promise<CryptoKey | null> =
     });
   } catch (error) {
     console.error('[IndexedDB] Erro ao recuperar chave privada:', error);
+    return null;
+  }
+};
+
+/**
+ * Recupera chave pública do IndexedDB (se salva)
+ */
+export const getPublicKey = async (userId: number): Promise<string | null> => {
+  try {
+    const db = await openDB();
+    const store = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME);
+    
+    return new Promise((resolve, reject) => {
+      const request = store.get(userId);
+      
+      request.onsuccess = () => {
+        const result = request.result;
+        if (!result || !result.publicKeyBase64) {
+          resolve(null);
+          return;
+        }
+        resolve(result.publicKeyBase64);
+      };
+      
+      request.onerror = () => reject(new Error('Falha ao recuperar chave pública'));
+    });
+  } catch (error) {
+    console.error('[IndexedDB] Erro ao recuperar chave pública:', error);
     return null;
   }
 };
