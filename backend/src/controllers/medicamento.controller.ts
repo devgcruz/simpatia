@@ -50,6 +50,7 @@ class MedicamentoController {
 
   async handleCreate(req: Request, res: Response) {
     try {
+      const user = req.user!; // User vem do middleware de autenticação
       const {
         tipoProduto,
         nomeProduto,
@@ -76,16 +77,20 @@ class MedicamentoController {
         empresaDetentoraRegistro,
         situacaoRegistro,
         principioAtivo,
-      });
+      }, user);
 
       return res.status(201).json(novoMedicamento);
     } catch (error: any) {
+      if (error.message.includes('Acesso negado')) {
+        return res.status(403).json({ message: error.message });
+      }
       return res.status(400).json({ message: error.message });
     }
   }
 
   async handleUpdate(req: Request, res: Response) {
     try {
+      const user = req.user!; // User vem do middleware de autenticação
       const id = Number(req.params.id);
       const {
         tipoProduto,
@@ -114,9 +119,12 @@ class MedicamentoController {
       if (situacaoRegistro !== undefined) data.situacaoRegistro = situacaoRegistro;
       if (principioAtivo !== undefined) data.principioAtivo = principioAtivo;
 
-      const medicamentoAtualizado = await medicamentoService.update(id, data);
+      const medicamentoAtualizado = await medicamentoService.update(id, data, user);
       return res.status(200).json(medicamentoAtualizado);
     } catch (error: any) {
+      if (error.message.includes('Acesso negado')) {
+        return res.status(403).json({ message: error.message });
+      }
       if (error.message === 'Medicamento não encontrado.') {
         return res.status(404).json({ message: error.message });
       }
@@ -126,10 +134,14 @@ class MedicamentoController {
 
   async handleDelete(req: Request, res: Response) {
     try {
+      const user = req.user!; // User vem do middleware de autenticação
       const id = Number(req.params.id);
-      await medicamentoService.delete(id);
+      await medicamentoService.delete(id, user);
       return res.status(204).send();
     } catch (error: any) {
+      if (error.message.includes('Acesso negado')) {
+        return res.status(403).json({ message: error.message });
+      }
       if (error.message === 'Medicamento não encontrado.') {
         return res.status(404).json({ message: error.message });
       }
@@ -139,18 +151,22 @@ class MedicamentoController {
 
   async handleBulkCreate(req: Request, res: Response) {
     try {
+      const user = req.user!; // User vem do middleware de autenticação
       const { medicamentos } = req.body;
 
       if (!Array.isArray(medicamentos)) {
         return res.status(400).json({ message: 'medicamentos deve ser um array.' });
       }
 
-      const result = await medicamentoService.bulkCreate(medicamentos);
+      const result = await medicamentoService.bulkCreate(medicamentos, user);
       return res.status(201).json({
         message: `${result.count} medicamento(s) criado(s) com sucesso.`,
         count: result.count,
       });
     } catch (error: any) {
+      if (error.message.includes('Acesso negado')) {
+        return res.status(403).json({ message: error.message });
+      }
       return res.status(400).json({ message: error.message });
     }
   }

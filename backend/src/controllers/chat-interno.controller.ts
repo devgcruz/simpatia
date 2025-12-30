@@ -18,7 +18,6 @@ const sendMensagemSchema = z.object({
   conversaId: z.number().int().positive(),
   tipo: z.enum(['TEXTO', 'IMAGEM', 'PDF', 'EMOJI']),
   conteudo: z.string().min(1).max(10000),
-  criptografar: z.boolean().optional(),
 });
 
 class ChatInternoController {

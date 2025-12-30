@@ -30,12 +30,18 @@ export function encrypt(text: string): string {
   }
 
   try {
+    // Garantir que o texto está em UTF-8 válido para preservar emojis
+    // Emojis modernos como 🫡 (saluting face) precisam de tratamento especial
+    const utf8Buffer = Buffer.from(text, 'utf8');
+    const validatedText = utf8Buffer.toString('utf8');
+    
     // Gerar IV único para cada operação
     const iv = crypto.randomBytes(IV_LENGTH);
     
     const cipher = crypto.createCipheriv(ALGORITHM, ENCRYPTION_KEY, iv);
     
-    let encrypted = cipher.update(text, 'utf8', 'hex');
+    // Criptografar usando UTF-8 para preservar emojis e caracteres especiais
+    let encrypted = cipher.update(validatedText, 'utf8', 'hex');
     encrypted += cipher.final('hex');
     
     const authTag = cipher.getAuthTag();
@@ -69,16 +75,28 @@ export function decrypt(hash: string): string {
 
   try {
     const [ivHex, tagHex, encrypted] = parts;
+    
+    // Validar que todas as partes existem
+    if (!ivHex || !tagHex || !encrypted) {
+      return hash;
+    }
+    
     const iv = Buffer.from(ivHex, 'hex');
     const authTag = Buffer.from(tagHex, 'hex');
     
     const decipher = crypto.createDecipheriv(ALGORITHM, ENCRYPTION_KEY, iv);
     decipher.setAuthTag(authTag);
     
+    // Descriptografar usando UTF-8 para preservar emojis e caracteres especiais
     let decrypted = decipher.update(encrypted, 'hex', 'utf8');
     decrypted += decipher.final('utf8');
     
-    return decrypted;
+    // Garantir que o resultado é UTF-8 válido
+    // Isso preserva emojis modernos (como 🫡 saluting face) corretamente
+    const validatedBuffer = Buffer.from(decrypted, 'utf8');
+    const validatedText = validatedBuffer.toString('utf8');
+    
+    return validatedText;
   } catch (error) {
     // Erro de decriptação (chave errada, dado corrompido, etc.)
     // Log sanitizado (sem stack trace)

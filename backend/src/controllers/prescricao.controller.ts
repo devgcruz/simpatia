@@ -26,14 +26,18 @@ class PrescricaoController {
 
   async findByPaciente(req: Request, res: Response) {
     try {
+      const user = req.user!; // User vem do middleware de autenticação
       const { pacienteId } = req.params;
 
-      const prescricoes = await prescricaoService.findByPaciente(Number(pacienteId));
+      const prescricoes = await prescricaoService.findByPaciente(Number(pacienteId), user);
 
       return res.json(prescricoes);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao buscar prescrições:', error);
-      return res.status(500).json({ error: 'Erro ao buscar prescrições' });
+      if (error.message.includes('Acesso negado')) {
+        return res.status(403).json({ error: error.message });
+      }
+      return res.status(500).json({ error: error.message || 'Erro ao buscar prescrições' });
     }
   }
 
@@ -56,32 +60,41 @@ class PrescricaoController {
 
   async getAll(req: Request, res: Response) {
     try {
+      const user = req.user!; // User vem do middleware de autenticação
       const { pacienteId, doutorId, agendamentoId, skip, take } = req.query;
 
       const filters: any = {};
       if (pacienteId) filters.pacienteId = Number(pacienteId);
-      if (doutorId) filters.doutorId = Number(doutorId);
+      // NUNCA confiar em doutorId da query - sempre usar do token
+      // Removido: if (doutorId) filters.doutorId = Number(doutorId);
       if (agendamentoId !== undefined) {
         filters.agendamentoId = agendamentoId === 'null' ? null : Number(agendamentoId);
       }
       if (skip) filters.skip = Number(skip);
       if (take) filters.take = Number(take);
 
-      const result = await prescricaoService.getAll(filters);
+      const result = await prescricaoService.getAll(filters, user);
       return res.json(result);
     } catch (error: any) {
       console.error('Erro ao buscar prescrições:', error);
+      if (error.message.includes('Acesso negado')) {
+        return res.status(403).json({ error: error.message });
+      }
       return res.status(500).json({ error: error.message || 'Erro ao buscar prescrições' });
     }
   }
 
   async getById(req: Request, res: Response) {
     try {
+      const user = req.user!; // User vem do middleware de autenticação
       const { id } = req.params;
-      const prescricao = await prescricaoService.getById(Number(id));
+      const prescricao = await prescricaoService.getById(Number(id), user);
       return res.json(prescricao);
     } catch (error: any) {
       console.error('Erro ao buscar prescrição:', error);
+      if (error.message.includes('Acesso negado')) {
+        return res.status(403).json({ error: error.message });
+      }
       return res.status(404).json({ error: error.message || 'Prescrição não encontrada' });
     }
   }

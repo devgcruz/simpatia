@@ -45,12 +45,19 @@ interface IUpdatePaciente {
 }
 class PacienteService {
 
-    async getAll(clinicaId: number, userId?: number, userRole?: string, doutorId?: number) {
+    async getAll(clinicaId: number, userId?: number, userRole?: string, doutorId?: number, userDoutorId?: number) {
         const where: any = { clinicaId, ativo: true };
         
-        // Se for DOUTOR, filtrar apenas pacientes do doutor logado
-        if (userRole === 'DOUTOR' && userId) {
-            where.doutorId = userId;
+        // STRICT DOCTOR ISOLATION: Se o usuário for médico, FORÇA o filtro pelo ID dele
+        // Isso garante que mesmo CLINICA_ADMIN que também é DOUTOR só vê seus próprios pacientes
+        const isDoctor = userRole === 'DOUTOR' || userDoutorId !== undefined;
+        
+        if (isDoctor) {
+            // FORÇAR filtro pelo ID do médico
+            const doctorId = userDoutorId || userId;
+            if (doctorId) {
+                where.doutorId = doctorId;
+            }
         }
         // Se for SECRETARIA, filtrar apenas pacientes dos doutores vinculados
         else if (userRole === 'SECRETARIA' && userId) {

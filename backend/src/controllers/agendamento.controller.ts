@@ -8,7 +8,8 @@ class AgendamentoController {
         try {
             const user = req.user!;
             const filtros = {
-                doutorId: req.query.doutorId as string | undefined,
+                // NUNCA confiar em doutorId da query para médicos - sempre usar do token
+                // Removido: doutorId: req.query.doutorId as string | undefined,
                 dataInicio: req.query.dataInicio as string | undefined,
                 dataFim: req.query.dataFim as string | undefined,
             };

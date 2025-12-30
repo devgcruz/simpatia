@@ -26,13 +26,10 @@ import chatInternoService, {
   MensagemInterna,
 } from '../../services/chat-interno.service';
 import { useChatInternoWebSocket } from '../../hooks/useChatInternoWebSocket';
-import { ChatMessages } from './ChatMessages';
-import { useChatEncryption } from '../../hooks/useChatEncryption';
 import { toast } from 'sonner';
 
 export const ChatInternoPage: React.FC = () => {
   const { user } = useAuth();
-  const { encryptMessage, isInitialized } = useChatEncryption();
   const [conversas, setConversas] = useState<ConversaInterna[]>([]);
   const [conversaSelecionada, setConversaSelecionada] = useState<ConversaInterna | null>(null);
   const [mensagens, setMensagens] = useState<MensagemInterna[]>([]);
@@ -43,7 +40,6 @@ export const ChatInternoPage: React.FC = () => {
   const mensagensEndRef = useRef<HTMLDivElement>(null);
   const [usuariosDigitando, setUsuariosDigitando] = useState<Set<number>>(new Set());
   const notificacoesAtivasRef = useRef<Map<number, Notification>>(new Map()); // Rastrear notificações por conversaId
-  const conversaSelecionadaRef = useRef<ConversaInterna | null>(null); // Ref para acessar valor atualizado no callback
 
   // Função para limpar notificações de uma conversa
   const limparNotificacoesConversa = (conversaId: number) => {
@@ -74,26 +70,12 @@ export const ChatInternoPage: React.FC = () => {
           conversaId: mensagem.conversaId,
           remetenteId: mensagem.remetenteId,
           userId: user?.id,
-          conversaSelecionadaId: conversaSelecionadaRef.current?.id,
+          conversaSelecionadaId: conversaSelecionada?.id,
         });
 
-        // Usar ref para obter o valor mais recente da conversa selecionada
-        const conversaAtual = conversaSelecionadaRef.current;
-
         // Se a mensagem é para a conversa selecionada e está visível
-        if (mensagem.conversaId === conversaAtual?.id) {
-          console.log('[ChatInternoPage] Adicionando mensagem à conversa aberta');
-          // Verificar se a mensagem já existe para evitar duplicatas
-          setMensagens((prev) => {
-            // Verificar se a mensagem já existe pelo ID
-            const existe = prev.some((m) => m.id === mensagem.id);
-            if (existe) {
-              console.log('[ChatInternoPage] Mensagem já existe, ignorando duplicata');
-              return prev;
-            }
-            console.log('[ChatInternoPage] Adicionando nova mensagem ao array');
-            return [...prev, mensagem];
-          });
+        if (mensagem.conversaId === conversaSelecionada?.id) {
+          setMensagens((prev) => [...prev, mensagem]);
           marcarMensagensComoLidas(mensagem.conversaId);
           
           // ATUALIZAÇÃO IMEDIATA: Zerar contador quando mensagem é recebida na conversa aberta
@@ -252,11 +234,6 @@ export const ChatInternoPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // Atualizar ref sempre que conversaSelecionada mudar
-    conversaSelecionadaRef.current = conversaSelecionada;
-  }, [conversaSelecionada]);
-
-  useEffect(() => {
     if (conversaSelecionada) {
       // Limpar notificações da conversa específica
       limparNotificacoesConversa(conversaSelecionada.id);
@@ -281,7 +258,10 @@ export const ChatInternoPage: React.FC = () => {
     }
   }, [conversaSelecionada]);
 
-  // Removido: scroll agora é gerenciado pelo componente ChatMessages
+  useEffect(() => {
+    // Scroll para última mensagem
+    mensagensEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [mensagens]);
 
   const carregarConversas = async () => {
     try {
@@ -311,30 +291,10 @@ export const ChatInternoPage: React.FC = () => {
 
     setEnviando(true);
     try {
-      let conteudoParaEnviar = novaMensagem.trim();
-
-      // Criptografar mensagem se E2E estiver inicializado
-      if (isInitialized && conversaSelecionada.tipo === 'INDIVIDUAL') {
-        try {
-          // Encontrar o ID do outro participante
-          const outroParticipante = conversaSelecionada.participantes.find(
-            (p) => p.usuarioId !== user?.id
-          );
-          
-          if (outroParticipante) {
-            conteudoParaEnviar = await encryptMessage(novaMensagem.trim(), outroParticipante.usuarioId);
-            console.log('[E2E] Mensagem criptografada antes de enviar');
-          }
-        } catch (error) {
-          console.error('[E2E] Erro ao criptografar, enviando sem criptografia:', error);
-          // Continuar com mensagem original em caso de erro
-        }
-      }
-
       enviarMensagem({
         conversaId: conversaSelecionada.id,
         tipo: 'TEXTO',
-        conteudo: conteudoParaEnviar,
+        conteudo: novaMensagem.trim(),
       });
       setNovaMensagem('');
     } catch (error: any) {
@@ -486,11 +446,42 @@ export const ChatInternoPage: React.FC = () => {
           </Paper>
 
           {/* Mensagens */}
-          <ChatMessages 
-            mensagens={mensagens} 
-            userId={user?.id} 
-            conversaId={conversaSelecionada.id}
-          />
+          <Box sx={{ flex: 1, overflow: 'auto', p: 2, bgcolor: 'grey.50' }}>
+            {mensagens.map((mensagem) => {
+              const isMine = mensagem.remetenteId === user?.id;
+              return (
+                <Box
+                  key={mensagem.id}
+                  sx={{
+                    display: 'flex',
+                    justifyContent: isMine ? 'flex-end' : 'flex-start',
+                    mb: 1,
+                  }}
+                >
+                  <Paper
+                    sx={{
+                      p: 1.5,
+                      maxWidth: '70%',
+                      bgcolor: isMine ? 'primary.main' : 'white',
+                      color: isMine ? 'white' : 'text.primary',
+                    }}
+                  >
+                    {!isMine && (
+                      <Typography variant="caption" display="block" gutterBottom>
+                        {mensagem.remetente.nome}
+                      </Typography>
+                    )}
+                    <Typography variant="body1">{mensagem.conteudo}</Typography>
+                    <Typography variant="caption" display="block" sx={{ mt: 0.5, opacity: 0.7 }}>
+                      {new Date(mensagem.createdAt).toLocaleTimeString()}
+                      {mensagem.status === 'LIDA' && isMine && ' ✓✓'}
+                    </Typography>
+                  </Paper>
+                </Box>
+              );
+            })}
+            <div ref={mensagensEndRef} />
+          </Box>
 
           {/* Input de mensagem */}
           <Paper sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>

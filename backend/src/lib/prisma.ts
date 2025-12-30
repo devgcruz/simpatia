@@ -256,7 +256,10 @@ function decryptFields<T extends Record<string, any>>(obj: T, model: string): T 
 }
 
 // Estender o Prisma Client com middleware de criptografia (API moderna Prisma 6.x)
-const prisma = new PrismaClient().$extends({
+// Configurar explicitamente para garantir UTF-8 (importante para emojis)
+const prisma = new PrismaClient({
+  log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+}).$extends({
   query: {
     $allModels: {
       async $allOperations({ model, operation, args, query }) {

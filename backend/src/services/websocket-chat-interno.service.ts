@@ -143,20 +143,19 @@ export function initializeChatInternoWebSocket(server: any) {
     });
 
     // Evento: Enviar mensagem
-    socket.on('mensagem:enviar', async (data: { conversaId: number; tipo: string; conteudo: string; criptografar?: boolean }) => {
+    socket.on('mensagem:enviar', async (data: { conversaId: number; tipo: string; conteudo: string }) => {
       try {
-        const { conversaId, tipo, conteudo, criptografar } = data;
+        const { conversaId, tipo, conteudo } = data;
 
         // Verificar rate limit (máximo 20 mensagens por minuto)
         // TODO: Implementar rate limiting mais robusto
 
-        // Enviar mensagem via serviço
+        // Enviar mensagem via serviço (criptografia é automática no servidor)
         const mensagem = await chatInternoService.sendMensagem({
           conversaId,
           remetenteId: userId,
           tipo: tipo as any,
           conteudo,
-          criptografar,
         });
 
         // Broadcast para todos na conversa

@@ -391,8 +391,15 @@ class AgendamentoService {
             where.dataHora = { lte: new Date(filtros.dataFim) };
         }
 
-        if (user.role === 'DOUTOR') {
-            where.doutorId = user.id;
+        // STRICT DOCTOR ISOLATION: Se o usuário for médico, FORÇA o filtro pelo ID dele
+        // Isso garante que mesmo CLINICA_ADMIN que também é DOUTOR só vê seus próprios agendamentos
+        const isDoctor = user.role === 'DOUTOR' || (user as any).doutorId !== undefined;
+        
+        if (isDoctor) {
+            // FORÇAR filtro pelo ID do médico (user.id é o doutorId para médicos)
+            const doctorId = (user as any).doutorId || user.id;
+            where.doutorId = doctorId;
+            // Ignorar filtro de doutorId da query se for médico (segurança)
         } else if (user.role === 'SECRETARIA') {
             // Buscar IDs dos doutores vinculados à secretária
             const vinculos = await prisma.secretariaDoutor.findMany({
@@ -417,12 +424,15 @@ class AgendamentoService {
                 where.doutorId = { in: doutorIds };
             }
         } else if (user.role === 'CLINICA_ADMIN') {
+            // CLINICA_ADMIN que NÃO é médico pode ver todos os agendamentos da clínica
             where.doutor = { clinicaId: user.clinicaId };
 
+            // Só aplicar filtro de doutorId se não for médico (médicos já estão filtrados acima)
             if (filtros.doutorId) {
                 where.doutorId = Number(filtros.doutorId);
             }
         } else if (user.role === 'SUPER_ADMIN') {
+            // SUPER_ADMIN pode ver tudo, mas ainda respeitar filtro se fornecido
             if (filtros.doutorId) {
                 where.doutorId = Number(filtros.doutorId);
             }
@@ -1400,9 +1410,14 @@ class AgendamentoService {
     }
 
     private async ensureAccessToAgendamento(agendamento: any, user: AuthUser) {
-        if (user.role === 'DOUTOR') {
-            if (agendamento.doutorId !== user.id) {
-                throw new Error("Acesso negado.");
+        // STRICT DOCTOR ISOLATION: Verificar se é médico
+        const isDoctor = user.role === 'DOUTOR' || (user as any).doutorId !== undefined;
+        
+        if (isDoctor) {
+            // Médico só pode acessar seus próprios agendamentos
+            const doctorId = (user as any).doutorId || user.id;
+            if (agendamento.doutorId !== doctorId) {
+                throw new Error("Acesso negado. Você só pode acessar seus próprios agendamentos.");
             }
         } else if (user.role === 'CLINICA_ADMIN') {
             if (agendamento.doutor.clinicaId !== user.clinicaId) {

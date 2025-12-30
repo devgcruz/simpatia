@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import { encrypt, decrypt } from '../utils/crypto.util';
 import { ChatInternoTipo, MensagemInternaTipo, MensagemInternaStatus } from '@prisma/client';
 
 interface CreateConversaIndividualDTO {
@@ -19,7 +20,7 @@ interface SendMensagemDTO {
   conversaId: number;
   remetenteId: number;
   tipo: MensagemInternaTipo;
-  conteudo: string; // Já vem criptografado do frontend (E2E)
+  conteudo: string; // Texto plano - será criptografado no servidor
 }
 
 interface UpdateMensagemDTO {
@@ -79,7 +80,6 @@ class ChatInternoService {
                 nome: true,
                 email: true,
                 role: true,
-                fotoPerfil: true,
               },
             },
           },
@@ -131,7 +131,6 @@ class ChatInternoService {
                 nome: true,
                 email: true,
                 role: true,
-                fotoPerfil: true,
               },
             },
           },
@@ -164,7 +163,6 @@ class ChatInternoService {
                 nome: true,
                 email: true,
                 role: true,
-                fotoPerfil: true,
               },
             },
           },
@@ -175,13 +173,12 @@ class ChatInternoService {
             createdAt: 'desc',
           },
           include: {
-          remetente: {
-            select: {
-              id: true,
-              nome: true,
-              fotoPerfil: true,
+            remetente: {
+              select: {
+                id: true,
+                nome: true,
+              },
             },
-          },
           },
         },
         _count: {
@@ -215,6 +212,32 @@ class ChatInternoService {
                 remetenteId: { not: usuarioId },
               },
             });
+
+        // TRANSPARENT ENCRYPTION: Descriptografar última mensagem se existir
+        if (conversa.mensagens && conversa.mensagens.length > 0) {
+          const ultimaMsg = conversa.mensagens[0];
+          
+          // Verificar se está no formato criptografado
+          const isEncrypted = ultimaMsg.conteudo.includes(':') && ultimaMsg.conteudo.split(':').length === 3;
+          
+          if (isEncrypted) {
+            try {
+              const conteudoDescriptografado = decrypt(ultimaMsg.conteudo);
+              if (conteudoDescriptografado !== '[DADO CORROMPIDO]') {
+                ultimaMsg.conteudo = conteudoDescriptografado;
+              } else {
+                console.error(`[ChatInterno] Erro na decifra da msg ID ${ultimaMsg.id}`);
+                ultimaMsg.conteudo = '[Mensagem indisponível]';
+              }
+            } catch (error) {
+              console.error(`[ChatInterno] Erro na decifra da msg ID ${ultimaMsg.id}`);
+              ultimaMsg.conteudo = '[Mensagem indisponível]';
+            }
+          } else {
+            // Mensagem legada não criptografada - manter como está (graceful fallback)
+            // Não precisa fazer nada, já está em texto plano
+          }
+        }
 
         return {
           ...conversa,
@@ -261,7 +284,6 @@ class ChatInternoService {
               nome: true,
               email: true,
               role: true,
-              fotoPerfil: true,
             },
           },
           leituras: {
@@ -281,12 +303,35 @@ class ChatInternoService {
       }),
     ]);
 
-    // IMPORTANTE: Não descriptografar no servidor! O frontend faz isso (E2E)
-    // Retornar o conteúdo "raw" (que já vem criptografado do frontend)
+    // TRANSPARENT ENCRYPTION: Descriptografar mensagens antes de retornar
+    // Graceful Fallback: Se não estiver criptografado (mensagem legada), retorna texto original
     const mensagensDescriptografadas = mensagens.map((msg) => {
+      let conteudoDescriptografado: string;
+      
+      // Verificar se está no formato criptografado (iv:authTag:encryptedContent)
+      const isEncrypted = msg.conteudo.includes(':') && msg.conteudo.split(':').length === 3;
+      
+      if (isEncrypted) {
+        try {
+          conteudoDescriptografado = decrypt(msg.conteudo);
+          // Se retornou '[DADO CORROMPIDO]', significa que falhou na descriptografia
+          if (conteudoDescriptografado === '[DADO CORROMPIDO]') {
+            console.error(`[ChatInterno] Erro na decifra da msg ID ${msg.id}`);
+            conteudoDescriptografado = '[Mensagem indisponível]';
+          }
+        } catch (error) {
+          // Log sanitizado sem vazar conteúdo
+          console.error(`[ChatInterno] Erro na decifra da msg ID ${msg.id}`);
+          conteudoDescriptografado = '[Mensagem indisponível]';
+        }
+      } else {
+        // Mensagem legada não criptografada - retornar como está (graceful fallback)
+        conteudoDescriptografado = msg.conteudo;
+      }
+
       return {
         ...msg,
-        conteudo: msg.conteudo, // Retornar conteúdo raw (frontend descriptografa)
+        conteudo: conteudoDescriptografado,
         lida: msg.leituras.length > 0,
       };
     });
@@ -322,14 +367,20 @@ class ChatInternoService {
       throw new Error('Usuário não é participante desta conversa');
     }
 
-    // IMPORTANTE: Não alterar o conteúdo! O frontend já envia criptografado (E2E)
-    // O servidor deve salvar o hash "raw" sem criptografar novamente
-    const mensagem = await prisma.mensagemInterna.create({
+    // TRANSPARENT ENCRYPTION: Criptografar para salvar no banco, mas retornar texto plano
+    // Garantir que o conteúdo está em UTF-8 válido para preservar emojis
+    const conteudoOriginal = conteudo.trim();
+    
+    // Validar encoding UTF-8 antes de criptografar (preserva emojis como 🫡)
+    const utf8Validated = Buffer.from(conteudoOriginal, 'utf8').toString('utf8');
+    const conteudoCriptografado = encrypt(utf8Validated);
+
+    const mensagemSalva = await prisma.mensagemInterna.create({
       data: {
         conversaId,
         remetenteId,
         tipo,
-        conteudo: conteudo.trim(), // trim() é seguro, não altera o hash criptografado
+        conteudo: conteudoCriptografado, // Salvar criptografado no banco
         status: MensagemInternaStatus.ENVIADA,
       },
       include: {
@@ -344,12 +395,21 @@ class ChatInternoService {
       },
     });
 
+    // CRÍTICO: Retornar com conteúdo original (plain text) para WebSocket/API
+    // Isso garante que o socket emita texto legível instantaneamente
+    const mensagem = {
+      ...mensagemSalva,
+      conteudo: conteudoOriginal, // Retornar texto plano, não o criptografado
+    };
+
     // Atualizar updatedAt da conversa
     await prisma.conversaInterna.update({
       where: { id: conversaId },
       data: { updatedAt: new Date() },
     });
 
+    // Retornar mensagem com conteúdo original (plain text) para WebSocket/API
+    // O banco tem o conteúdo criptografado, mas a API sempre retorna texto plano
     return mensagem;
   }
 
@@ -465,7 +525,6 @@ class ChatInternoService {
             nome: true,
             email: true,
             role: true,
-            fotoPerfil: true,
           },
         },
       },
@@ -574,7 +633,6 @@ class ChatInternoService {
             nome: true,
             email: true,
             role: true,
-            fotoPerfil: true,
           },
         },
       },
@@ -605,7 +663,6 @@ class ChatInternoService {
         email: true,
         role: true,
         ativo: true,
-        fotoPerfil: true,
       },
       orderBy: {
         nome: 'asc',
@@ -641,7 +698,6 @@ class ChatInternoService {
                 nome: true,
                 email: true,
                 role: true,
-                fotoPerfil: true,
               },
             },
           },

@@ -5,9 +5,12 @@ class PacienteController {
 
     async handleGetAll(req: Request, res: Response) {
         try {
-            const { clinicaId, id: userId, role } = req.user!;
-            const doutorId = req.query.doutorId ? Number(req.query.doutorId) : undefined;
-            const paciente = await pacienteService.getAll(clinicaId, userId, role, doutorId);
+            const user = req.user!;
+            const { clinicaId, id: userId, role } = user;
+            // NUNCA confiar em doutorId da query - sempre usar do token
+            // Removido: const doutorId = req.query.doutorId ? Number(req.query.doutorId) : undefined;
+            const userDoutorId = (user as any).doutorId; // ID do doutor se o usuário for médico
+            const paciente = await pacienteService.getAll(clinicaId, userId, role, undefined, userDoutorId);
             return res.status(200).json(paciente);
         } catch (error: any) {
             return res.status(500).json({ message: error.message })

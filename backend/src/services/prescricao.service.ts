@@ -19,6 +19,13 @@ interface IFilterPrescricao {
   take?: number;
 }
 
+interface AuthUser {
+  id: number;
+  role: string;
+  clinicaId: number | null;
+  doutorId?: number; // ID do doutor se o usuário for médico
+}
+
 class PrescricaoService {
   async create(data: ICreatePrescricao) {
     return await prisma.prescricao.create({
@@ -46,9 +53,22 @@ class PrescricaoService {
     });
   }
 
-  async findByPaciente(pacienteId: number) {
+  async findByPaciente(pacienteId: number, user?: AuthUser) {
+    const where: any = { pacienteId };
+
+    // STRICT DOCTOR ISOLATION: Se o usuário for médico, FORÇA o filtro pelo ID dele
+    if (user) {
+      const isDoctor = user.role === 'DOUTOR' || user.doutorId !== undefined;
+      
+      if (isDoctor) {
+        where.doutorId = user.doutorId || user.id;
+      } else if (user.clinicaId) {
+        where.doutor = { clinicaId: user.clinicaId };
+      }
+    }
+
     const prescricoes = await prisma.prescricao.findMany({
-      where: { pacienteId },
+      where,
       include: {
         doutor: {
           select: {
@@ -155,13 +175,29 @@ class PrescricaoService {
     };
   }
 
-  async getAll(filters: IFilterPrescricao = {}) {
+  async getAll(filters: IFilterPrescricao = {}, user?: AuthUser) {
     const where: any = {};
+
+    // STRICT DOCTOR ISOLATION: Se o usuário for médico, FORÇA o filtro pelo ID dele
+    // Isso garante que mesmo CLINICA_ADMIN que também é DOUTOR só vê seus próprios registros
+    if (user) {
+      // Verificar se é médico (role DOUTOR ou tem doutorId)
+      const isDoctor = user.role === 'DOUTOR' || user.doutorId !== undefined;
+      
+      if (isDoctor) {
+        // FORÇAR filtro pelo ID do médico (user.id é o doutorId para médicos)
+        where.doutorId = user.doutorId || user.id;
+      } else if (user.clinicaId) {
+        // Para não-médicos, filtrar por clínica através do relacionamento
+        where.doutor = { clinicaId: user.clinicaId };
+      }
+    }
 
     if (filters.pacienteId) {
       where.pacienteId = filters.pacienteId;
     }
-    if (filters.doutorId) {
+    // Só aplicar filtro de doutorId se não for médico (médicos já estão filtrados acima)
+    if (filters.doutorId && (!user || (user.role !== 'DOUTOR' && !user.doutorId))) {
       where.doutorId = filters.doutorId;
     }
     if (filters.agendamentoId !== undefined) {
@@ -205,8 +241,8 @@ class PrescricaoService {
         orderBy: {
           createdAt: 'desc',
         },
-        skip: filters.skip,
-        take: filters.take,
+        ...(filters.skip !== undefined && { skip: filters.skip }),
+        ...(filters.take !== undefined && { take: filters.take }),
       }),
       prisma.prescricao.count({ where }),
     ]);
@@ -214,7 +250,7 @@ class PrescricaoService {
     return { prescricoes, total, skip: filters.skip || 0, take: filters.take || 10 };
   }
 
-  async getById(id: number) {
+  async getById(id: number, user?: AuthUser) {
     const prescricao = await prisma.prescricao.findUnique({
       where: { id },
       include: {
@@ -234,6 +270,7 @@ class PrescricaoService {
             crmUf: true,
             rqe: true,
             modeloPrescricao: true,
+            clinicaId: true,
             clinica: {
               select: {
                 id: true,
@@ -263,6 +300,24 @@ class PrescricaoService {
 
     if (!prescricao) {
       throw new Error('Prescrição não encontrada');
+    }
+
+    // STRICT DOCTOR ISOLATION: Verificar acesso
+    if (user) {
+      const isDoctor = user.role === 'DOUTOR' || user.doutorId !== undefined;
+      
+      if (isDoctor) {
+        // Médico só pode ver suas próprias prescrições
+        const doctorId = user.doutorId || user.id;
+        if (prescricao.doutorId !== doctorId) {
+          throw new Error('Acesso negado. Você só pode visualizar suas próprias prescrições.');
+        }
+      } else if (user.clinicaId) {
+        // Não-médicos devem verificar se a prescrição pertence à clínica
+        if (prescricao.doutor.clinicaId !== user.clinicaId) {
+          throw new Error('Acesso negado. Prescrição não pertence à sua clínica.');
+        }
+      }
     }
 
     return prescricao;

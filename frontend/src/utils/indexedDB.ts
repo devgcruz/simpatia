@@ -1,8 +1,9 @@
 /**
- * Utilitário para gerenciar IndexedDB para armazenamento seguro de chaves privadas
+ * Utilitário para gerenciar IndexedDB para armazenamento seguro de dados locais
+ * (anteriormente usado para E2E, mantido para compatibilidade futura)
  */
 
-const DB_NAME = 'SimpatiaE2E';
+const DB_NAME = 'SimpatiaDB';
 const DB_VERSION = 1;
 const STORE_NAME = 'privateKeys';
 

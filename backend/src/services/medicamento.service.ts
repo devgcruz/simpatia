@@ -38,6 +38,12 @@ interface IFilterMedicamento {
   empresaDetentoraRegistro?: string;
 }
 
+interface AuthUser {
+  id: number;
+  role: string;
+  clinicaId: number | null;
+}
+
 class MedicamentoService {
   async getAll(filters?: IFilterMedicamento, skip?: number, take?: number) {
     const where: any = {
@@ -128,7 +134,12 @@ class MedicamentoService {
     return medicamento;
   }
 
-  async create(data: ICreateMedicamento) {
+  async create(data: ICreateMedicamento, user?: AuthUser) {
+    // RESTRIÇÃO: Apenas SUPER_ADMIN pode criar medicamentos
+    if (!user || user.role !== 'SUPER_ADMIN') {
+      throw new Error('Acesso negado. Apenas SUPER_ADMIN pode criar medicamentos.');
+    }
+
     if (!data.nomeProduto) {
       throw new Error('Nome do produto é obrigatório.');
     }
@@ -153,7 +164,12 @@ class MedicamentoService {
     return medicamento;
   }
 
-  async update(id: number, data: IUpdateMedicamento) {
+  async update(id: number, data: IUpdateMedicamento, user?: AuthUser) {
+    // RESTRIÇÃO: Apenas SUPER_ADMIN pode atualizar medicamentos
+    if (!user || user.role !== 'SUPER_ADMIN') {
+      throw new Error('Acesso negado. Apenas SUPER_ADMIN pode atualizar medicamentos.');
+    }
+
     const medicamentoExistente = await prisma.medicamento.findFirst({
       where: { 
         id,
@@ -173,7 +189,12 @@ class MedicamentoService {
     return medicamentoAtualizado;
   }
 
-  async delete(id: number) {
+  async delete(id: number, user?: AuthUser) {
+    // RESTRIÇÃO: Apenas SUPER_ADMIN pode deletar medicamentos
+    if (!user || user.role !== 'SUPER_ADMIN') {
+      throw new Error('Acesso negado. Apenas SUPER_ADMIN pode deletar medicamentos.');
+    }
+
     const medicamentoExistente = await prisma.medicamento.findFirst({
       where: { 
         id,
@@ -196,7 +217,12 @@ class MedicamentoService {
     return { message: 'Medicamento excluído com sucesso.' };
   }
 
-  async bulkCreate(data: ICreateMedicamento[]) {
+  async bulkCreate(data: ICreateMedicamento[], user?: AuthUser) {
+    // RESTRIÇÃO: Apenas SUPER_ADMIN pode criar medicamentos em lote
+    if (!user || user.role !== 'SUPER_ADMIN') {
+      throw new Error('Acesso negado. Apenas SUPER_ADMIN pode criar medicamentos em lote.');
+    }
+
     const medicamentos = await prisma.medicamento.createMany({
       data,
       skipDuplicates: true,

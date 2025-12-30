@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Box, Button, Paper, CircularProgress, TextField, InputAdornment, Grid, Autocomplete } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import BusinessIcon from '@mui/icons-material/Business';
 import CategoryIcon from '@mui/icons-material/Category';
@@ -22,11 +23,15 @@ import {
   MedicamentoInput,
 } from '../services/medicamento.service';
 import { MedicamentoFormModal } from '../components/medicamentos/MedicamentoFormModal';
+import { MedicamentoViewModal } from '../components/medicamentos/MedicamentoViewModal';
 import { ConfirmationModal } from '../components/common/ConfirmationModal';
 import { toast } from 'sonner';
 import { useDebounce } from '../hooks/useDebounce';
+import { useAuth } from '../hooks/useAuth';
 
 export const MedicamentosPage: React.FC = () => {
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const [medicamentos, setMedicamentos] = useState<IMedicamento[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchNomeProduto, setSearchNomeProduto] = useState('');
@@ -40,6 +45,8 @@ export const MedicamentosPage: React.FC = () => {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingMedicamento, setEditingMedicamento] = useState<IMedicamento | null>(null);
+  const [viewingMedicamento, setViewingMedicamento] = useState<IMedicamento | null>(null);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [itemToDeleteId, setItemToDeleteId] = useState<number | null>(null);
 
   // Debounce dos valores de busca - delay de 600ms
@@ -130,6 +137,16 @@ export const MedicamentosPage: React.FC = () => {
     setIsModalOpen(false);
   };
 
+  const handleViewMedicamento = (medicamento: IMedicamento) => {
+    setViewingMedicamento(medicamento);
+    setIsViewModalOpen(true);
+  };
+
+  const handleCloseViewModal = () => {
+    setViewingMedicamento(null);
+    setIsViewModalOpen(false);
+  };
+
   const handleSubmitForm = async (data: Partial<MedicamentoInput>) => {
     try {
       if (editingMedicamento) {
@@ -198,27 +215,48 @@ export const MedicamentosPage: React.FC = () => {
       flex: 1,
       minWidth: 150,
     },
+    // Coluna de ações: SUPER_ADMIN vê editar/deletar, outros veem apenas visualizar
     {
       field: 'actions',
-      type: 'actions',
+      type: 'actions' as const,
       headerName: 'Ações',
-      width: 120,
+      width: isSuperAdmin ? 120 : 80,
       getActions: ({ row }) => {
         const medicamento = row as IMedicamento;
-        return [
-          <GridActionsCellItem
-            key="edit"
-            icon={<EditIcon />}
-            label="Editar"
-            onClick={() => handleOpenModal(medicamento)}
-          />,
-          <GridActionsCellItem
-            key="delete"
-            icon={<DeleteIcon />}
-            label="Excluir"
-            onClick={() => handleDelete(medicamento.id)}
-          />,
-        ];
+        
+        if (isSuperAdmin) {
+          // SUPER_ADMIN: editar, deletar e visualizar
+          return [
+            <GridActionsCellItem
+              key="view"
+              icon={<VisibilityIcon />}
+              label="Visualizar"
+              onClick={() => handleViewMedicamento(medicamento)}
+            />,
+            <GridActionsCellItem
+              key="edit"
+              icon={<EditIcon />}
+              label="Editar"
+              onClick={() => handleOpenModal(medicamento)}
+            />,
+            <GridActionsCellItem
+              key="delete"
+              icon={<DeleteIcon />}
+              label="Excluir"
+              onClick={() => handleDelete(medicamento.id)}
+            />,
+          ];
+        } else {
+          // Não-SUPER_ADMIN: apenas visualizar
+          return [
+            <GridActionsCellItem
+              key="view"
+              icon={<VisibilityIcon />}
+              label="Visualizar"
+              onClick={() => handleViewMedicamento(medicamento)}
+            />,
+          ];
+        }
       },
     },
   ];
@@ -336,13 +374,16 @@ export const MedicamentosPage: React.FC = () => {
               Limpar Filtros
             </Button>
           )}
-          <Button
-            variant="contained"
-            onClick={() => handleOpenModal()}
-            sx={{ whiteSpace: 'nowrap' }}
-          >
-            Novo Medicamento
-          </Button>
+          {/* Apenas SUPER_ADMIN pode criar novos medicamentos */}
+          {isSuperAdmin && (
+            <Button
+              variant="contained"
+              onClick={() => handleOpenModal()}
+              sx={{ whiteSpace: 'nowrap' }}
+            >
+              Novo Medicamento
+            </Button>
+          )}
         </Box>
       </Box>
 
@@ -407,6 +448,12 @@ export const MedicamentosPage: React.FC = () => {
         onClose={handleCloseModal}
         onSubmit={handleSubmitForm}
         initialData={editingMedicamento}
+      />
+
+      <MedicamentoViewModal
+        open={isViewModalOpen}
+        onClose={handleCloseViewModal}
+        medicamento={viewingMedicamento}
       />
 
       <ConfirmationModal

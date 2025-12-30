@@ -68,12 +68,19 @@ class ProntuarioChatService {
   }
 
   private ensureAccess(agendamento: any, user: AuthUser) {
-    if (user.role === 'DOUTOR' && agendamento.doutorId !== user.id) {
-      throw new Error('Acesso negado.');
-    }
-    if (user.role === 'CLINICA_ADMIN') {
+    // STRICT DOCTOR ISOLATION: Verificar se é médico
+    const isDoctor = user.role === 'DOUTOR' || (user as any).doutorId !== undefined;
+    
+    if (isDoctor) {
+      // Médico só pode acessar prontuários de seus próprios agendamentos
+      const doctorId = (user as any).doutorId || user.id;
+      if (agendamento.doutorId !== doctorId) {
+        throw new Error('Acesso negado. Você só pode acessar prontuários de seus próprios agendamentos.');
+      }
+    } else if (user.role === 'CLINICA_ADMIN') {
+      // CLINICA_ADMIN que NÃO é médico pode ver prontuários da clínica
       if (!user.clinicaId || agendamento.doutor.clinicaId !== user.clinicaId) {
-        throw new Error('Acesso negado.');
+        throw new Error('Acesso negado. Prontuário não pertence à sua clínica.');
       }
     }
   }
