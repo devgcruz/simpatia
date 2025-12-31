@@ -52,6 +52,7 @@ import BusinessIcon from '@mui/icons-material/Business';
 import CategoryIcon from '@mui/icons-material/Category';
 import ScienceIcon from '@mui/icons-material/Science';
 import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
 import ReactMarkdown from 'react-markdown';
 import type { Components as ReactMarkdownComponents } from 'react-markdown';
 import { IAgendamento, IHistoricoPaciente, IPaciente, IDoutor, IProntuarioChatMessage, IPrescricao } from '../../types/models';
@@ -86,6 +87,7 @@ interface Props {
   onClose: () => void;
   agendamento: IAgendamento | null;
   onFinalizar?: (descricao: string, duracaoMinutos?: number) => Promise<void>;
+  autoIniciar?: boolean; // Se true, inicia o atendimento automaticamente ao abrir
 }
 
 const formatarTempo = (segundos: number): string => {
@@ -107,7 +109,7 @@ const estadosBrasileiros = [
 
 const generos = ['Masculino', 'Feminino', 'Outro', 'Prefiro não informar'];
 
-export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, onFinalizar }) => {
+export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, onFinalizar, autoIniciar = false }) => {
   const { user } = useAuth();
   const isDoutor = user?.role === 'DOUTOR';
   
@@ -669,6 +671,18 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
   };
 
 
+  // Auto-iniciar atendimento se a prop autoIniciar for true
+  useEffect(() => {
+    if (open && autoIniciar && agendamento && !atendimentoIniciado && !inicioAtendimento && agendamento.status !== 'finalizado') {
+      // Pequeno delay para garantir que o modal esteja totalmente renderizado
+      const timer = setTimeout(() => {
+        handleIniciarAtendimento();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, autoIniciar, agendamento?.id, atendimentoIniciado, inicioAtendimento]);
+
   // Carregar histórico quando a aba de histórico for selecionada
   useEffect(() => {
     if (open && activeTab === 1 && agendamento?.paciente.id) {
@@ -726,7 +740,22 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
     }
   }, [open, activeTab, agendamento?.paciente.id]);
 
-  // Carregar alergias do paciente quando o agendamento for carregado
+  // Carregar alergias do paciente quando a aba de alergias for aberta
+  useEffect(() => {
+    if (open && activeTab === 4 && agendamento?.paciente.id) {
+      const loadAlergias = async () => {
+        try {
+          const alergias = await getAlergiasByPaciente(agendamento.paciente.id);
+          setAlergiasPaciente(alergias);
+        } catch (error) {
+          console.error('Erro ao carregar alergias:', error);
+        }
+      };
+      loadAlergias();
+    }
+  }, [open, activeTab, agendamento?.paciente.id]);
+
+  // Carregar alergias do paciente quando o agendamento for carregado (para verificação em prescrições)
   useEffect(() => {
     const loadAlergias = async () => {
       if (agendamento?.paciente?.id) {
@@ -1508,13 +1537,14 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
           <Tab label="Histórico de Atendimentos" />
           <Tab label="Prescrições" />
           <Tab label="Atestados" />
+          <Tab label="Alergias" />
         </Tabs>
       </DialogTitle>
       <DialogContent 
         dividers
         sx={{
           flex: 1,
-          overflow: activeTab === 0 || activeTab === 1 || activeTab === 2 || activeTab === 3 ? 'hidden' : 'auto',
+          overflow: activeTab === 0 || activeTab === 1 || activeTab === 2 || activeTab === 3 || activeTab === 4 ? 'hidden' : 'auto',
           minHeight: 0,
           display: 'flex',
           flexDirection: 'column',
@@ -3181,6 +3211,130 @@ export const ProntuarioModal: React.FC<Props> = ({ open, onClose, agendamento, o
                                 <strong>Observações:</strong> {atestado.conteudo}
                               </Typography>
                             )}
+                          </Box>
+                        }
+                      />
+                    </ListItem>
+                  </React.Fragment>
+                ))}
+              </List>
+            )}
+          </Box>
+        )}
+
+        {/* Aba de Alergias */}
+        {activeTab === 4 && (
+          <Box sx={{ height: '100%', overflow: 'auto' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+              <Typography variant="h6">Alergias do Paciente</Typography>
+              <Button
+                variant="contained"
+                startIcon={<AddCircleIcon />}
+                onClick={() => setOpenAlergiaModal(true)}
+              >
+                Adicionar Alergia
+              </Button>
+            </Box>
+
+            {alergiasPaciente.length === 0 ? (
+              <Box textAlign="center" py={4}>
+                <WarningIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+                <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+                  Nenhuma alergia cadastrada para este paciente
+                </Typography>
+                <Button
+                  variant="outlined"
+                  startIcon={<AddCircleIcon />}
+                  onClick={() => setOpenAlergiaModal(true)}
+                >
+                  Cadastrar Primeira Alergia
+                </Button>
+              </Box>
+            ) : (
+              <List sx={{ width: '100%' }}>
+                {alergiasPaciente.map((alergia) => (
+                  <React.Fragment key={alergia.id}>
+                    <ListItem
+                      alignItems="flex-start"
+                      sx={{
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 2,
+                        mb: 2,
+                        p: 2,
+                        backgroundColor: 'error.50',
+                      }}
+                    >
+                      <ListItemText
+                        primary={
+                          <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                            <Box>
+                              <Typography variant="subtitle1" fontWeight="bold" component="span">
+                                {alergia.nomeMedicamento || alergia.principioAtivo}
+                              </Typography>
+                              {alergia.medicamento && (
+                                <Chip
+                                  label="Medicamento cadastrado"
+                                  size="small"
+                                  color="primary"
+                                  sx={{ ml: 2 }}
+                                />
+                              )}
+                            </Box>
+                            <Box display="flex" alignItems="center" gap={1}>
+                              <Typography variant="caption" color="text.secondary">
+                                {moment(alergia.createdAt).format('DD/MM/YYYY')}
+                              </Typography>
+                              <Tooltip title="Excluir alergia">
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  onClick={() => {
+                                    setAlergiaParaExcluir(alergia);
+                                    setOpenConfirmarExclusaoAlergia(true);
+                                  }}
+                                >
+                                  <DeleteIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            </Box>
+                          </Box>
+                        }
+                        secondary={
+                          <Box>
+                            <Box sx={{ mb: 1 }}>
+                              <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                                <strong>Princípio Ativo:</strong> {alergia.principioAtivo}
+                              </Typography>
+                              {alergia.classeQuimica && (
+                                <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                                  <strong>Classe Química:</strong> {alergia.classeQuimica}
+                                </Typography>
+                              )}
+                              {alergia.excipientes && (
+                                <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                                  <strong>Excipientes:</strong> {alergia.excipientes}
+                                </Typography>
+                              )}
+                              {alergia.observacoes && (
+                                <>
+                                  <Divider sx={{ my: 1 }} />
+                                  <Typography
+                                    variant="body2"
+                                    component="div"
+                                    sx={{
+                                      whiteSpace: 'pre-wrap',
+                                      backgroundColor: 'grey.50',
+                                      p: 2,
+                                      borderRadius: 1,
+                                      mt: 1,
+                                    }}
+                                  >
+                                    <strong>Observações:</strong> {alergia.observacoes}
+                                  </Typography>
+                                </>
+                              )}
+                            </Box>
                           </Box>
                         }
                       />

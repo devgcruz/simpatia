@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -24,6 +24,7 @@ import {
   Alert,
   FormControlLabel,
   Checkbox,
+  Autocomplete,
 } from '@mui/material';
 import { SelectChangeEvent } from '@mui/material/Select';
 import IconButton from '@mui/material/IconButton';
@@ -42,6 +43,8 @@ import { getServicos } from '../../services/servico.service';
 import { getPrescricaoByProtocolo } from '../../services/prescricao.service';
 import { useAuth } from '../../hooks/useAuth';
 import { useDoutorSelecionado } from '../../context/DoutorSelecionadoContext';
+import { useDebounce } from '../../hooks/useDebounce';
+import { usePacientes } from '../../hooks/queries/usePacientes';
 import moment from 'moment';
 import WarningIcon from '@mui/icons-material/Warning';
 import { pdf } from '@react-pdf/renderer';
@@ -90,8 +93,38 @@ export const AgendamentoFormModal: React.FC<Props> = ({
   const [statusAnterior, setStatusAnterior] = useState<string>('');
 
   const [doutores, setDoutores] = useState<IDoutor[]>([]);
-  const [pacientes, setPacientes] = useState<IPaciente[]>([]);
   const [servicos, setServicos] = useState<IServico[]>([]);
+  
+  // Estados para busca de paciente com debounce
+  const [buscaPaciente, setBuscaPaciente] = useState<string>('');
+  const buscaDebounced = useDebounce(buscaPaciente, 600);
+  
+  // Hook para buscar pacientes
+  const doutorIdParaPacientes = user?.role === 'SECRETARIA' && doutorSelecionado ? doutorSelecionado.id : undefined;
+  const { data: pacientesData = [], isLoading: loadingPacientes, isFetching: fetchingPacientes } = usePacientes({
+    doutorId: doutorIdParaPacientes,
+    enabled: open, // Só busca quando o modal estiver aberto
+  });
+  
+  // Filtrar pacientes baseado na busca debounced (client-side filtering)
+  const pacientesFiltrados = useMemo(() => {
+    if (!buscaDebounced.trim()) {
+      return pacientesData;
+    }
+    const termo = buscaDebounced.toLowerCase();
+    return pacientesData.filter((paciente) => {
+      const nome = paciente.nome?.toLowerCase() || '';
+      const cpf = paciente.cpf?.toLowerCase() || '';
+      const telefone = paciente.telefone?.toLowerCase() || '';
+      return nome.includes(termo) || cpf.includes(termo) || telefone.includes(termo);
+    });
+  }, [pacientesData, buscaDebounced]);
+  
+  // Encontrar paciente selecionado para o Autocomplete
+  const pacienteSelecionado = useMemo(() => {
+    if (!form.pacienteId) return null;
+    return pacientesData.find((p) => p.id === Number(form.pacienteId)) || null;
+  }, [form.pacienteId, pacientesData]);
   const [activeTab, setActiveTab] = useState<'dados' | 'historico'>('dados');
   const [historicos, setHistoricos] = useState<IHistoricoPaciente[]>([]);
   const [historicoLoading, setHistoricoLoading] = useState(false);
@@ -110,16 +143,12 @@ export const AgendamentoFormModal: React.FC<Props> = ({
     const fetchData = async () => {
       try {
         setLoading(true);
-        // Para SECRETARIA, usar doutor selecionado; para DOUTOR, não passar doutorId (backend filtra automaticamente)
-        const doutorIdParaPacientes = user?.role === 'SECRETARIA' && doutorSelecionado ? doutorSelecionado.id : undefined;
         // Se doutorId foi passado, buscar apenas serviços desse doutor
-        const [doutoresData, pacientesData, servicosData] = await Promise.all([
+        const [doutoresData, servicosData] = await Promise.all([
           getDoutores(),
-          getPacientes(doutorIdParaPacientes),
           getServicos(doutorId),
         ]);
         setDoutores(doutoresData);
-        setPacientes(pacientesData);
         setServicos(servicosData);
       } catch (error) {
         toast.error('Erro ao carregar dados do formulário.');
@@ -146,6 +175,7 @@ export const AgendamentoFormModal: React.FC<Props> = ({
     setOpenCancelModal(false);
     setMotivoCancelamento('');
     setStatusAnterior('');
+    setBuscaPaciente(''); // Limpar busca ao abrir/fechar modal
 
     if (agendamento) {
       setForm({
@@ -670,23 +700,72 @@ export const AgendamentoFormModal: React.FC<Props> = ({
               ) : (
                 <Grid container spacing={2}>
                   <Grid item xs={12}>
-                    <FormControl fullWidth required margin="normal">
-                      <InputLabel id="paciente-label">Paciente</InputLabel>
-                      <Select
-                        name="pacienteId"
-                        labelId="paciente-label"
-                        value={form.pacienteId}
-                        label="Paciente"
-                        onChange={handleSelectChange}
-                        disabled={Boolean(agendamento)}
-                      >
-                        {pacientes.map((p) => (
-                          <MenuItem key={p.id} value={p.id}>
-                            {p.nome}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
+                    <Autocomplete
+                      options={pacientesFiltrados}
+                      value={pacienteSelecionado}
+                      onChange={(_, newValue) => {
+                        setForm((prev) => ({
+                          ...prev,
+                          pacienteId: newValue ? String(newValue.id) : '',
+                        }));
+                        setBuscaPaciente(''); // Limpar busca ao selecionar
+                      }}
+                      onInputChange={(_, newInputValue) => {
+                        setBuscaPaciente(newInputValue);
+                      }}
+                      inputValue={buscaPaciente}
+                      getOptionLabel={(option) => option.nome || ''}
+                      loading={loadingPacientes || fetchingPacientes}
+                      disabled={Boolean(agendamento)}
+                      noOptionsText={
+                        buscaDebounced.trim()
+                          ? 'Nenhum paciente encontrado'
+                          : loadingPacientes
+                          ? 'Carregando pacientes...'
+                          : 'Digite para buscar pacientes'
+                      }
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Paciente"
+                          required
+                          margin="normal"
+                          InputProps={{
+                            ...params.InputProps,
+                            endAdornment: (
+                              <>
+                                {loadingPacientes || fetchingPacientes ? (
+                                  <CircularProgress color="inherit" size={20} />
+                                ) : null}
+                                {params.InputProps.endAdornment}
+                              </>
+                            ),
+                          }}
+                        />
+                      )}
+                      renderOption={(props, option) => (
+                        <Box component="li" {...props} key={option.id}>
+                          <Box>
+                            <Typography variant="body1" fontWeight="medium">
+                              {option.nome}
+                            </Typography>
+                            <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
+                              {option.cpf && (
+                                <Typography variant="caption" color="text.secondary">
+                                  CPF: {option.cpf}
+                                </Typography>
+                              )}
+                              {option.telefone && (
+                                <Typography variant="caption" color="text.secondary">
+                                  {option.cpf ? ' • ' : ''}Tel: {option.telefone}
+                                </Typography>
+                              )}
+                            </Box>
+                          </Box>
+                        </Box>
+                      )}
+                      isOptionEqualToValue={(option, value) => option.id === value.id}
+                    />
                   </Grid>
 
                   <Grid item xs={12}>

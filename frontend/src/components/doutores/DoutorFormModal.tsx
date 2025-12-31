@@ -1059,20 +1059,6 @@ export const DoutorFormModal: React.FC<Props> = ({ open, onClose, onSubmit, init
                       <FormControlLabel
                         control={
                           <Checkbox
-                            checked={modeloPrescricaoPDF.footer.showQRCode}
-                            onChange={(e) => setModeloPrescricaoPDF(prev => ({
-                              ...prev,
-                              footer: { ...prev.footer, showQRCode: e.target.checked }
-                            }))}
-                          />
-                        }
-                        label="Mostrar QR Code"
-                      />
-                    </Grid>
-                    <Grid item xs={12} sm={4}>
-                      <FormControlLabel
-                        control={
-                          <Checkbox
                             checked={modeloPrescricaoPDF.footer.showContactInfo}
                             onChange={(e) => setModeloPrescricaoPDF(prev => ({
                               ...prev,

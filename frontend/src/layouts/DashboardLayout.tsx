@@ -26,6 +26,7 @@ import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
 import SettingsIcon from '@mui/icons-material/Settings';
 import EventIcon from '@mui/icons-material/Event';
+import DashboardIcon from '@mui/icons-material/Dashboard';
 import PeopleIcon from '@mui/icons-material/People';
 import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
@@ -185,6 +186,7 @@ export const DashboardLayout: React.FC = () => {
   const gerenciarSubItems: MenuItem[] = [
     { text: 'Pacientes', icon: <PeopleIcon />, path: '/pacientes', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN', 'SECRETARIA'] },
     { text: 'Medicamentos', icon: <MedicationIcon />, path: '/medicamentos', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'] },
+    { text: 'Serviços', icon: <MedicalServicesIcon />, path: '/servicos', role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'] },
   ];
 
   // Adicionar Prescrições apenas se o módulo estiver habilitado
@@ -203,13 +205,13 @@ export const DashboardLayout: React.FC = () => {
       text: 'Atendimento do Dia',
       icon: <TodayIcon />,
       path: '/atendimento-do-dia',
-      role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN'],
+      role: ['DOUTOR', 'SUPER_ADMIN'],
     },
     {
       text: 'Atendimento',
       icon: <ChatIcon />,
       path: '/atendimento',
-      role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN', 'SECRETARIA'],
+      role: ['DOUTOR', 'SUPER_ADMIN', 'SECRETARIA'],
     },
     {
       text: 'Gerenciar',
@@ -218,7 +220,6 @@ export const DashboardLayout: React.FC = () => {
       role: ['DOUTOR', 'CLINICA_ADMIN', 'SUPER_ADMIN', 'SECRETARIA'],
       subItems: gerenciarSubItems,
     },
-    { text: 'Serviços', icon: <MedicalServicesIcon />, path: '/servicos', role: ['CLINICA_ADMIN', 'SUPER_ADMIN'] },
     { text: 'Doutores', icon: <AccountCircleIcon />, path: '/doutores', role: ['CLINICA_ADMIN', 'SUPER_ADMIN'] },
     { text: 'Secretárias', icon: <AccountCircleIcon />, path: '/secretarias', role: ['CLINICA_ADMIN', 'SUPER_ADMIN'] },
     { text: 'Gerir Clínicas', icon: <StoreIcon />, path: '/clinicas', role: ['SUPER_ADMIN'] },
@@ -255,7 +256,12 @@ export const DashboardLayout: React.FC = () => {
         }
       } else {
         if (location.pathname.startsWith(item.path)) {
-          title = item.text;
+          // Se for CLINICA_ADMIN na rota /dashboard, mostrar "Dashboard" em vez de "Agenda"
+          if (item.path === '/dashboard' && user?.role === 'CLINICA_ADMIN') {
+            title = 'Dashboard';
+          } else {
+            title = item.text;
+          }
           break;
         }
       }
@@ -468,6 +474,14 @@ export const DashboardLayout: React.FC = () => {
 
             // Menu item normal
             const isActive = location.pathname.startsWith(item.path);
+            // Exibir "Dashboard" para CLINICA_ADMIN no item de agenda, "Agenda" para outros
+            const menuText = item.path === '/dashboard' && user?.role === 'CLINICA_ADMIN' 
+              ? 'Dashboard' 
+              : item.text;
+            // Exibir ícone de Dashboard para CLINICA_ADMIN, EventIcon para outros
+            const menuIcon = item.path === '/dashboard' && user?.role === 'CLINICA_ADMIN'
+              ? <DashboardIcon />
+              : item.icon;
             return (
               <ListItem key={item.text} disablePadding sx={{ display: 'block' }}>
               <ListItemButton
@@ -492,9 +506,9 @@ export const DashboardLayout: React.FC = () => {
                       justifyContent: 'center',
                     }}
                   >
-                    {item.icon}
+                    {menuIcon}
                   </ListItemIcon>
-                  <ListItemText primary={item.text} sx={{ opacity: (isMobile ? mobileOpen : open) ? 1 : 0 }} />
+                  <ListItemText primary={menuText} sx={{ opacity: (isMobile ? mobileOpen : open) ? 1 : 0 }} />
                 </ListItemButton>
               </ListItem>
             );

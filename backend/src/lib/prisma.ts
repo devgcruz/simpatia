@@ -12,6 +12,8 @@ const ENCRYPTED_FIELDS: Record<string, string[]> = {
     'numero',
     'cep',
     'bairro',
+    'cidade',
+    'estado',
     'numeroCarteirinha',
     'alergias',
     'observacoes',
@@ -299,8 +301,10 @@ const prisma = new PrismaClient({
         // Executar operação
         const result = await query(args);
 
-        // Operações de leitura: descriptografar após ler
-        if (operation === 'findUnique' || operation === 'findFirst' || operation === 'findMany' || operation === 'findFirstOrThrow' || operation === 'findUniqueOrThrow') {
+        // Operações de leitura e escrita que retornam dados: descriptografar após ler/criar
+        if (operation === 'findUnique' || operation === 'findFirst' || operation === 'findMany' || 
+            operation === 'findFirstOrThrow' || operation === 'findUniqueOrThrow' ||
+            operation === 'create' || operation === 'update' || operation === 'upsert') {
           if (result) {
             // Sempre processar o resultado para descriptografar campos criptografados
             // Isso garante que includes e objetos aninhados sejam processados
@@ -308,7 +312,7 @@ const prisma = new PrismaClient({
               return result.map((item) => {
                 // Detectar modelo pelo conteúdo do item
                 if (item && typeof item === 'object') {
-                  if ('alergias' in item || 'observacoes' in item) {
+                  if ('alergias' in item || 'observacoes' in item || 'cpf' in item || 'nome' in item) {
                     return decryptFields(item, 'Paciente');
                   } else if ('relatoPaciente' in item || 'entendimentoIA' in item) {
                     return decryptFields(item, 'Agendamento');
@@ -318,7 +322,7 @@ const prisma = new PrismaClient({
               });
             } else if (result && typeof result === 'object') {
               // Detectar modelo pelo conteúdo
-              if ('alergias' in result || 'observacoes' in result) {
+              if ('alergias' in result || 'observacoes' in result || 'cpf' in result || 'nome' in result) {
                 return decryptFields(result, 'Paciente');
               } else if ('relatoPaciente' in result || 'entendimentoIA' in result) {
                 return decryptFields(result, 'Agendamento');

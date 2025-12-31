@@ -1,4 +1,6 @@
 // src/App.tsx
+
+import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
 import { PublicRoute } from './components/common/PublicRoute';
@@ -20,8 +22,18 @@ import { PerfilPage } from './pages/PerfilPage';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
 import { Toaster } from 'sonner';
+import { useAuth } from './hooks/useAuth';
 
 const theme = createTheme();
+
+// Componente para redirecionamento inteligente baseado na role
+const SmartRedirect: React.FC = () => {
+  const { user } = useAuth();
+  
+  // Para todas as roles, redirecionar para dashboard
+  // CLINICA_ADMIN agora tem acesso ao dashboard (com visão administrativa)
+  return <Navigate to="/dashboard" replace />;
+};
 
 function App() {
   return (
@@ -55,8 +67,8 @@ function App() {
             </Route>
           </Route>
 
-          {/* Redirecionamento padrão */}
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          {/* Redirecionamento padrão - baseado na role do usuário */}
+          <Route path="*" element={<SmartRedirect />} />
         </Routes>
       </BrowserRouter>
     </ThemeProvider>

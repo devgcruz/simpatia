@@ -36,15 +36,6 @@ export const useChatWidget = () => {
         return acc + naoLidas;
     }, 0);
     
-    // Debug log
-    useEffect(() => {
-        console.log('[useChatWidget] totalMensagensNaoLidas atualizado:', totalMensagensNaoLidas, 'Conversas:', conversas.length);
-        conversas.forEach(c => {
-            if (c.mensagensNaoLidas && c.mensagensNaoLidas > 0) {
-                console.log('[useChatWidget] Conversa', c.id, 'tem', c.mensagensNaoLidas, 'não lidas');
-            }
-        });
-    }, [totalMensagensNaoLidas, conversas]);
 
     // Sync refs
     useEffect(() => {
@@ -81,7 +72,6 @@ export const useChatWidget = () => {
             // Atualizar ref imediatamente para garantir sincronização
             conversasRef.current = atualizado;
             const totalNaoLidas = atualizado.reduce((acc, conv) => acc + (conv.mensagensNaoLidas || 0), 0);
-            console.log('[useChatWidget] atualizarConversas - Antes:', prev.length, 'Depois:', atualizado.length, 'Total não lidas:', totalNaoLidas);
             return atualizado;
         });
     }, []);
@@ -127,14 +117,12 @@ export const useChatWidget = () => {
             if (conversasRef.current.length === 0) setCarregando(true);
 
             const data = await chatInternoService.listConversas();
-            console.log('[useChatWidget] carregarConversas - Dados recebidos do backend:', data.length);
 
             atualizarConversas((prev) => {
                 const resultado = data.map((novaConversa) => {
                     const conversaLocal = prev.find((c) => c.id === novaConversa.id);
 
                     if (!conversaLocal) {
-                        console.log('[useChatWidget] Nova conversa do backend:', novaConversa.id, 'não lidas:', novaConversa.mensagensNaoLidas);
                         return novaConversa;
                     }
 
@@ -157,18 +145,15 @@ export const useChatWidget = () => {
                     
                     // Se o local é maior, preservar (incremento otimista ainda não sincronizado)
                     if (localCount > backendCount) {
-                        console.log('[useChatWidget] Preservando contador local maior. Local:', localCount, 'Backend:', backendCount);
                         return { ...novaConversa, mensagensNaoLidas: localCount };
                     }
                     
                     // Se o backend é maior, usar backend (nova mensagem chegou no servidor)
                     if (backendCount > localCount) {
-                        console.log('[useChatWidget] Usando contador do backend (maior). Local:', localCount, 'Backend:', backendCount);
                         return novaConversa;
                     }
                     
                     // Se são iguais, preservar o local (já está correto e evita flicker)
-                    console.log('[useChatWidget] Contadores iguais. Preservando local:', localCount);
                     return { ...novaConversa, mensagensNaoLidas: localCount };
                 });
                 
@@ -176,7 +161,6 @@ export const useChatWidget = () => {
                 const idsLocais = new Set(prev.map(c => c.id));
                 const novasDoBackend = data.filter(c => !idsLocais.has(c.id));
                 if (novasDoBackend.length > 0) {
-                    console.log('[useChatWidget] Adicionando', novasDoBackend.length, 'novas conversas do backend');
                     return [...resultado, ...novasDoBackend];
                 }
                 
@@ -204,7 +188,7 @@ export const useChatWidget = () => {
             const usuarios = await chatInternoService.getUsuariosDisponiveis();
             setUsuariosDisponiveis(usuarios);
         } catch (error) {
-            console.error('Erro ao carregar usuários', error);
+            // Erro silencioso ao carregar usuários
         } finally {
             setCarregandoUsuarios(false);
         }
@@ -215,7 +199,7 @@ export const useChatWidget = () => {
             const usuarios = await chatInternoService.getUsuariosOnline();
             setUsuariosOnline(usuarios);
         } catch (error) {
-            console.error('Erro ao carregar usuários online', error);
+            // Erro silencioso ao carregar usuários online
         }
     }, []);
 
@@ -225,9 +209,7 @@ export const useChatWidget = () => {
             conversaId: conversaSelecionada?.id || null,
             enabled: true,
             onNovaMensagem: (mensagem) => {
-                console.log('[useChatWidget] onNovaMensagem received:', mensagem);
                 if (!user) {
-                    console.log('[useChatWidget] User not defined, ignoring');
                     return;
                 }
 
@@ -238,17 +220,8 @@ export const useChatWidget = () => {
                 const conversaAtual = conversaSelecionadaRef.current;
                 const conversaSelecionadaId = conversaAtual ? Number(conversaAtual.id) : null;
 
-                console.log('[useChatWidget] Processing message:', {
-                    msgConversaId,
-                    msgRemetenteId,
-                    userId,
-                    conversaSelecionadaId,
-                    aberto
-                });
-
                 // 1. Message for currently open conversation
                 if (msgConversaId === conversaSelecionadaId && aberto) {
-                    console.log('[useChatWidget] Updating open conversation');
                     // Verificar se a mensagem já existe para evitar duplicatas
                     setMensagens((prev) => {
                         // Se é mensagem própria, procurar por mensagem otimista (ID temporário negativo)
@@ -267,8 +240,6 @@ export const useChatWidget = () => {
                                 const textoOriginal = textosOriginaisRef.current.get(mensagemOtimista.id) || mensagemOtimista.conteudo;
                                 
                                 // Substituir mensagem otimista pela mensagem real, mas preservar texto original
-                                console.log('[useChatWidget] Substituindo mensagem otimista pela real, preservando texto original');
-                                
                                 // Remover texto original do ref
                                 textosOriginaisRef.current.delete(mensagemOtimista.id);
                                 
@@ -283,7 +254,6 @@ export const useChatWidget = () => {
                         // Verificar se já existe mensagem com mesmo ID
                         const existe = prev.some((m) => m.id === mensagem.id);
                         if (existe) {
-                            console.log('[useChatWidget] Mensagem já existe, ignorando duplicata');
                             // Se é mensagem própria e já existe, preservar o texto original
                             if (msgRemetenteId === userId) {
                                 return prev.map((m) => 
@@ -294,7 +264,6 @@ export const useChatWidget = () => {
                             }
                             return prev;
                         }
-                        console.log('[useChatWidget] Adicionando nova mensagem ao array');
                         return [...prev, mensagem];
                     });
                     marcarMensagensComoLidas(msgConversaId);
@@ -307,7 +276,6 @@ export const useChatWidget = () => {
                 }
                 // 2. Message for another conversation (or chat closed)
                 else if (msgRemetenteId !== userId) {
-                    console.log('[useChatWidget] Updating background conversation/notification');
                     const conversasAtual = conversasRef.current;
                     const conversaExistente = conversasAtual.find((c) => c.id === msgConversaId);
                     const nomeRemetente = mensagem.remetente?.nome || 'Alguém';

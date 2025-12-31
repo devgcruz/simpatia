@@ -33,6 +33,7 @@ import TodayIcon from '@mui/icons-material/Today';
 import PhoneIcon from '@mui/icons-material/Phone';
 import WarningIcon from '@mui/icons-material/Warning';
 import PauseCircleIcon from '@mui/icons-material/PauseCircle';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import { toast } from 'sonner';
 import moment from 'moment';
 import 'moment/locale/pt-br';
@@ -139,6 +140,7 @@ export const AtendimentoDoDiaPage: React.FC = () => {
   const [isHistoricoModalOpen, setIsHistoricoModalOpen] = useState(false);
   const [agendamentoProntuario, setAgendamentoProntuario] = useState<IAgendamento | null>(null);
   const [isProntuarioModalOpen, setIsProntuarioModalOpen] = useState(false);
+  const [autoIniciarAtendimento, setAutoIniciarAtendimento] = useState(false);
   const [activeTab, setActiveTab] = useState<number>(0);
 
   // Se for DOUTOR, usar o próprio ID automaticamente
@@ -393,14 +395,20 @@ export const AtendimentoDoDiaPage: React.FC = () => {
     setIsHistoricoModalOpen(false);
   };
 
-  const handleOpenProntuario = (agendamento: IAgendamento) => {
+  const handleOpenProntuario = (agendamento: IAgendamento, autoIniciar: boolean = false) => {
     setAgendamentoProntuario(agendamento);
+    setAutoIniciarAtendimento(autoIniciar);
     setIsProntuarioModalOpen(true);
   };
 
   const handleCloseProntuario = () => {
     setAgendamentoProntuario(null);
+    setAutoIniciarAtendimento(false);
     setIsProntuarioModalOpen(false);
+  };
+
+  const handleIniciarAtendimento = (agendamento: IAgendamento) => {
+    handleOpenProntuario(agendamento, true);
   };
 
   const handleFinalizarConsulta = async (descricao: string, duracaoMinutos?: number) => {
@@ -777,42 +785,68 @@ export const AtendimentoDoDiaPage: React.FC = () => {
                           </Stack>
                         </Box>
 
-                        <Box sx={{ mt: 'auto', pt: 2, display: 'flex', gap: 1 }} onClick={(e) => e.stopPropagation()}>
-                          <Button
-                            variant="contained"
-                            color="primary"
-                            size="small"
-                            startIcon={<PersonIcon />}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenProntuario(agendamento);
-                            }}
-                            fullWidth
-                          >
-                            Abrir Prontuário
-                          </Button>
-                          <Tooltip title="Editar">
-                            <IconButton
+                        <Box sx={{ mt: 'auto', pt: 2, display: 'flex', flexDirection: 'column', gap: 1 }} onClick={(e) => e.stopPropagation()}>
+                          {/* Botão Iniciar Atendimento - Ação Primária */}
+                          {agendamento.status !== 'finalizado' && !verificarAtendimentoPausado(agendamento.id) && (
+                            <Button
+                              variant="contained"
+                              color="success"
                               size="small"
+                              startIcon={<PlayArrowIcon />}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleEditAgendamento(agendamento);
+                                handleIniciarAtendimento(agendamento);
+                              }}
+                              fullWidth
+                              sx={{
+                                fontWeight: 'bold',
+                                boxShadow: 2,
+                                '&:hover': {
+                                  boxShadow: 4,
+                                },
                               }}
                             >
-                              <EditIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Ver Histórico">
-                            <IconButton
+                              Iniciar Atendimento
+                            </Button>
+                          )}
+                          {/* Botões Secundários */}
+                          <Box sx={{ display: 'flex', gap: 1 }}>
+                            <Button
+                              variant="outlined"
+                              color="primary"
                               size="small"
+                              startIcon={<PersonIcon />}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleOpenHistorico(agendamento);
+                                handleOpenProntuario(agendamento);
                               }}
+                              sx={{ flex: 1 }}
                             >
-                              <HistoryIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
+                              Prontuário
+                            </Button>
+                            <Tooltip title="Editar">
+                              <IconButton
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEditAgendamento(agendamento);
+                                }}
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Ver Histórico">
+                              <IconButton
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenHistorico(agendamento);
+                                }}
+                              >
+                                <HistoryIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </Box>
                         </Box>
                       </CardContent>
                     </Card>
@@ -986,6 +1020,7 @@ export const AtendimentoDoDiaPage: React.FC = () => {
           onClose={handleCloseProntuario}
           agendamento={agendamentoProntuario}
           onFinalizar={handleFinalizarConsulta}
+          autoIniciar={autoIniciarAtendimento}
         />
       )}
     </Box>

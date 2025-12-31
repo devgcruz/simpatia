@@ -15,6 +15,7 @@ import {
 import { SelectChangeEvent } from '@mui/material/Select';
 import { IServico, IDoutor } from '../../types/models';
 import { getDoutores } from '../../services/doutor.service';
+import { useAuth } from '../../hooks/useAuth';
 
 interface Props {
   open: boolean;
@@ -24,6 +25,8 @@ interface Props {
 }
 
 export const ServicoFormModal: React.FC<Props> = ({ open, onClose, onSubmit, initialData }) => {
+  const { user } = useAuth();
+  const isDoctor = user?.role === 'DOUTOR';
   const [form, setForm] = useState<any>({
     nome: '',
     descricao: '',
@@ -38,28 +41,42 @@ export const ServicoFormModal: React.FC<Props> = ({ open, onClose, onSubmit, ini
 
   useEffect(() => {
     if (open) {
-      const fetchDoutores = async () => {
-        try {
-          setLoading(true);
-          const data = await getDoutores();
-          setDoutores(data);
-        } catch (error) {
-          console.error('Erro ao buscar doutores:', error);
-        } finally {
-          setLoading(false);
+      // Se for doutor, não precisa buscar lista de doutores
+      if (isDoctor) {
+        // Vincular automaticamente ao doutor logado
+        if (user?.id) {
+          setForm((prev: any) => ({
+            ...prev,
+            doutorId: user.id,
+          }));
         }
-      };
-      fetchDoutores();
+      } else {
+        // Apenas não-doutores precisam buscar lista de doutores
+        const fetchDoutores = async () => {
+          try {
+            setLoading(true);
+            const data = await getDoutores();
+            setDoutores(data);
+          } catch (error) {
+            console.error('Erro ao buscar doutores:', error);
+          } finally {
+            setLoading(false);
+          }
+        };
+        fetchDoutores();
+      }
     }
-  }, [open]);
+  }, [open, isDoctor, user]);
 
   useEffect(() => {
     if (initialData) {
       setForm(initialData);
     } else {
-      setForm({ nome: '', descricao: '', duracaoMin: 30, preco: 100, doutorId: '' });
+      // Se for doutor criando novo serviço, vincular automaticamente
+      const defaultDoutorId = isDoctor && user?.id ? user.id : '';
+      setForm({ nome: '', descricao: '', duracaoMin: 30, preco: 100, doutorId: defaultDoutorId });
     }
-  }, [initialData, open]);
+  }, [initialData, open, isDoctor, user]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type } = e.target;
@@ -79,7 +96,12 @@ export const ServicoFormModal: React.FC<Props> = ({ open, onClose, onSubmit, ini
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isEditing && !form.doutorId) {
+    // Se for doutor, garantir que o doutorId está definido
+    if (isDoctor && user?.id) {
+      form.doutorId = user.id;
+    }
+    // Validação apenas para não-doutores
+    if (!isDoctor && !isEditing && !form.doutorId) {
       alert('Por favor, selecione um doutor.');
       return;
     }
@@ -91,7 +113,8 @@ export const ServicoFormModal: React.FC<Props> = ({ open, onClose, onSubmit, ini
       <DialogTitle>{isEditing ? 'Editar Serviço' : 'Novo Serviço'}</DialogTitle>
       <Box component="form" onSubmit={handleSubmit}>
         <DialogContent>
-          {!isEditing && (
+          {/* Mostrar select de doutor apenas para não-doutores e quando não estiver editando */}
+          {!isEditing && !isDoctor && (
             <FormControl fullWidth required margin="normal">
               <InputLabel>Doutor</InputLabel>
               <Select

@@ -1,5 +1,6 @@
 // src/context/AuthContext.tsx
 import { createContext, useState, useEffect, ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
 import { IAuthContext, IUser } from './types';
 import { disconnectWebSocket } from '../hooks/useWebSocket';
@@ -7,6 +8,7 @@ import { disconnectWebSocket } from '../hooks/useWebSocket';
 const AuthContext = createContext<IAuthContext | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<IUser | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -20,6 +22,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setUser(userData);
         setIsAuthenticated(true);
       } catch {
+        // SEGURANÇA: Limpar cache preventivo se a verificação de sessão falhar
+        // Isso garante que não haja resíduos de uma sessão anterior interrompida
+        queryClient.clear();
         setUser(null);
         setIsAuthenticated(false);
       } finally {
@@ -28,7 +33,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     checkAuthStatus();
-  }, []);
+  }, [queryClient]);
 
   const refreshUser = async () => {
     try {
@@ -70,6 +75,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // Mesmo com erro, desconectar WebSocket e limpar estado
       disconnectWebSocket();
     } finally {
+      // CRÍTICO: Limpar cache do React Query ANTES de limpar o estado do usuário
+      // Isso garante isolamento estrito de dados entre sessões
+      // Usamos .clear() e não .invalidateQueries() para remover fisicamente os dados da memória
+      queryClient.clear();
+      
       setUser(null);
       setIsAuthenticated(false);
       setIsLoading(false);

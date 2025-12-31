@@ -91,7 +91,6 @@ export interface IModeloPrescricaoPDF {
     showWaves: boolean;
     wave1Color: string;
     wave2Color: string;
-    showQRCode: boolean;
     showContactInfo: boolean;
     contactInfoColor: string;
     contactInfoSize: number;
@@ -178,7 +177,6 @@ export const modeloPrescricaoPadrao: IModeloPrescricaoPDF = {
     showWaves: true,
     wave1Color: '#E0E0E0',
     wave2Color: '#BDBDBD',
-    showQRCode: true,
     showContactInfo: true,
     contactInfoColor: '#616161',
     contactInfoSize: 8,

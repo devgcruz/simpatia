@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -41,18 +41,20 @@ import WarningIcon from '@mui/icons-material/Warning';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import PersonIcon from '@mui/icons-material/Person';
 import moment from 'moment';
+import axios from 'axios';
 import { IPaciente, IDoutor } from '../../types/models';
 import { getDoutores } from '../../services/doutor.service';
 import { useAuth } from '../../hooks/useAuth';
 import { uploadFotoPaciente } from '../../services/upload.service';
 import { toast } from 'sonner';
+import { AlergiaFormModal } from '../prescricoes/AlergiaFormModal';
 
 moment.locale('pt-br');
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: Omit<IPaciente, 'id' | 'clinicaId'>) => void;
+  onSubmit: (data: Omit<IPaciente, 'id' | 'clinicaId'>) => Promise<IPaciente | void> | void;
   initialData?: IPaciente | null;
   doutorIdForcado?: number; // Para SECRETARIA: doutor selecionado na página
 }
@@ -73,6 +75,45 @@ const steps = [
   'Restrições',
   'Revisão e Confirmação',
 ];
+
+// Funções utilitárias de máscara
+const maskCPF = (value: string): string => {
+  const numbers = value.replace(/\D/g, '');
+  if (numbers.length <= 11) {
+    return numbers
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+  }
+  return value;
+};
+
+const maskCEP = (value: string): string => {
+  const numbers = value.replace(/\D/g, '');
+  if (numbers.length <= 8) {
+    return numbers.replace(/(\d{5})(\d)/, '$1-$2');
+  }
+  return value;
+};
+
+const maskTelefone = (value: string): string => {
+  const numbers = value.replace(/\D/g, '');
+  // Suporta DDD (2 dígitos) + número (8 ou 9 dígitos) = 10 ou 11 dígitos
+  if (numbers.length <= 11) {
+    if (numbers.length <= 10) {
+      // Formato: (00) 0000-0000 (DDD + 8 dígitos)
+      return numbers
+        .replace(/(\d{2})(\d)/, '($1) $2')
+        .replace(/(\d{4})(\d)/, '$1-$2');
+    } else {
+      // Formato: (00) 00000-0000 (DDD + 9 dígitos)
+      return numbers
+        .replace(/(\d{2})(\d)/, '($1) $2')
+        .replace(/(\d{5})(\d)/, '$1-$2');
+    }
+  }
+  return value;
+};
 
 export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, initialData, doutorIdForcado }) => {
   const { user } = useAuth();
@@ -113,6 +154,14 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
   const [loadingDoutores, setLoadingDoutores] = useState(false);
   const [restricoes, setRestricoes] = useState<string>('');
   const [uploadingFoto, setUploadingFoto] = useState(false);
+  const [loadingCep, setLoadingCep] = useState(false);
+  const [cepError, setCepError] = useState<string>('');
+  const numeroInputRef = useRef<HTMLInputElement>(null);
+  
+  // Estados para fluxo pós-cadastro de alergias (apenas para DOUTOR)
+  const [showAlergiaConfirm, setShowAlergiaConfirm] = useState(false);
+  const [showAlergiaModal, setShowAlergiaModal] = useState(false);
+  const [novoPaciente, setNovoPaciente] = useState<IPaciente | null>(null);
 
   useEffect(() => {
     if (open && !isDoutor) {
@@ -172,6 +221,8 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
       setTemRestricao('');
       setRestricoes('');
       setActiveStep(0);
+      setLoadingCep(false);
+      setCepError('');
       setForm({
         nome: '',
         telefone: '',
@@ -215,36 +266,92 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
     setForm((prev) => ({ ...prev, estado: e.target.value }));
   };
 
+  // Máscaras de input em tempo real
   const handleCPFChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/\D/g, '');
-    if (value.length <= 11) {
-      setForm((prev) => ({ ...prev, cpf: value }));
+    const masked = maskCPF(e.target.value);
+    const numbers = masked.replace(/\D/g, '');
+    if (numbers.length <= 11) {
+      setForm((prev) => ({ ...prev, cpf: numbers }));
     }
   };
 
-  const formatarCPFExibicao = (cpf: string) => {
-    if (!cpf) return '';
-    const apenasNumeros = cpf.replace(/\D/g, '');
-    if (apenasNumeros.length <= 11) {
-      return apenasNumeros.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-    }
-    return cpf;
-  };
-
-  const handleCEPChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/\D/g, '');
-    if (value.length <= 8) {
-      setForm((prev) => ({ ...prev, cep: value }));
+  const handleTelefoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const masked = maskTelefone(e.target.value);
+    const numbers = masked.replace(/\D/g, '');
+    // Aceitar até 11 dígitos (DDD + 9 dígitos)
+    if (numbers.length <= 11) {
+      setForm((prev) => ({ ...prev, telefone: numbers }));
     }
   };
 
-  const formatarCEPExibicao = (cep: string) => {
-    if (!cep) return '';
-    const apenasNumeros = cep.replace(/\D/g, '');
-    if (apenasNumeros.length <= 8) {
-      return apenasNumeros.replace(/(\d{5})(\d{3})/, '$1-$2');
+  const handleCEPChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const masked = maskCEP(e.target.value);
+    const numbers = masked.replace(/\D/g, '');
+    
+    if (numbers.length <= 8) {
+      const previousCep = form.cep;
+      setForm((prev) => ({ ...prev, cep: numbers }));
+      setCepError('');
+      
+      // Buscar CEP automaticamente quando atingir 8 dígitos
+      if (numbers.length === 8) {
+        await buscarCEP(numbers);
+      } else if (numbers.length < 8 && previousCep && previousCep.length === 8) {
+        // Limpar campos se CEP foi reduzido (usuário apagou dígitos)
+        setForm((prev) => ({
+          ...prev,
+          logradouro: '',
+          bairro: '',
+          cidade: '',
+          estado: '',
+        }));
+      }
     }
-    return cep;
+  };
+
+  // Integração ViaCEP
+  const buscarCEP = async (cep: string) => {
+    const cepLimpo = cep.replace(/\D/g, '');
+    
+    if (cepLimpo.length !== 8) {
+      return;
+    }
+
+    setLoadingCep(true);
+    setCepError('');
+
+    try {
+      const response = await axios.get(`https://viacep.com.br/ws/${cepLimpo}/json/`);
+      
+      if (response.data.erro) {
+        setCepError('CEP não encontrado');
+        toast.error('CEP não encontrado. Preencha o endereço manualmente.');
+        setLoadingCep(false);
+        return;
+      }
+
+      // Preencher campos automaticamente
+      setForm((prev) => ({
+        ...prev,
+        logradouro: response.data.logradouro || '',
+        bairro: response.data.bairro || '',
+        cidade: response.data.localidade || '',
+        estado: response.data.uf || '',
+      }));
+
+      // Focar no campo Número após buscar CEP
+      setTimeout(() => {
+        numeroInputRef.current?.focus();
+      }, 100);
+
+      toast.success('Endereço preenchido automaticamente!');
+    } catch (error) {
+      console.error('Erro ao buscar CEP:', error);
+      setCepError('Erro ao buscar CEP. Preencha manualmente.');
+      toast.error('Erro ao buscar CEP. Preencha o endereço manualmente.');
+    } finally {
+      setLoadingCep(false);
+    }
   };
 
   // Função para obter iniciais do nome
@@ -314,7 +421,7 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
     setActiveStep((prev) => Math.max(prev - 1, 0));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     // Validar todas as etapas antes de submeter
@@ -342,7 +449,42 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
         ? user.id 
         : (isSecretaria && !isEditing && doutorIdForcado ? doutorIdForcado : form.doutorId),
     };
-    onSubmit(formData);
+    
+    try {
+      const resultado = await onSubmit(formData);
+      
+      // Se for DOUTOR criando novo paciente, iniciar fluxo de alergias
+      if (isDoutor && !isEditing && resultado && 'id' in resultado) {
+        setNovoPaciente(resultado as IPaciente);
+        setShowAlergiaConfirm(true);
+      } else {
+        // Comportamento normal: fechar modal
+        onClose();
+      }
+    } catch (error) {
+      // Se houver erro, o onSubmit já deve ter tratado (toast, etc)
+      // Não fechar o modal em caso de erro
+      console.error('Erro ao salvar paciente:', error);
+    }
+  };
+
+  const handleAlergiaConfirm = (temAlergia: boolean) => {
+    setShowAlergiaConfirm(false);
+    
+    if (temAlergia && novoPaciente) {
+      // Abrir modal de alergia
+      setShowAlergiaModal(true);
+    } else {
+      // Fechar tudo
+      handleFinalizarFluxo();
+    }
+  };
+
+  const handleFinalizarFluxo = () => {
+    setNovoPaciente(null);
+    setShowAlergiaModal(false);
+    setShowAlergiaConfirm(false);
+    onClose();
   };
 
   // Renderizar conteúdo da etapa
@@ -454,7 +596,7 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
                 <TextField
                   name="cpf"
                   label="CPF"
-                  value={formatarCPFExibicao(form.cpf || '')}
+                  value={maskCPF(form.cpf || '')}
                   onChange={handleCPFChange}
                   fullWidth
                   margin="normal"
@@ -494,13 +636,13 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
                 <TextField
                   name="telefone"
                   label="Telefone (WhatsApp)"
-                  value={form.telefone}
-                  onChange={handleChange}
+                  value={maskTelefone(form.telefone || '')}
+                  onChange={handleTelefoneChange}
                   fullWidth
                   required
                   margin="normal"
-                  placeholder="14999998888"
-                  helperText="Incluir DDI e DDD"
+                  placeholder="(00) 00000-0000"
+                  helperText="Formato: (DDD) número"
                   error={!form.telefone && activeStep === 0}
                 />
               </Grid>
@@ -596,12 +738,21 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
                 <TextField
                   name="cep"
                   label="CEP"
-                  value={formatarCEPExibicao(form.cep || '')}
+                  value={maskCEP(form.cep || '')}
                   onChange={handleCEPChange}
                   fullWidth
                   margin="normal"
                   placeholder="00000-000"
                   inputProps={{ maxLength: 9 }}
+                  error={!!cepError}
+                  helperText={cepError || (loadingCep ? 'Buscando endereço...' : '')}
+                  InputProps={{
+                    endAdornment: loadingCep ? (
+                      <InputAdornment position="end">
+                        <CircularProgress size={20} />
+                      </InputAdornment>
+                    ) : null,
+                  }}
                 />
               </Grid>
               <Grid item xs={12} sm={8}>
@@ -612,6 +763,7 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
                   onChange={handleChange}
                   fullWidth
                   margin="normal"
+                  disabled={loadingCep}
                 />
               </Grid>
               <Grid item xs={12} sm={4}>
@@ -622,6 +774,8 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
                   onChange={handleChange}
                   fullWidth
                   margin="normal"
+                  disabled={loadingCep}
+                  inputRef={numeroInputRef}
                 />
               </Grid>
               <Grid item xs={12} sm={8}>
@@ -632,6 +786,7 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
                   onChange={handleChange}
                   fullWidth
                   margin="normal"
+                  disabled={loadingCep}
                 />
               </Grid>
               <Grid item xs={12} sm={8}>
@@ -642,6 +797,7 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
                   onChange={handleChange}
                   fullWidth
                   margin="normal"
+                  disabled={loadingCep}
                 />
               </Grid>
               <Grid item xs={12} sm={4}>
@@ -652,6 +808,7 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
                     value={form.estado || ''}
                     onChange={handleEstadoChange}
                     label="Estado (UF)"
+                    disabled={loadingCep}
                   >
                     <MenuItem value=""><em>Selecione</em></MenuItem>
                     {estadosBrasileiros.map((estado) => (
@@ -787,7 +944,7 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
               {form.cpf && (
                 <Grid item xs={12} sm={6}>
                   <Typography variant="subtitle2" color="text.secondary">CPF</Typography>
-                  <Typography variant="body1" sx={{ mb: 2 }}>{formatarCPFExibicao(form.cpf)}</Typography>
+                  <Typography variant="body1" sx={{ mb: 2 }}>{maskCPF(form.cpf)}</Typography>
                 </Grid>
               )}
               {form.dataNascimento && (
@@ -896,6 +1053,38 @@ export const PacienteFormModal: React.FC<Props> = ({ open, onClose, onSubmit, in
         </DialogActions>
       </Box>
 
+      {/* Modal de confirmação de alergia (apenas para DOUTOR após criar paciente) */}
+      <Dialog
+        open={showAlergiaConfirm}
+        onClose={() => handleAlergiaConfirm(false)}
+        aria-labelledby="alergia-confirm-title"
+        aria-describedby="alergia-confirm-description"
+      >
+        <DialogTitle id="alergia-confirm-title">Cadastro de Alergia</DialogTitle>
+        <DialogContent>
+          <Typography id="alergia-confirm-description">
+            O paciente possui alguma alergia?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => handleAlergiaConfirm(false)}>
+            Não
+          </Button>
+          <Button onClick={() => handleAlergiaConfirm(true)} variant="contained" color="primary" autoFocus>
+            Sim
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Modal de cadastro de alergia */}
+      {novoPaciente && (
+        <AlergiaFormModal
+          open={showAlergiaModal}
+          onClose={handleFinalizarFluxo}
+          paciente={novoPaciente}
+          onAlergiaCadastrada={handleFinalizarFluxo}
+        />
+      )}
     </Dialog>
   );
 };

@@ -4,23 +4,32 @@ import servicoService from '../services/servicos.service';
 class ServicosController {
     async handleGetAll(req: Request, res: Response) {
         try {
-            const { clinicaId } = req.user!;
-            const { doutorId } = req.query;
-            const doutorIdNumber = doutorId ? Number(doutorId) : undefined;
-            const servicos = await servicoService.getAll(clinicaId!, doutorIdNumber);
+            const user = req.user!;
+            const { clinicaId } = user;
+            // NUNCA confiar em doutorId da query para médicos - sempre usar do token
+            // Removido: const { doutorId } = req.query;
+            const servicos = await servicoService.getAll(clinicaId!, undefined, user);
             return res.status(200).json(servicos);
         } catch (error: any) {
+            if (error.message.includes('Acesso negado')) {
+                return res.status(403).json({ message: error.message });
+            }
             return res.status(500).json({ message: error.message });
         }
     }
 
     async handleGetByDoutor(req: Request, res: Response) {
         try {
-            const { clinicaId } = req.user!;
+            const user = req.user!;
+            const { clinicaId } = user;
+            // NUNCA confiar em doutorId da URL para médicos - sempre usar do token
             const doutorId = Number(req.params.doutorId);
-            const servicos = await servicoService.getByDoutor(doutorId, clinicaId!);
+            const servicos = await servicoService.getByDoutor(doutorId, clinicaId!, user);
             return res.status(200).json(servicos);
         } catch (error: any) {
+            if (error.message.includes('Acesso negado')) {
+                return res.status(403).json({ message: error.message });
+            }
             return res.status(500).json({ message: error.message });
         }
     }
@@ -28,14 +37,17 @@ class ServicosController {
     async handleGetById(req: Request, res: Response) {
 
         try {
+            const user = req.user!;
             const id = Number(req.params.id);
 
-            const { clinicaId } = req.user!;
-            const servico = await servicoService.getById(id, clinicaId);
+            const { clinicaId } = user;
+            const servico = await servicoService.getById(id, clinicaId!, user);
             return res.status(200).json(servico);
 
         } catch (error: any) {
-
+            if (error.message.includes('Acesso negado')) {
+                return res.status(403).json({ message: error.message });
+            }
             if (error.message === "Serviço não encontrado." || error.message === "Serviço não encontrado ou não pertence à esta clínica.") {
                 return res.status(404).json({ message: error.message });
             }
@@ -45,11 +57,15 @@ class ServicosController {
 
     async handleCreate(req: Request, res: Response) {
         try {
+            const user = req.user!;
             const { nome, descricao, duracaoMin, preco, doutorId } = req.body;
 
-            const { clinicaId } = req.user!;
+            const { clinicaId } = user;
 
-            if (!doutorId) {
+            // Para médicos, o doutorId será forçado automaticamente no service
+            // Para não-médicos (CLINICA_ADMIN, SECRETARIA), doutorId é obrigatório
+            const isDoctor = user.role === 'DOUTOR' || (user as any).doutorId !== undefined;
+            if (!isDoctor && !doutorId) {
                 return res.status(400).json({ message: "doutorId é obrigatório." });
             }
 
@@ -58,27 +74,34 @@ class ServicosController {
                 descricao,
                 duracaoMin,
                 preco,
-                doutorId,
-            }, clinicaId!);
+                doutorId: doutorId || undefined, // Será forçado no service se for médico
+            }, clinicaId!, user);
 
             return res.status(201).json(novoServico);
 
         } catch (error: any) {
+            if (error.message.includes('Acesso negado')) {
+                return res.status(403).json({ message: error.message });
+            }
             return res.status(400).json({ message: error.message });
         }
     }
 
     async handleUpdate(req: Request, res: Response) {
         try {
+            const user = req.user!;
             const id = Number(req.params.id);
 
             const data = req.body;
 
-            const { clinicaId } = req.user!;
+            const { clinicaId } = user;
 
-            const servicoAtualizado = await servicoService.update(id, data, clinicaId);
+            const servicoAtualizado = await servicoService.update(id, data, clinicaId!, user);
             return res.status(200).json(servicoAtualizado);
         } catch (error: any) {
+            if (error.message.includes('Acesso negado')) {
+                return res.status(403).json({ message: error.message });
+            }
             if (error.message === "Serviço não encontrado." || error.message === "Serviço não encontrado ou não pertence à esta clínica.") {
                 return res.status(404).json({ message: error.message });
             }
@@ -89,14 +112,18 @@ class ServicosController {
 
     async handleDelete(req: Request, res: Response) {
         try {
+            const user = req.user!;
             const id = Number(req.params.id);
 
-            const { clinicaId } = req.user!;
+            const { clinicaId } = user;
 
-            await servicoService.delete(id, clinicaId);
+            await servicoService.delete(id, clinicaId!, user);
 
             return res.status(204).send();
         } catch (error: any) {
+            if (error.message.includes('Acesso negado')) {
+                return res.status(403).json({ message: error.message });
+            }
             if (error.message === "Serviço não encontrado." || error.message === "Serviço não encontrado ou não pertence à esta clínica.") {
                 return res.status(404).json({ message: error.message });
             }

@@ -167,12 +167,6 @@ const criarEstilos = (modelo: IModeloPrescricaoPDF, escalaFonte: number = 1) => 
     alignItems: 'flex-end',
     marginLeft: 30,
   },
-  qrCode: {
-    width: 40,
-    height: 40,
-    marginRight: 10,
-    backgroundColor: modelo.footer.wave2Color,
-  },
   contactInfo: {
     fontSize: modelo.footer.contactInfoSize * escalaFonte,
     color: modelo.footer.contactInfoColor,
@@ -555,12 +549,6 @@ const PrescricaoPdfView: React.FC<PrescricaoPdfViewProps> = ({
         {/* Footer */}
         <View style={styles.footer}>
           <View style={styles.footerLeft}>
-            {/* QR Code placeholder */}
-            {modeloCentralizado.footer.showQRCode && (
-              <View style={styles.qrCode}>
-                <Text style={{ fontSize: 6, color: modeloCentralizado.footer.contactInfoColor, textAlign: 'center', marginTop: 15 }}>QR</Text>
-              </View>
-            )}
             {modeloCentralizado.footer.showContactInfo && (
               <View style={styles.contactInfo}>
                 {clinicaTelefone && <Text>{clinicaTelefone}</Text>}

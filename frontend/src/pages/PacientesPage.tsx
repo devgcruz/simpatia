@@ -2,7 +2,6 @@ import React, { useState, useMemo } from 'react';
 import { Box, Button, Paper, CircularProgress, TextField, InputAdornment, Chip, Typography } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
-import HistoryIcon from '@mui/icons-material/History';
 import DescriptionIcon from '@mui/icons-material/Description';
 import PersonIcon from '@mui/icons-material/Person';
 import { DataGrid, GridColDef, GridActionsCellItem, GridToolbar } from '@mui/x-data-grid';
@@ -13,7 +12,6 @@ import { IPaciente, IDoutor } from '../types/models';
 import { createPaciente, updatePaciente, deletePaciente } from '../services/paciente.service';
 import { getAgendamentos } from '../services/agendamento.service';
 import { PacienteFormModal } from '../components/pacientes/PacienteFormModal';
-import { HistoricoPacienteModal } from '../components/pacientes/HistoricoPacienteModal';
 import { ProntuarioModal } from '../components/pacientes/ProntuarioModal';
 import { ConfirmationModal } from '../components/common/ConfirmationModal';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
@@ -43,8 +41,6 @@ export const PacientesPage: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPaciente, setEditingPaciente] = useState<IPaciente | null>(null);
   const [itemToDeleteId, setItemToDeleteId] = useState<number | null>(null);
-  const [isHistoricoModalOpen, setIsHistoricoModalOpen] = useState(false);
-  const [pacienteHistorico, setPacienteHistorico] = useState<IPaciente | null>(null);
   const [isProntuarioModalOpen, setIsProntuarioModalOpen] = useState(false);
   const [agendamentoProntuario, setAgendamentoProntuario] = useState<IAgendamento | null>(null);
 
@@ -58,41 +54,32 @@ export const PacientesPage: React.FC = () => {
     setIsModalOpen(false);
   };
 
-  const handleSubmitForm = async (data: Omit<IPaciente, 'id' | 'clinicaId'>) => {
+  const handleSubmitForm = async (data: Omit<IPaciente, 'id' | 'clinicaId'>): Promise<IPaciente | void> => {
     try {
       if (editingPaciente) {
         await updatePaciente(editingPaciente.id, data);
         toast.success('Paciente atualizado com sucesso!');
+        // Invalidar cache para forçar refetch
+        queryClient.invalidateQueries({ queryKey: ['pacientes', doutorId] });
+        handleCloseModal();
+        return;
       } else {
         // O modal já preenche o doutorId automaticamente para SECRETARIA
-        await createPaciente(data);
+        const novoPaciente = await createPaciente(data);
         toast.success('Paciente criado com sucesso!');
+        // Invalidar cache para forçar refetch
+        queryClient.invalidateQueries({ queryKey: ['pacientes', doutorId] });
+        // Retornar o paciente criado para permitir fluxo pós-cadastro
+        return novoPaciente;
       }
-      // Invalidar cache para forçar refetch
-      queryClient.invalidateQueries({ queryKey: ['pacientes', doutorId] });
-      handleCloseModal();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Erro ao salvar paciente');
+      throw err; // Re-throw para o modal tratar
     }
   };
 
   const handleDelete = (id: number) => {
     setItemToDeleteId(id);
-  };
-
-  const handleOpenHistoricoModal = (paciente: IPaciente) => {
-    // SECRETARIA não pode acessar histórico
-    if (isSecretaria) {
-      toast.error('Você não tem permissão para visualizar o histórico do paciente.');
-      return;
-    }
-    setPacienteHistorico(paciente);
-    setIsHistoricoModalOpen(true);
-  };
-
-  const handleCloseHistoricoModal = () => {
-    setPacienteHistorico(null);
-    setIsHistoricoModalOpen(false);
   };
 
   const handleOpenProntuario = async (paciente: IPaciente) => {
@@ -199,18 +186,6 @@ export const PacientesPage: React.FC = () => {
               icon={<DescriptionIcon />}
               label="Prontuário"
               onClick={() => handleOpenProntuario(row)}
-            />
-          );
-        }
-        
-        // SECRETARIA não pode ver histórico
-        if (!isSecretaria) {
-          actions.push(
-            <GridActionsCellItem
-              key="historico"
-              icon={<HistoryIcon />}
-              label="Histórico"
-              onClick={() => handleOpenHistoricoModal(row)}
             />
           );
         }
@@ -368,14 +343,6 @@ export const PacientesPage: React.FC = () => {
         message="Tem certeza que deseja excluir este paciente? Esta ação não pode ser desfeita."
       />
 
-
-      {!isSecretaria && (
-        <HistoricoPacienteModal
-          open={isHistoricoModalOpen}
-          onClose={handleCloseHistoricoModal}
-          paciente={pacienteHistorico}
-        />
-      )}
 
       {!isSecretaria && agendamentoProntuario && (
         <ProntuarioModal

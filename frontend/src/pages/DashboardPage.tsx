@@ -1,10 +1,33 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { Calendar, momentLocalizer } from 'react-big-calendar';
+import { momentLocalizer } from 'react-big-calendar';
 import moment from 'moment-timezone';
 import 'moment/locale/pt-br';
-import { Box, CircularProgress, useMediaQuery, useTheme, IconButton, Tooltip, Typography } from '@mui/material';
+import { 
+  Box, 
+  CircularProgress, 
+  useMediaQuery, 
+  useTheme, 
+  IconButton, 
+  Tooltip, 
+  Typography,
+  Grid,
+  Card,
+  CardContent,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Skeleton,
+} from '@mui/material';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+import PeopleIcon from '@mui/icons-material/People';
+import EventAvailableIcon from '@mui/icons-material/EventAvailable';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import { toast } from 'sonner';
+import { useQuery } from '@tanstack/react-query';
 
 import {
   getAgendamentos,
@@ -14,6 +37,7 @@ import {
   AgendamentoCreateInput,
   AgendamentoUpdateInput,
 } from '../services/agendamento.service';
+import { getDashboardMetrics } from '../services/dashboard.service';
 import { IAgendamento, IClinica, IDoutor } from '../types/models';
 
 import { AgendamentoFormModal } from '../components/agendamentos/AgendamentoFormModal';
@@ -112,10 +136,249 @@ interface CalendarEvent {
   resource: IAgendamento;
 }
 
+// Componente de Dashboard Administrativo para CLINICA_ADMIN
+const DashboardAdministrativo: React.FC = () => {
+  const theme = useTheme();
+
+  // Buscar dados reais da API
+  const { data: metrics, isLoading, isError } = useQuery({
+    queryKey: ['dashboard-metrics'],
+    queryFn: getDashboardMetrics,
+    staleTime: 1000 * 60 * 5, // 5 minutos
+    refetchOnWindowFocus: false,
+  });
+
+  const formatarMoeda = (valor: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    }).format(valor);
+  };
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <Box sx={{ p: { xs: 2, md: 3 } }}>
+        <Typography variant="h4" fontWeight="bold" gutterBottom sx={{ mb: 3 }}>
+          Dashboard Administrativo
+        </Typography>
+        <Grid container spacing={3}>
+          {[1, 2, 3, 4].map((i) => (
+            <Grid item xs={12} sm={6} md={3} key={i}>
+              <Card sx={{ height: '100%' }}>
+                <CardContent>
+                  <Skeleton variant="rectangular" height={40} sx={{ mb: 2 }} />
+                  <Skeleton variant="text" width="60%" height={40} />
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      </Box>
+    );
+  }
+
+  // Error state
+  if (isError || !metrics) {
+    return (
+      <Box sx={{ p: { xs: 2, md: 3 }, textAlign: 'center' }}>
+        <Typography variant="h4" fontWeight="bold" gutterBottom>
+          Dashboard Administrativo
+        </Typography>
+        <Typography variant="body1" color="error" sx={{ mt: 2 }}>
+          Erro ao carregar métricas do dashboard. Tente novamente mais tarde.
+        </Typography>
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ p: { xs: 2, md: 3 } }}>
+      <Typography variant="h4" fontWeight="bold" gutterBottom sx={{ mb: 3 }}>
+        Dashboard Administrativo
+      </Typography>
+
+      {/* Cards de KPIs */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={{ height: '100%', boxShadow: 2 }}>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <AttachMoneyIcon sx={{ fontSize: 40, color: 'success.main', mr: 1 }} />
+                <Typography variant="h6" color="text.secondary">
+                  Faturamento Mensal
+                </Typography>
+              </Box>
+              <Typography variant="h4" fontWeight="bold" color="success.main">
+                {formatarMoeda(metrics.faturamentoMensal)}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={{ height: '100%', boxShadow: 2 }}>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <EventAvailableIcon sx={{ fontSize: 40, color: 'primary.main', mr: 1 }} />
+                <Typography variant="h6" color="text.secondary">
+                  Atendimentos
+                </Typography>
+              </Box>
+              <Typography variant="h4" fontWeight="bold" color="primary.main">
+                {metrics.atendimentosHoje} <Typography component="span" variant="body2" color="text.secondary">hoje</Typography>
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                {metrics.atendimentosMes} no mês
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={{ height: '100%', boxShadow: 2 }}>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <PeopleIcon sx={{ fontSize: 40, color: 'info.main', mr: 1 }} />
+                <Typography variant="h6" color="text.secondary">
+                  Novos Pacientes
+                </Typography>
+              </Box>
+              <Typography variant="h4" fontWeight="bold" color="info.main">
+                {metrics.novosPacientes}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                Este mês
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={{ height: '100%', boxShadow: 2 }}>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <TrendingUpIcon sx={{ fontSize: 40, color: 'warning.main', mr: 1 }} />
+                <Typography variant="h6" color="text.secondary">
+                  Taxa de Ocupação
+                </Typography>
+              </Box>
+              <Typography variant="h4" fontWeight="bold" color="warning.main">
+                {metrics.taxaOcupacao.toFixed(1)}%
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                Slots agendados
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      <Grid container spacing={3}>
+        {/* Top 5 Doutores Mais Ativos */}
+        <Grid item xs={12} md={6}>
+          <Card sx={{ boxShadow: 2 }}>
+            <CardContent>
+              <Typography variant="h6" fontWeight="bold" gutterBottom>
+                Top 5 Doutores Mais Ativos
+              </Typography>
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell><strong>Nome</strong></TableCell>
+                      <TableCell><strong>Especialidade</strong></TableCell>
+                      <TableCell align="right"><strong>Atendimentos</strong></TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {metrics.topDoutores.length > 0 ? (
+                      metrics.topDoutores.map((doutor, index) => (
+                        <TableRow key={index} hover>
+                          <TableCell>{doutor.nome}</TableCell>
+                          <TableCell>{doutor.especialidade || 'N/A'}</TableCell>
+                          <TableCell align="right">{doutor.atendimentos}</TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={3} align="center">
+                          <Typography variant="body2" color="text.secondary">
+                            Nenhum dado disponível
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Gráfico de Atendimentos (Simplificado) */}
+        <Grid item xs={12} md={6}>
+          <Card sx={{ boxShadow: 2 }}>
+            <CardContent>
+              <Typography variant="h6" fontWeight="bold" gutterBottom>
+                Atendimentos nos Últimos 7 Dias
+              </Typography>
+              <Box sx={{ mt: 3, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-around', height: 200 }}>
+                {metrics.atendimentosUltimos7Dias.length > 0 ? (
+                  (() => {
+                    const maxQuantidade = Math.max(...metrics.atendimentosUltimos7Dias.map(item => item.quantidade), 1);
+                    return metrics.atendimentosUltimos7Dias.map((item, index) => {
+                      const altura = (item.quantidade / maxQuantidade) * 100; // Normalizar para máximo encontrado
+                      return (
+                        <Box key={index} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
+                          <Box
+                            sx={{
+                              width: '80%',
+                              height: `${altura}%`,
+                              backgroundColor: theme.palette.primary.main,
+                              borderRadius: '4px 4px 0 0',
+                              minHeight: 20,
+                              mb: 1,
+                              transition: 'all 0.3s ease',
+                              '&:hover': {
+                                backgroundColor: theme.palette.primary.dark,
+                              },
+                            }}
+                          />
+                          <Typography variant="caption" color="text.secondary">
+                            {item.dia}
+                          </Typography>
+                          <Typography variant="caption" fontWeight="bold" sx={{ mt: 0.5 }}>
+                            {item.quantidade}
+                          </Typography>
+                        </Box>
+                      );
+                    });
+                  })()
+                ) : (
+                  <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>
+                    Nenhum dado disponível
+                  </Typography>
+                )}
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+};
+
 export const DashboardPage: React.FC = () => {
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('md'));
   const { user } = useAuth();
+  
+  // Se for CLINICA_ADMIN, renderizar dashboard administrativo
+  if (user?.role === 'CLINICA_ADMIN') {
+    return <DashboardAdministrativo />;
+  }
+
   const { doutorSelecionado: doutorSelecionadoContext, isLoading: isLoadingDoutorContext } = useDoutorSelecionado();
 
   const [eventos, setEventos] = useState<CalendarEvent[]>([]);

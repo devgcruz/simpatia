@@ -28,6 +28,7 @@ import atestadoRoutes from './routes/atestado.routes';
 import medicamentoRoutes from './routes/medicamento.routes';
 import secretariaRoutes from './routes/secretaria.routes';
 import alergiaRoutes from './routes/alergia.routes';
+import dashboardRoutes from './routes/dashboard.routes';
 import { initializeWebSocket } from './services/websocket.service';
 import { initializeChatInternoWebSocket } from './services/websocket-chat-interno.service';
 
@@ -175,6 +176,7 @@ app.use('/api/atestados', atestadoRoutes);
 app.use('/api/medicamentos', medicamentoRoutes);
 app.use('/api/secretarias', secretariaRoutes);
 app.use('/api/alergias', alergiaRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 httpServer.listen(PORT, () => {
   const isHttps = USE_HTTPS && 'key' in (httpServer as any).options;
